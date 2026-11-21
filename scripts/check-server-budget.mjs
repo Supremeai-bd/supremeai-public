@@ -61,7 +61,11 @@ const TARGET = 'server.ts';
 //         (collectLiveServiceHealth, sampleHostRuntime, DEFAULT_MCP_TOWER_ORIGIN,
 //         adminPasskeySchema, browserProxyHtml 4, isProtectedWorkspaceFile,
 //         gmailSessionCrypto 6, cronMatcher 2, execFile/promisify) — lint clean.
-const BUDGET = 8796;
+// 8796 → 8422 after extracting api/v1/conversations (6 routes: list/create/
+//         list-messages/post-message/patch/delete) into src/server/routes/
+//         conversations.ts — 374 lines removed (380 block −6 delegation).
+//         api/v1/* now 23→17 remaining; conversations own store + Supabase dual.
+const BUDGET = 8422;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
