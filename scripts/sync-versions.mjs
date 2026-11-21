@@ -55,4 +55,6 @@ try {
 }
 writeFileSync(versionJsonPath, `${JSON.stringify(versionJson, null, 2)}\n`);
 
-console.log(`Synchronized Web, Desktop, Android APK, VS Code VSIX, and version.json to version ${version}`);
+console.log(
+  `Synchronized Web, Desktop, Android APK, VS Code VSIX, and version.json to version ${version}`
+);

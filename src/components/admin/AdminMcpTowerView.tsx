@@ -365,12 +365,7 @@ export const AdminMcpTowerView: React.FC<AdminMcpTowerViewProps> = ({
                   setSelectedToolName(preset.name);
                   setToolArgsJson(preset.args);
                   setToolParseError(null);
-                  void runMcpTool(
-                    preset.name,
-                    JSON.parse(preset.args),
-                    false,
-                    authUser?.email
-                  );
+                  void runMcpTool(preset.name, JSON.parse(preset.args), false, authUser?.email);
                 }}
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-blue-500 text-xs font-mono text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
               >

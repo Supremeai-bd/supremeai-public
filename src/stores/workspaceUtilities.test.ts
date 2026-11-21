@@ -1223,7 +1223,9 @@ describe('Hybrid Web Vault: AES-256-GCM Encryption, Domain Isolation & Zero LLM 
     // Verify Edge schedule list has persisted record
     const edgeGet = await browserSchedulesEdgeHandler({
       env: testEdgeEnv,
-      request: new Request('https://supremeai.pages.dev/api/workspace/browser-schedules', { headers: testSessionHeaders }),
+      request: new Request('https://supremeai.pages.dev/api/workspace/browser-schedules', {
+        headers: testSessionHeaders,
+      }),
     });
     const edgeList = (await edgeGet.json()) as { schedules: Array<{ id: string }> };
     expect(edgeList.schedules.some((s) => s.id === task.id)).toBe(true);

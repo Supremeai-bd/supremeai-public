@@ -34,9 +34,7 @@ describe('useAuthStore error surfacing on sign-in & sign-up', () => {
       new Error('An account with this email already exists.')
     );
 
-    const ok = await useAuthStore
-      .getState()
-      .signup('Test User', 'taken@example.com', 'secret123');
+    const ok = await useAuthStore.getState().signup('Test User', 'taken@example.com', 'secret123');
     expect(ok).toBe(false);
     expect(useAuthStore.getState().authError).toBe('An account with this email already exists.');
     expect(useAuthStore.getState().isLoading).toBe(false);

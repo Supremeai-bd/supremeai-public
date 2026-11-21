@@ -15,13 +15,7 @@ import {
 } from '../config/releaseDownloads';
 
 export type AutoUpdateStatus =
-  | 'idle'
-  | 'checking'
-  | 'up-to-date'
-  | 'staging'
-  | 'ready'
-  | 'applying'
-  | 'error';
+  'idle' | 'checking' | 'up-to-date' | 'staging' | 'ready' | 'applying' | 'error';
 
 export interface AppRuntimeInfo {
   version: string;
@@ -143,7 +137,9 @@ export function resolveReleaseVersionMismatch(
   currentVersion: string,
   manifest: Pick<ReleaseManifest, 'version' | 'tag'>
 ): { mismatch: boolean; resolvedVersion: string; resolvedTag: string } {
-  const manifestVersion = String(manifest.version || '').replace(/^v/i, '').trim();
+  const manifestVersion = String(manifest.version || '')
+    .replace(/^v/i, '')
+    .trim();
   const tagCandidate = String(manifest.tag || '').trim();
   const tagSemver = /^v?\d+\.\d+\.\d+/i.test(tagCandidate)
     ? tagCandidate.replace(/^v/i, '').trim()
@@ -181,7 +177,11 @@ export async function fetchRemoteReleaseManifest(): Promise<ReleaseManifest> {
       });
       if (!res.ok) continue;
       const json = (await res.json().catch(() => null)) as any;
-      if (json && typeof json.windowsExeUrl === 'string' && typeof json.androidApkUrl === 'string') {
+      if (
+        json &&
+        typeof json.windowsExeUrl === 'string' &&
+        typeof json.androidApkUrl === 'string'
+      ) {
         return json as ReleaseManifest;
       }
       const normalized = normalizeRemoteReleaseManifest(json, repoSlug);
@@ -372,8 +372,7 @@ export async function checkAndStageBackgroundUpdate(force = false): Promise<Auto
             message: `Downloading v${resolvedVersion} APK quietly onto device…`,
           });
 
-          const fileName =
-            apkUrl.split('/').pop() || 'SupremeAI-Studio-app-universal-release.apk';
+          const fileName = apkUrl.split('/').pop() || 'SupremeAI-Studio-app-universal-release.apk';
 
           const staged = await invoke<StagedUpdateInfo>('stage_silent_update', {
             url: apkUrl,
@@ -541,9 +540,12 @@ export function startBackgroundUpdateMonitor(
   }, 6000);
 
   // Periodically check GitHub release version vs version.json
-  monitorTimer = setInterval(() => {
-    void checkAndStageBackgroundUpdate();
-  }, Math.max(60_000, intervalMs));
+  monitorTimer = setInterval(
+    () => {
+      void checkAndStageBackgroundUpdate();
+    },
+    Math.max(60_000, intervalMs)
+  );
 }
 
 export function stopBackgroundUpdateMonitor(): void {

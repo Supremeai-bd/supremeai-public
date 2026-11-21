@@ -1,5 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Mail, Lock, User, ArrowRight, Sparkles, AlertCircle, X, Eye, EyeOff } from 'lucide-react';
+import {
+  ShieldCheck,
+  Mail,
+  Lock,
+  User,
+  ArrowRight,
+  Sparkles,
+  AlertCircle,
+  X,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { AuthUser } from '../../types';
 import { LiveScreenBackdrop } from '../theme/LiveScreenBackdrop';
 import { ThemeControlPopover } from '../theme/ThemeControlPopover';
@@ -255,7 +266,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-0.5 cursor-pointer"
                 >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  {showPassword ? (
+                    <EyeOff className="w-3.5 h-3.5" />
+                  ) : (
+                    <Eye className="w-3.5 h-3.5" />
+                  )}
                 </button>
               </div>
             </div>

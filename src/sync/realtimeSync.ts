@@ -10,13 +10,7 @@ import type {
 
 export type SyncPlatform = 'web' | 'desktop' | 'android' | 'ios';
 export type SyncDomain =
-  | 'chats'
-  | 'theme'
-  | 'roles'
-  | 'projects'
-  | 'knowledge'
-  | 'plugins'
-  | 'voice_avatar';
+  'chats' | 'theme' | 'roles' | 'projects' | 'knowledge' | 'plugins' | 'voice_avatar';
 
 export interface SyncThemePayload {
   themeMode: ThemeMode;
@@ -56,7 +50,8 @@ let revisionCounter = 0;
 export function getSyncPlatform(): SyncPlatform {
   if (isDesktopTauri()) return 'desktop';
   if (typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent)) return 'android';
-  if (typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent)) return 'ios';
+  if (typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent))
+    return 'ios';
   return 'web';
 }
 
@@ -119,7 +114,8 @@ function getAuthToken(): string | null {
 function getGatewayBaseUrl(): string {
   const fromEnv =
     typeof import.meta !== 'undefined'
-      ? (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_SUPREMEAI_GATEWAY_URL
+      ? (import.meta as { env?: Record<string, string | undefined> }).env
+          ?.VITE_SUPREMEAI_GATEWAY_URL
       : undefined;
   return (fromEnv || DEFAULT_GATEWAY_URL).replace(/\/+$/, '');
 }
@@ -133,7 +129,10 @@ export function mergeSyncedSessions(local: ChatSession[], remote: ChatSession[])
     const existing = map.get(chat.id);
     if (!existing || chat.updatedAt > existing.updatedAt) {
       map.set(chat.id, chat);
-    } else if (chat.updatedAt === existing.updatedAt && chat.messages.length > existing.messages.length) {
+    } else if (
+      chat.updatedAt === existing.updatedAt &&
+      chat.messages.length > existing.messages.length
+    ) {
       map.set(chat.id, chat);
     }
   }
@@ -253,7 +252,7 @@ export class RealtimeSyncClient {
       });
       if (!res.ok) return false;
       const snapshot = (await res.json()) as SyncSnapshot;
-      const emit = <T,>(domain: SyncDomain, updatedAt: number, payload: T) => {
+      const emit = <T>(domain: SyncDomain, updatedAt: number, payload: T) => {
         this.onEnvelope({
           protocolVersion: '1.0.0',
           deviceId: 'cloud-gateway',
@@ -267,8 +266,10 @@ export class RealtimeSyncClient {
       if (snapshot.chats?.items) emit('chats', snapshot.chats.updatedAt, snapshot.chats.items);
       if (snapshot.theme?.data) emit('theme', snapshot.theme.updatedAt, snapshot.theme.data);
       if (snapshot.roles?.items) emit('roles', snapshot.roles.updatedAt, snapshot.roles.items);
-      if (snapshot.knowledge?.items) emit('knowledge', snapshot.knowledge.updatedAt, snapshot.knowledge.items);
-      if (snapshot.plugins?.items) emit('plugins', snapshot.plugins.updatedAt, snapshot.plugins.items);
+      if (snapshot.knowledge?.items)
+        emit('knowledge', snapshot.knowledge.updatedAt, snapshot.knowledge.items);
+      if (snapshot.plugins?.items)
+        emit('plugins', snapshot.plugins.updatedAt, snapshot.plugins.items);
       return true;
     } catch {
       return false;

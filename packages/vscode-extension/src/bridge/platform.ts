@@ -9,14 +9,14 @@ export function createSecureStore(): SecureStore {
   let reqSeq = 0;
   const pending = new Map<number, (value: string | null) => void>();
 
-  if (vscode && typeof window !== "undefined") {
-    window.addEventListener("message", (event: MessageEvent) => {
+  if (vscode && typeof window !== 'undefined') {
+    window.addEventListener('message', (event: MessageEvent) => {
       const m = event.data;
-      if (m && m.type === "secure_get_result" && typeof m.reqId === "number") {
+      if (m && m.type === 'secure_get_result' && typeof m.reqId === 'number') {
         const resolve = pending.get(m.reqId);
         if (resolve) {
           pending.delete(m.reqId);
-          resolve(typeof m.value === "string" ? m.value : null);
+          resolve(typeof m.value === 'string' ? m.value : null);
         }
       }
     });
@@ -28,7 +28,7 @@ export function createSecureStore(): SecureStore {
       const reqId = ++reqSeq;
       return new Promise<string | null>((resolve) => {
         pending.set(reqId, resolve);
-        vscode.postMessage({ type: "secure_get", key, reqId });
+        vscode.postMessage({ type: 'secure_get', key, reqId });
         setTimeout(() => {
           if (pending.has(reqId)) {
             pending.delete(reqId);
@@ -38,14 +38,14 @@ export function createSecureStore(): SecureStore {
       });
     },
     async set(key: string, value: string) {
-      vscode?.postMessage({ type: "secure_set", key, value });
+      vscode?.postMessage({ type: 'secure_set', key, value });
     },
     async remove(key: string) {
-      vscode?.postMessage({ type: "secure_remove", key });
+      vscode?.postMessage({ type: 'secure_remove', key });
     },
   };
 }
 
 export function detectPlatform() {
-  return "extension" as const;
+  return 'extension' as const;
 }

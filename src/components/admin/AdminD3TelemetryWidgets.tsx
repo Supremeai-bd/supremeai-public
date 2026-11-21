@@ -250,8 +250,7 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
       const cohort = sortedCustomers.filter((c) => !c.joinedDate || c.joinedDate <= monthEnd);
       const cohortTokens = cohort.reduce((sum, c) => sum + (c.tokensUsed || 0), 0);
       // Scale earlier months proportionally by active cohort share so the current month matches live ledger total
-      const progressionFactor =
-        keys.length > 1 ? 0.52 + (0.48 * idx) / (keys.length - 1) : 1;
+      const progressionFactor = keys.length > 1 ? 0.52 + (0.48 * idx) / (keys.length - 1) : 1;
       const tokens =
         idx === keys.length - 1
           ? totalCurrentTokens
@@ -338,7 +337,9 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
     }
 
     const healthy = services.filter((s) => s.status === 'healthy').length;
-    const degraded = services.filter((s) => s.status === 'degraded' || s.status === 'rebooting').length;
+    const degraded = services.filter(
+      (s) => s.status === 'degraded' || s.status === 'rebooting'
+    ).length;
     const unhealthy = services.filter((s) => s.status === 'unhealthy').length;
     const total = services.length;
     const latencies = services.map((s) => s.latencyMs).filter((v) => Number.isFinite(v));
@@ -369,7 +370,7 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
         { id: 'degraded', label: 'Degraded', count: degraded, color: '#d97706' },
         { id: 'unhealthy', label: 'Critical / Down', count: unhealthy, color: '#dc2626' },
       ] as HealthSlice[],
-      topLatency: ([...services]
+      topLatency: [...services]
         .sort((a, b) => (b.latencyMs || 0) - (a.latencyMs || 0))
         .slice(0, 5)
         .map((svc) => ({
@@ -377,7 +378,7 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
           name: svc.displayName || svc.name,
           latencyMs: Math.round(svc.latencyMs || 0),
           status: svc.status,
-        }))) as ServiceLatencyRow[],
+        })) as ServiceLatencyRow[],
     };
   }, [healthSnapshot, services]);
 
@@ -418,8 +419,16 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
       .attr('y1', '0%')
       .attr('x2', '0%')
       .attr('y2', '100%');
-    grad.append('stop').attr('offset', '0%').attr('stop-color', '#4a70e8').attr('stop-opacity', 0.28);
-    grad.append('stop').attr('offset', '100%').attr('stop-color', '#4a70e8').attr('stop-opacity', 0.02);
+    grad
+      .append('stop')
+      .attr('offset', '0%')
+      .attr('stop-color', '#4a70e8')
+      .attr('stop-opacity', 0.28);
+    grad
+      .append('stop')
+      .attr('offset', '100%')
+      .attr('stop-color', '#4a70e8')
+      .attr('stop-opacity', 0.02);
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
@@ -438,7 +447,10 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
 
     const maxY = Math.max(1, d3.max(points, (d) => d.activeUsers) || 1);
     const minY = Math.max(0, (d3.min(points, (d) => d.activeUsers) || 0) - Math.ceil(maxY * 0.2));
-    const y = d3.scaleLinear().domain([minY, maxY * 1.15]).range([innerH, 0]);
+    const y = d3
+      .scaleLinear()
+      .domain([minY, maxY * 1.15])
+      .range([innerH, 0]);
 
     const area = d3
       .area<ActiveUserTick>()
@@ -524,8 +536,16 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
         : tokenAnomalyAnalysis.highestSeverity === 'warning'
           ? '#d97706'
           : '#4a70e8';
-    areaGrad.append('stop').attr('offset', '0%').attr('stop-color', '#4a70e8').attr('stop-opacity', 0.28);
-    areaGrad.append('stop').attr('offset', '100%').attr('stop-color', '#4a70e8').attr('stop-opacity', 0.01);
+    areaGrad
+      .append('stop')
+      .attr('offset', '0%')
+      .attr('stop-color', '#4a70e8')
+      .attr('stop-opacity', 0.28);
+    areaGrad
+      .append('stop')
+      .attr('offset', '100%')
+      .attr('stop-color', '#4a70e8')
+      .attr('stop-opacity', 0.01);
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
@@ -537,7 +557,11 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
 
     const maxSeriesTokens = d3.max(series, (d) => d.tokens) || 1000;
     const maxTokens = Math.max(1000, maxSeriesTokens, thresholdTokens);
-    const y = d3.scaleLinear().domain([0, maxTokens * 1.18]).nice().range([innerH, 0]);
+    const y = d3
+      .scaleLinear()
+      .domain([0, maxTokens * 1.18])
+      .nice()
+      .range([innerH, 0]);
 
     const colorForPoint = (d: TokenAnomalyPoint, isLast: boolean) => {
       if (d.severity === 'critical') return '#e11d48';
@@ -636,7 +660,8 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
       .text((d) => d.label);
 
     if (chartStyle === 'bars') {
-      const bars = g.selectAll('.token-bar')
+      const bars = g
+        .selectAll('.token-bar')
         .data(series)
         .enter()
         .append('rect')
@@ -667,9 +692,7 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
           .attr('y', (d: any) => y(d.tokens))
           .attr('height', (d: any) => Math.max(2, innerH - y(d.tokens)));
       } else {
-        bars
-          .attr('y', (d) => y(d.tokens))
-          .attr('height', (d) => Math.max(2, innerH - y(d.tokens)));
+        bars.attr('y', (d) => y(d.tokens)).attr('height', (d) => Math.max(2, innerH - y(d.tokens)));
       }
 
       // Spike triangle callout above anomalous bars
@@ -705,10 +728,7 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
         .y((d) => y(d.tokens))
         .curve(d3.curveMonotoneX);
 
-      g.append('path')
-        .datum(series)
-        .attr('fill', 'url(#d3-token-area-grad)')
-        .attr('d', areaGen);
+      g.append('path').datum(series).attr('fill', 'url(#d3-token-area-grad)').attr('d', areaGen);
 
       g.append('path')
         .datum(series)
@@ -744,7 +764,8 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
             .style('pointer-events', 'none');
 
           if (d.key === peakKey) {
-            const labelAnchor = cx > innerW * 0.72 ? 'end' : cx < innerW * 0.25 ? 'start' : 'middle';
+            const labelAnchor =
+              cx > innerW * 0.72 ? 'end' : cx < innerW * 0.25 ? 'start' : 'middle';
             g.append('text')
               .attr('x', cx)
               .attr('y', Math.max(9, cy - 12))
@@ -766,11 +787,7 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
         .attr('cy', (d) => y(d.tokens))
         .attr('r', (d) => (d.severity !== 'normal' ? 4.8 : 4))
         .attr('fill', (d) =>
-          d.severity === 'critical'
-            ? '#e11d48'
-            : d.severity === 'warning'
-              ? '#d97706'
-              : '#ffffff'
+          d.severity === 'critical' ? '#e11d48' : d.severity === 'warning' ? '#d97706' : '#ffffff'
         )
         .attr('stroke', (d) => (d.severity !== 'normal' ? '#ffffff' : '#4a70e8'))
         .attr('stroke-width', (d) => (d.severity !== 'normal' ? 2 : 2.2))
@@ -850,7 +867,10 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
       .on('mouseenter', function (_, d) {
         const sel = d3.select(this);
         if (typeof (sel as any).transition === 'function') {
-          (sel as any).transition().duration(140).attr('d', hoverArc as any);
+          (sel as any)
+            .transition()
+            .duration(140)
+            .attr('d', hoverArc as any);
         } else {
           sel.attr('d', hoverArc as any);
         }
@@ -859,7 +879,10 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
       .on('mouseleave', function () {
         const sel = d3.select(this);
         if (typeof (sel as any).transition === 'function') {
-          (sel as any).transition().duration(140).attr('d', arc as any);
+          (sel as any)
+            .transition()
+            .duration(140)
+            .attr('d', arc as any);
         } else {
           sel.attr('d', arc as any);
         }
@@ -932,7 +955,8 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
         .attr('fill-opacity', 0.08);
 
       // Value bar
-      const valueBar = g.append('rect')
+      const valueBar = g
+        .append('rect')
         .attr('x', labelW)
         .attr('y', yPos + 7)
         .attr('height', 8)
@@ -941,11 +965,7 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
 
       const targetBarWidth = Math.max(4, x(row.latencyMs));
       if (typeof (valueBar as any).transition === 'function') {
-        (valueBar as any)
-          .attr('width', 0)
-          .transition()
-          .duration(320)
-          .attr('width', targetBarWidth);
+        (valueBar as any).attr('width', 0).transition().duration(320).attr('width', targetBarWidth);
       } else {
         valueBar.attr('width', targetBarWidth);
       }
@@ -980,7 +1000,12 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
             <span>D3 Live Visualizations</span>
             <span aria-hidden="true">·</span>
             <span className="font-mono tabular-nums">
-              Synced {lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              Synced{' '}
+              {lastSyncedAt.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              })}
             </span>
             <span aria-hidden="true">·</span>
             <span>{metricsSource === 'api' ? 'Live Usage API' : 'Customer Ledger Rollup'}</span>
@@ -1016,8 +1041,8 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
                   <span>
                     {tokenAnomalyAnalysis.anomalies.length} token{' '}
                     {tokenAnomalyAnalysis.anomalies.length === 1 ? 'spike' : 'spikes'} (
-                    {tokenAnomalyAnalysis.peakAnomaly.label}{' '}
-                    +{Math.round(tokenAnomalyAnalysis.peakAnomaly.deviationPct)}%)
+                    {tokenAnomalyAnalysis.peakAnomaly.label} +
+                    {Math.round(tokenAnomalyAnalysis.peakAnomaly.deviationPct)}%)
                   </span>
                 </button>
               </>
@@ -1289,14 +1314,14 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
                           : 'Usage Anomaly Detected'}
                       </span>
                       <span className="font-mono tabular-nums opacity-85">
-                        ({tokenAnomalyAnalysis.peakAnomaly.label}{' '}
-                        +{Math.round(tokenAnomalyAnalysis.peakAnomaly.deviationPct)}%)
+                        ({tokenAnomalyAnalysis.peakAnomaly.label} +
+                        {Math.round(tokenAnomalyAnalysis.peakAnomaly.deviationPct)}%)
                       </span>
                     </div>
                     <div className="text-[11px] font-mono tabular-nums opacity-80 mt-0.5">
                       {formatCompactTokens(tokenAnomalyAnalysis.peakAnomaly.tokens)} vs{' '}
-                      {formatCompactTokens(tokenAnomalyAnalysis.peakAnomaly.baselineMean)} baseline ·{' '}
-                      +{tokenAnomalyAnalysis.peakAnomaly.zScore.toFixed(1)}σ
+                      {formatCompactTokens(tokenAnomalyAnalysis.peakAnomaly.baselineMean)} baseline
+                      · +{tokenAnomalyAnalysis.peakAnomaly.zScore.toFixed(1)}σ
                     </div>
                   </div>
                 </div>
@@ -1329,8 +1354,8 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
                           {item.label} ({item.key})
                         </span>
                         <span>
-                          {formatCompactTokens(item.tokens)} · +{Math.round(item.deviationPct)}% (
-                          +{item.zScore.toFixed(1)}σ)
+                          {formatCompactTokens(item.tokens)} · +{Math.round(item.deviationPct)}% ( +
+                          {item.zScore.toFixed(1)}σ)
                         </span>
                       </div>
                     ))}
@@ -1466,7 +1491,10 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
               </div>
             </div>
 
-            <div ref={latencyBarsRef} className="w-full flex-1 min-w-0 text-slate-700 dark:text-slate-300">
+            <div
+              ref={latencyBarsRef}
+              className="w-full flex-1 min-w-0 text-slate-700 dark:text-slate-300"
+            >
               <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
                 Highest Service Latency
               </div>

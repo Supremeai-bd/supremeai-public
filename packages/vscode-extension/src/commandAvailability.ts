@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+import * as vscode from 'vscode';
 
 let cachedCommands: Set<string> | null = null;
 
@@ -34,15 +34,15 @@ export async function ensureCommandAvailable(
   }
 
   if (opts.notifyOnMissing !== false) {
-    const source = opts.source ?? "SupremeAI";
+    const source = opts.source ?? 'SupremeAI';
     vscode.window
       .showWarningMessage(
         `${source}: command "${commandId}" is not available yet. Reload the window to activate it.`,
-        "Reload Window"
+        'Reload Window'
       )
       .then((choice) => {
-        if (choice === "Reload Window") {
-          void vscode.commands.executeCommand("workbench.action.reloadWindow");
+        if (choice === 'Reload Window') {
+          void vscode.commands.executeCommand('workbench.action.reloadWindow');
         }
       });
   }

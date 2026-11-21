@@ -149,7 +149,10 @@ export function isProtectedWorkspaceFile(targetRel: string): boolean {
 }
 
 export function isPrivateIpAddress(rawIp: string): boolean {
-  const ip = rawIp.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  const ip = rawIp
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '');
   if (!ip) return true;
 
   // Strip IPv6 zone ID if present (e.g. fe80::1%eth0)
@@ -395,4 +398,3 @@ export function isSafeGitHubRepoSlug(repo: string): boolean {
   if (!trimmed || trimmed.includes('..')) return false;
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed);
 }
-

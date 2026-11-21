@@ -1,18 +1,18 @@
 /**
  * SupremeAI Chat Sidebar — WebviewViewProvider for in-editor AI chat.
  */
-import * as vscode from "vscode";
-import { MODEL_TIERS, tierToModel } from "./models";
+import * as vscode from 'vscode';
+import { MODEL_TIERS, tierToModel } from './models';
 
-const DEFAULT_GATEWAY_URL = "https://supremeai-api-ulw0.onrender.com";
+const DEFAULT_GATEWAY_URL = 'https://supremeai-api-ulw0.onrender.com';
 
 interface ChatMessage {
-  role: "user" | "assistant";
+  role: 'user' | 'assistant';
   content: string;
 }
 
 export class SupremeAIChatViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = "supremeai.chat";
+  public static readonly viewType = 'supremeai.chat';
   private view: vscode.WebviewView | undefined;
   private messages: ChatMessage[] = [];
 
@@ -30,43 +30,43 @@ export class SupremeAIChatViewProvider implements vscode.WebviewViewProvider {
     };
     webviewView.webview.html = this.getHtml(webviewView.webview);
     webviewView.webview.onDidReceiveMessage(async (msg) => {
-      if (!msg || typeof msg !== "object") return;
-      if (msg.type === "send") {
-        const text = String(msg.text || "").trim();
-        const model = String(msg.model || "auto");
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type === 'send') {
+        const text = String(msg.text || '').trim();
+        const model = String(msg.model || 'auto');
         if (!text) return;
-        this.messages.push({ role: "user", content: text });
-        this.post({ type: "user", text });
-        this.post({ type: "thinking" });
+        this.messages.push({ role: 'user', content: text });
+        this.post({ type: 'user', text });
+        this.post({ type: 'thinking' });
         try {
           const reply = await this.callGateway(text, model);
-          this.messages.push({ role: "assistant", content: reply });
-          this.post({ type: "assistant", text: reply });
+          this.messages.push({ role: 'assistant', content: reply });
+          this.post({ type: 'assistant', text: reply });
         } catch (err) {
           const e = err instanceof Error ? err.message : String(err);
-          this.post({ type: "error", text: e });
+          this.post({ type: 'error', text: e });
         }
-      } else if (msg.type === "clear") {
+      } else if (msg.type === 'clear') {
         this.messages = [];
-        this.post({ type: "cleared" });
+        this.post({ type: 'cleared' });
       } else if (
-        msg.type === "secure_get" ||
-        msg.type === "secure_set" ||
-        msg.type === "secure_remove"
+        msg.type === 'secure_get' ||
+        msg.type === 'secure_set' ||
+        msg.type === 'secure_remove'
       ) {
-        const secretKey = String(msg.key || "");
+        const secretKey = String(msg.key || '');
         try {
-          if (msg.type === "secure_get") {
+          if (msg.type === 'secure_get') {
             const value = secretKey ? await this.context.secrets.get(secretKey) : null;
-            this.post({ type: "secure_get_result", reqId: msg.reqId, value: value ?? null });
-          } else if (msg.type === "secure_set" && secretKey) {
-            await this.context.secrets.store(secretKey, String(msg.value ?? ""));
-          } else if (msg.type === "secure_remove" && secretKey) {
+            this.post({ type: 'secure_get_result', reqId: msg.reqId, value: value ?? null });
+          } else if (msg.type === 'secure_set' && secretKey) {
+            await this.context.secrets.store(secretKey, String(msg.value ?? ''));
+          } else if (msg.type === 'secure_remove' && secretKey) {
             await this.context.secrets.delete(secretKey);
           }
         } catch {
-          if (msg.type === "secure_get") {
-            this.post({ type: "secure_get_result", reqId: msg.reqId, value: null });
+          if (msg.type === 'secure_get') {
+            this.post({ type: 'secure_get_result', reqId: msg.reqId, value: null });
           }
         }
       }
@@ -74,31 +74,31 @@ export class SupremeAIChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async callGateway(userText: string, model: string): Promise<string> {
-    const config = vscode.workspace.getConfiguration("supremeai");
-    const gatewayUrl = config.get<string>("gatewayUrl", DEFAULT_GATEWAY_URL);
-    const apiKey = config.get<string>("apiKey", "") || process.env.SUPREMEAI_API_KEY || "";
-    const messages = [...this.messages.filter((m) => m.role === "user" || m.role === "assistant")];
+    const config = vscode.workspace.getConfiguration('supremeai');
+    const gatewayUrl = config.get<string>('gatewayUrl', DEFAULT_GATEWAY_URL);
+    const apiKey = config.get<string>('apiKey', '') || process.env.SUPREMEAI_API_KEY || '';
+    const messages = [...this.messages.filter((m) => m.role === 'user' || m.role === 'assistant')];
     if (messages.length === 0 || messages[messages.length - 1].content !== userText) {
-      messages.push({ role: "user", content: userText });
+      messages.push({ role: 'user', content: userText });
     }
-    const url = gatewayUrl.replace(/\/$/, "") + "/v1/chat/completions";
+    const url = gatewayUrl.replace(/\/$/, '') + '/v1/chat/completions';
     const gatewayModel = tierToModel(model);
     const res = await fetch(url, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        "X-SupremeAI-Key": apiKey,
+        'Content-Type': 'application/json',
+        'X-SupremeAI-Key': apiKey,
       },
       body: JSON.stringify({ model: gatewayModel, messages, stream: false }),
     });
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
+      const body = await res.text().catch(() => '');
       throw new Error(`Gateway HTTP ${res.status}: ${body.slice(0, 200)}`);
     }
     const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
-      throw new Error("Invalid gateway response payload");
+    if (typeof content !== 'string') {
+      throw new Error('Invalid gateway response payload');
     }
     return content;
   }
@@ -135,7 +135,7 @@ export class SupremeAIChatViewProvider implements vscode.WebviewViewProvider {
 <body>
   <div id="toolbar">
     <select id="model">
-      ${MODEL_TIERS.map((t, i) => `<option value="${t.id}"${i === 0 ? " selected" : ""}>${t.label}</option>`).join("")}
+      ${MODEL_TIERS.map((t, i) => `<option value="${t.id}"${i === 0 ? ' selected' : ''}>${t.label}</option>`).join('')}
     </select>
     <button id="clear" class="secondary">Clear</button>
   </div>
@@ -186,8 +186,8 @@ export class SupremeAIChatViewProvider implements vscode.WebviewViewProvider {
 }
 
 function getNonce(): string {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let text = '';
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   for (let i = 0; i < 32; i++) {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
   }

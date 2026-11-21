@@ -1,13 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Code2,
-  Download,
-  ExternalLink,
-  Globe,
-  Monitor,
-  RefreshCw,
-  Smartphone,
-} from 'lucide-react';
+import { Code2, Download, ExternalLink, Globe, Monitor, RefreshCw, Smartphone } from 'lucide-react';
 import { detectRuntimeTarget, type RuntimeTarget } from '../../bridge/platform';
 import {
   ALTERNATE_MONOREPO_RELEASES_URL,
@@ -16,9 +8,7 @@ import {
   type DownloadShortcut,
   type ReleaseManifest,
 } from '../../config/releaseDownloads';
-import {
-  fetchRemoteReleaseManifest,
-} from '../../services/appAutoUpdater';
+import { fetchRemoteReleaseManifest } from '../../services/appAutoUpdater';
 import { useAutoUpdater } from '../../hooks/useAutoUpdater';
 
 let sharedManifestCache: ReleaseManifest | null = null;
@@ -182,8 +172,9 @@ export const PlatformDownloadsCard: React.FC<PlatformDownloadsCardProps> = ({
             <span>SupremeAI Unified Releases (Web · APK · EXE · VSIX)</span>
           </h3>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-            Running on <strong className="text-slate-700 dark:text-slate-200">{runtimeLabel}</strong>.
-            Direct builds from {manifest.repo} · v{manifest.version} (auto-updates silently in background).
+            Running on{' '}
+            <strong className="text-slate-700 dark:text-slate-200">{runtimeLabel}</strong>. Direct
+            builds from {manifest.repo} · v{manifest.version} (auto-updates silently in background).
           </p>
         </div>
         <div className="flex items-center gap-2 text-[11px]">
@@ -194,9 +185,7 @@ export const PlatformDownloadsCard: React.FC<PlatformDownloadsCardProps> = ({
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 font-semibold whitespace-nowrap transition-colors"
             >
               <RefreshCw className="w-3 h-3" />
-              <span>
-                Update to v{updateState.latestVersion}
-              </span>
+              <span>Update to v{updateState.latestVersion}</span>
             </button>
           ) : (
             <button
@@ -334,12 +323,9 @@ export const PlatformDownloadsCard: React.FC<PlatformDownloadsCardProps> = ({
               Monorepo Releases
             </a>
           </span>
-          <span className="font-mono text-[10px]">
-            source: {manifest.provenance}
-          </span>
+          <span className="font-mono text-[10px]">source: {manifest.provenance}</span>
         </div>
       )}
     </div>
   );
 };
-

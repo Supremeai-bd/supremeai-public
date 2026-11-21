@@ -97,10 +97,7 @@ function getGatewayBase(): string {
   return (custom || DEFAULT_GATEWAY_URL).trim().replace(/\/+$/, '');
 }
 
-function parseSseToken(
-  line: string,
-  onConversationId: (id: string) => void
-): string | null {
+function parseSseToken(line: string, onConversationId: (id: string) => void): string | null {
   const trimmed = line.trim();
   if (!trimmed.startsWith('data:')) return null;
   const data = trimmed.slice(5).trim();
@@ -220,8 +217,7 @@ export async function sendDesktopChat(req: DesktopChatRequest): Promise<DesktopC
       resolvedConvId = body.conversation_id;
     }
     const choices = body.choices as
-      | Array<{ message?: { content?: string }; delta?: { content?: string } }>
-      | undefined;
+      Array<{ message?: { content?: string }; delta?: { content?: string } }> | undefined;
     fullText =
       choices?.[0]?.message?.content ??
       choices?.[0]?.delta?.content ??
@@ -349,10 +345,7 @@ export async function submitDesktopFeedback(payload: {
   }
 }
 
-export async function adminLogin(
-  email: string,
-  password: string
-): Promise<AdminLoginResult> {
+export async function adminLogin(email: string, password: string): Promise<AdminLoginResult> {
   if (isDesktopTauri()) {
     return invoke<AdminLoginResult>('admin_login', { mode: 'owner', email, password });
   }

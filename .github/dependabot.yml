@@ -1,0 +1,76 @@
+version: 2
+updates:
+  # npm dependencies (web + desktop + shared packages)
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 5
+    groups:
+      # Group low-risk dev-tooling bumps into one PR
+      lint-and-format:
+        patterns:
+          - 'eslint*'
+          - '@eslint/*'
+          - 'typescript-eslint'
+          - 'prettier*'
+          - 'globals'
+        update-types: ['minor', 'patch']
+      build-tooling:
+        patterns:
+          - 'vite*'
+          - '@vitejs/*'
+          - 'vitest*'
+          - 'typescript'
+        update-types: ['minor', 'patch']
+      # React ecosystem together, since versions are tightly coupled
+      react:
+        patterns:
+          - 'react'
+          - 'react-dom'
+          - 'react-is'
+          - '@types/react'
+          - '@types/react-dom'
+        update-types: ['minor', 'patch']
+    labels:
+      - 'dependencies'
+      - 'npm'
+
+  # VS Code extension is a separate package tree
+  - package-ecosystem: 'npm'
+    directory: '/packages/vscode-extension'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 3
+    labels:
+      - 'dependencies'
+      - 'vscode-extension'
+
+  # Rust / Tauri crates
+  - package-ecosystem: 'cargo'
+    directory: '/src-tauri'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 3
+    groups:
+      tauri:
+        patterns:
+          - 'tauri*'
+        update-types: ['minor', 'patch']
+    labels:
+      - 'dependencies'
+      - 'rust'
+
+  # Keep GitHub Actions themselves current (avoids the Node 20 deprecation class of issue)
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 3
+    labels:
+      - 'dependencies'
+      - 'github-actions'

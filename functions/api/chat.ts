@@ -21,17 +21,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isAttachment(value: unknown): value is Attachment {
-  return isRecord(value) && ['name', 'mimeType', 'data'].every(
-    (key) => value[key] === undefined || typeof value[key] === 'string'
+  return (
+    isRecord(value) &&
+    ['name', 'mimeType', 'data'].every(
+      (key) => value[key] === undefined || typeof value[key] === 'string'
+    )
   );
 }
 
 function isChatMessage(value: unknown): value is ChatMessage {
-  return isRecord(value) && (value.role === undefined || typeof value.role === 'string') &&
-    (typeof value.content === 'string' || (Array.isArray(value.content) && value.content.every(isRecord))) &&
+  return (
+    isRecord(value) &&
+    (value.role === undefined || typeof value.role === 'string') &&
+    (typeof value.content === 'string' ||
+      (Array.isArray(value.content) && value.content.every(isRecord))) &&
     (value.attachment === undefined || isAttachment(value.attachment)) &&
-    (value.attachments === undefined || (Array.isArray(value.attachments) && value.attachments.every(isAttachment))) &&
-    (value.parts === undefined || Array.isArray(value.parts));
+    (value.attachments === undefined ||
+      (Array.isArray(value.attachments) && value.attachments.every(isAttachment))) &&
+    (value.parts === undefined || Array.isArray(value.parts))
+  );
 }
 
 export async function onRequest(context: PagesContext): Promise<Response> {
@@ -42,19 +50,34 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   }
 
   const body: unknown = await request.json().catch(() => null);
-  if (!isRecord(body) || !Array.isArray(body.messages) || !body.messages.length ||
-      !body.messages.every(isChatMessage) ||
-      !['model', 'systemInstruction', 'groundingContext'].every(
-        (key) => body[key] === undefined || typeof body[key] === 'string'
-      ) || (body.language !== undefined && body.language !== 'en' && body.language !== 'bn') ||
-      !['temperature', 'top_p', 'max_tokens', 'thinking_budget'].every(
-        (key) => body[key] === undefined || Number.isFinite(body[key])
-      ) || (body.run_config !== undefined && !isRecord(body.run_config))) {
-    return jsonEdgeResponse({ error: 'Invalid chat request: expected a non-empty array of valid messages and valid chat options.' }, 400, request);
+  if (
+    !isRecord(body) ||
+    !Array.isArray(body.messages) ||
+    !body.messages.length ||
+    !body.messages.every(isChatMessage) ||
+    !['model', 'systemInstruction', 'groundingContext'].every(
+      (key) => body[key] === undefined || typeof body[key] === 'string'
+    ) ||
+    (body.language !== undefined && body.language !== 'en' && body.language !== 'bn') ||
+    !['temperature', 'top_p', 'max_tokens', 'thinking_budget'].every(
+      (key) => body[key] === undefined || Number.isFinite(body[key])
+    ) ||
+    (body.run_config !== undefined && !isRecord(body.run_config))
+  ) {
+    return jsonEdgeResponse(
+      {
+        error:
+          'Invalid chat request: expected a non-empty array of valid messages and valid chat options.',
+      },
+      400,
+      request
+    );
   }
   const rawMessages = body.messages as ChatMessage[];
-  const systemInstruction = typeof body.systemInstruction === 'string' ? body.systemInstruction.trim() : '';
-  const groundingContext = typeof body.groundingContext === 'string' ? body.groundingContext.trim() : '';
+  const systemInstruction =
+    typeof body.systemInstruction === 'string' ? body.systemInstruction.trim() : '';
+  const groundingContext =
+    typeof body.groundingContext === 'string' ? body.groundingContext.trim() : '';
   const model = (typeof body.model === 'string' && body.model) || 'supreme-spark';
 
   const upstreamMessages: ChatMessage[] = [];
@@ -95,11 +118,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       );
     }
 
-    return jsonEdgeResponse(
-      { text, model, source: 'edge-chat' },
-      200,
-      request
-    );
+    return jsonEdgeResponse({ text, model, source: 'edge-chat' }, 200, request);
   } catch (err: unknown) {
     return jsonEdgeResponse(
       { error: err instanceof Error ? err.message : 'Synchronous chat fallback failed.' },

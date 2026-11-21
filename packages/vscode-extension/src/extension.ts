@@ -1,19 +1,19 @@
 /**
  * SupremeAI VS Code Extension — Main Activation Entrypoint
  */
-import * as vscode from "vscode";
-import { ensureCommandAvailable } from "./commandAvailability";
-import { DEFAULT_LIVE_MCP_TOWER_URL, McpBridge } from "./mcp_bridge";
-import { FederationStatusBar } from "./status_bar";
-import { SupremeAIChatViewProvider } from "./chat_view";
-import { inlineChatCommand } from "./commands/inline_chat";
-import { registerCodeActions } from "./code_actions";
-import { submitTaskCommand } from "./commands/submit_task";
-import { runwayStatusCommand } from "./commands/runway_status";
+import * as vscode from 'vscode';
+import { ensureCommandAvailable } from './commandAvailability';
+import { DEFAULT_LIVE_MCP_TOWER_URL, McpBridge } from './mcp_bridge';
+import { FederationStatusBar } from './status_bar';
+import { SupremeAIChatViewProvider } from './chat_view';
+import { inlineChatCommand } from './commands/inline_chat';
+import { registerCodeActions } from './code_actions';
+import { submitTaskCommand } from './commands/submit_task';
+import { runwayStatusCommand } from './commands/runway_status';
 
 const UNIFIED_RELEASE_MANIFEST_URL =
-  "https://github.com/Supremeai-bd/supremeai-public/releases/download/latest/latest-release.json";
-const WEB_STUDIO_URL = "https://supremeai-studio.pages.dev";
+  'https://github.com/Supremeai-bd/supremeai-public/releases/download/latest/latest-release.json';
+const WEB_STUDIO_URL = 'https://supremeai-studio.pages.dev';
 
 let statusBar: FederationStatusBar | null = null;
 let bridge: McpBridge | null = null;
@@ -30,8 +30,14 @@ interface UnifiedReleaseManifest {
 }
 
 function isNewerSemver(remote: string, current: string): boolean {
-  const a = remote.replace(/^v/i, "").split(".").map((n) => parseInt(n, 10) || 0);
-  const b = current.replace(/^v/i, "").split(".").map((n) => parseInt(n, 10) || 0);
+  const a = remote
+    .replace(/^v/i, '')
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  const b = current
+    .replace(/^v/i, '')
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
     const va = a[i] ?? 0;
     const vb = b[i] ?? 0;
@@ -46,7 +52,7 @@ async function fetchUnifiedManifest(): Promise<UnifiedReleaseManifest | null> {
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
     const res = await fetch(UNIFIED_RELEASE_MANIFEST_URL, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: 'application/json' },
       signal: controller.signal,
     });
     if (!res.ok) return null;
@@ -59,10 +65,10 @@ async function fetchUnifiedManifest(): Promise<UnifiedReleaseManifest | null> {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const config = vscode.workspace.getConfiguration("supremeai");
-  const towerUrl = config.get<string>("towerUrl", DEFAULT_LIVE_MCP_TOWER_URL);
-  const refreshSeconds = config.get<number>("autoRefreshSeconds", 30);
-  const currentVersion = String(context.extension.packageJSON?.version || "2.5.0");
+  const config = vscode.workspace.getConfiguration('supremeai');
+  const towerUrl = config.get<string>('towerUrl', DEFAULT_LIVE_MCP_TOWER_URL);
+  const refreshSeconds = config.get<number>('autoRefreshSeconds', 30);
+  const currentVersion = String(context.extension.packageJSON?.version || '2.5.0');
 
   bridge = new McpBridge(towerUrl);
   statusBar = new FederationStatusBar(bridge);
@@ -71,68 +77,66 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const chatProvider = new SupremeAIChatViewProvider(context);
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
-      SupremeAIChatViewProvider.viewType,
-      chatProvider,
-      { webviewOptions: { retainContextWhenHidden: true } }
-    )
+    vscode.window.registerWebviewViewProvider(SupremeAIChatViewProvider.viewType, chatProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    })
   );
 
-  const dispatchDisposable = vscode.commands.registerCommand("supremeai.dispatchTask", () => {
+  const dispatchDisposable = vscode.commands.registerCommand('supremeai.dispatchTask', () => {
     if (bridge) {
       void submitTaskCommand(bridge);
     }
   });
 
-  const runwayDisposable = vscode.commands.registerCommand("supremeai.viewRunway", () => {
+  const runwayDisposable = vscode.commands.registerCommand('supremeai.viewRunway', () => {
     if (bridge) {
       void runwayStatusCommand(bridge);
     }
   });
 
   const killSwitchDisposable = vscode.commands.registerCommand(
-    "supremeai.emergencyStop",
+    'supremeai.emergencyStop',
     async () => {
       const pin = await vscode.window.showInputBox({
-        prompt: "Enter Superadmin Emergency PIN to halt all autonomous execution",
+        prompt: 'Enter Superadmin Emergency PIN to halt all autonomous execution',
         password: true,
-        placeHolder: "PIN (minimum 4 digits)",
-        validateInput: (text) => (text.length < 4 ? "PIN must be at least 4 digits" : null),
+        placeHolder: 'PIN (minimum 4 digits)',
+        validateInput: (text) => (text.length < 4 ? 'PIN must be at least 4 digits' : null),
       });
       if (!pin || !bridge) return;
       const confirmed = await vscode.window.showWarningMessage(
-        "Are you sure you want to trigger the EMERGENCY KILL-SWITCH across the entire federation?",
+        'Are you sure you want to trigger the EMERGENCY KILL-SWITCH across the entire federation?',
         { modal: true },
-        "HALT ALL AUTONOMY"
+        'HALT ALL AUTONOMY'
       );
-      if (confirmed === "HALT ALL AUTONOMY") {
+      if (confirmed === 'HALT ALL AUTONOMY') {
         const ok = await bridge.triggerEmergencyKill(pin);
         if (ok) {
           vscode.window.showErrorMessage(
-            "EMERGENCY KILL-SWITCH ACTIVATED: All autonomous agent runs paused."
+            'EMERGENCY KILL-SWITCH ACTIVATED: All autonomous agent runs paused.'
           );
           if (statusBar) void statusBar.refresh();
         } else {
           vscode.window.showErrorMessage(
-            "Kill-switch request rejected (invalid PIN or server error)."
+            'Kill-switch request rejected (invalid PIN or server error).'
           );
         }
       }
     }
   );
 
-  const askSelectionDisposable = vscode.commands.registerCommand("supremeai.askSelection", () => {
+  const askSelectionDisposable = vscode.commands.registerCommand('supremeai.askSelection', () => {
     void inlineChatCommand();
   });
 
-  const openChatDisposable = vscode.commands.registerCommand("supremeai.openChat", async () => {
-    if (await ensureCommandAvailable("supremeai.chat.focus", { source: "SupremeAI" })) {
-      await vscode.commands.executeCommand("supremeai.chat.focus");
+  const openChatDisposable = vscode.commands.registerCommand('supremeai.openChat', async () => {
+    if (await ensureCommandAvailable('supremeai.chat.focus', { source: 'SupremeAI' })) {
+      await vscode.commands.executeCommand('supremeai.chat.focus');
     }
   });
 
   const checkUpdatesDisposable = vscode.commands.registerCommand(
-    "supremeai.checkUpdates",
+    'supremeai.checkUpdates',
     async () => {
       const manifest = await fetchUnifiedManifest();
       const latestVersion = manifest?.version || currentVersion;
@@ -143,25 +147,25 @@ export function activate(context: vscode.ExtensionContext): void {
             label: `$(extensions) Download VS Code VSIX (v${latestVersion})`,
             description: isNewerSemver(latestVersion, currentVersion)
               ? `Update available (installed v${currentVersion})`
-              : "Up to date",
+              : 'Up to date',
             url:
               downloads.vscodeVsixUrl ||
               `https://github.com/Supremeai-bd/supremeai-public/releases/download/latest/supremeai-vscode-${latestVersion}.vsix`,
           },
           {
-            label: "$(globe) Open SupremeAI Web Studio",
+            label: '$(globe) Open SupremeAI Web Studio',
             description: downloads.webUrl || WEB_STUDIO_URL,
             url: downloads.webUrl || WEB_STUDIO_URL,
           },
           {
-            label: "$(device-mobile) Download Android APK",
-            description: "SupremeAI-Studio-app-universal-release.apk",
+            label: '$(device-mobile) Download Android APK',
+            description: 'SupremeAI-Studio-app-universal-release.apk',
             url:
               downloads.androidApkUrl ||
-              "https://github.com/Supremeai-bd/supremeai-public/releases/download/latest/SupremeAI-Studio-app-universal-release.apk",
+              'https://github.com/Supremeai-bd/supremeai-public/releases/download/latest/SupremeAI-Studio-app-universal-release.apk',
           },
           {
-            label: "$(desktop-download) Download Windows Desktop (.exe)",
+            label: '$(desktop-download) Download Windows Desktop (.exe)',
             description: `SupremeAI.Desktop_${latestVersion}_x64-setup.exe`,
             url:
               downloads.windowsExeUrl ||
@@ -170,7 +174,7 @@ export function activate(context: vscode.ExtensionContext): void {
         ],
         {
           title: `SupremeAI Unified Releases (v${latestVersion})`,
-          placeHolder: "Open Web Studio or download VSIX / APK / EXE installers",
+          placeHolder: 'Open Web Studio or download VSIX / APK / EXE installers',
         }
       );
       if (pick?.url) {
@@ -182,17 +186,17 @@ export function activate(context: vscode.ExtensionContext): void {
   registerCodeActions(context);
 
   const configDisposable = vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration("supremeai")) {
-      const updatedConfig = vscode.workspace.getConfiguration("supremeai");
-      const newUrl = updatedConfig.get<string>("towerUrl", DEFAULT_LIVE_MCP_TOWER_URL);
-      const newRefresh = updatedConfig.get<number>("autoRefreshSeconds", 30);
+    if (e.affectsConfiguration('supremeai')) {
+      const updatedConfig = vscode.workspace.getConfiguration('supremeai');
+      const newUrl = updatedConfig.get<string>('towerUrl', DEFAULT_LIVE_MCP_TOWER_URL);
+      const newRefresh = updatedConfig.get<number>('autoRefreshSeconds', 30);
       if (bridge) bridge.updateConfig(newUrl);
       if (statusBar) statusBar.startPolling(newRefresh);
     }
   });
 
   // Non-intrusive startup check for newer unified VSIX build
-  if (config.get<boolean>("autoCheckUpdates", true)) {
+  if (config.get<boolean>('autoCheckUpdates', true)) {
     const updateTimer = setTimeout(() => {
       void fetchUnifiedManifest().then((manifest) => {
         if (!manifest?.version || !isNewerSemver(manifest.version, currentVersion)) return;
@@ -202,10 +206,10 @@ export function activate(context: vscode.ExtensionContext): void {
         void vscode.window
           .showInformationMessage(
             `SupremeAI Extension v${manifest.version} is available (installed v${currentVersion}).`,
-            "Download VSIX"
+            'Download VSIX'
           )
           .then((choice) => {
-            if (choice === "Download VSIX") {
+            if (choice === 'Download VSIX') {
               void vscode.env.openExternal(vscode.Uri.parse(vsixUrl));
             }
           });

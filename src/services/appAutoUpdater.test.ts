@@ -39,17 +39,13 @@ describe('appAutoUpdater & useAutoUpdater hook', () => {
   });
 
   it('detects version mismatch between version.json and GitHub release tag or manifest version', () => {
-    expect(
-      resolveReleaseVersionMismatch('2.5.0', { version: '2.5.0', tag: 'latest' })
-    ).toEqual({
+    expect(resolveReleaseVersionMismatch('2.5.0', { version: '2.5.0', tag: 'latest' })).toEqual({
       mismatch: false,
       resolvedVersion: '2.5.0',
       resolvedTag: 'latest',
     });
 
-    expect(
-      resolveReleaseVersionMismatch('2.5.0', { version: '2.5.0', tag: 'v2.6.0' })
-    ).toEqual({
+    expect(resolveReleaseVersionMismatch('2.5.0', { version: '2.5.0', tag: 'v2.6.0' })).toEqual({
       mismatch: true,
       resolvedVersion: '2.6.0',
       resolvedTag: 'v2.6.0',
@@ -89,7 +85,13 @@ describe('appAutoUpdater & useAutoUpdater hook', () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockImplementation(async (command: string) => {
       if (command === 'get_app_runtime_info') {
-        return { version: '2.5.0', os: 'windows', arch: 'x86_64', isWindows: true, isAndroid: false };
+        return {
+          version: '2.5.0',
+          os: 'windows',
+          arch: 'x86_64',
+          isWindows: true,
+          isAndroid: false,
+        };
       }
       if (command === 'get_pending_update') {
         return null;
@@ -160,13 +162,20 @@ describe('appAutoUpdater & useAutoUpdater hook', () => {
     isTauriMock.mockReturnValue(true);
     invokeMock.mockImplementation(async (command: string) => {
       if (command === 'get_app_runtime_info') {
-        return { version: '2.5.0', os: 'android', arch: 'aarch64', isWindows: false, isAndroid: true };
+        return {
+          version: '2.5.0',
+          os: 'android',
+          arch: 'aarch64',
+          isWindows: false,
+          isAndroid: true,
+        };
       }
       if (command === 'get_pending_update') {
         return {
           version: '2.6.0',
           tag: 'v2.6.0',
-          filePath: '/data/user/0/com.supremeai.desktop/cache/updates/SupremeAI-Studio-app-universal-release.apk',
+          filePath:
+            '/data/user/0/com.supremeai.desktop/cache/updates/SupremeAI-Studio-app-universal-release.apk',
           fileName: 'SupremeAI-Studio-app-universal-release.apk',
           url: 'https://github.com/Supremeai-bd/supremeai-public/releases/download/latest/SupremeAI-Studio-app-universal-release.apk',
           stagedAt: '1763549000',

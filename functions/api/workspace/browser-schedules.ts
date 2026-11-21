@@ -136,10 +136,17 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       ).catch(() => null);
       if (!saveRes?.ok) {
         return jsonEdgeResponse(
-          { success: false, persisted: false, status: runStatus, summary: runSummary,
-            error: 'Failed to persist schedule run results.' },
+          {
+            success: false,
+            persisted: false,
+            status: runStatus,
+            summary: runSummary,
+            error: 'Failed to persist schedule run results.',
+          },
           saveRes?.status === 401 || saveRes?.status === 403 ? saveRes.status : 502,
-          request, undefined, env
+          request,
+          undefined,
+          env
         );
       }
 
@@ -160,7 +167,9 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     }
 
     if (request.method === 'POST') {
-      const targetUrl = String(body.targetUrl || (body.domain ? `https://${body.domain}` : '')).trim();
+      const targetUrl = String(
+        body.targetUrl || (body.domain ? `https://${body.domain}` : '')
+      ).trim();
       if (targetUrl && !validateScheduleTargetUrl(targetUrl)) {
         return jsonEdgeResponse(
           { error: 'Schedule target URL points to a restricted or invalid address.' },

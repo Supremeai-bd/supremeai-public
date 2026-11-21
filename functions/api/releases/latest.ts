@@ -1,4 +1,9 @@
-import { PagesContext, handleCorsPreflight, jsonEdgeResponse, fetchWithTimeout } from '../../_lib/edgeHelpers';
+import {
+  PagesContext,
+  handleCorsPreflight,
+  jsonEdgeResponse,
+  fetchWithTimeout,
+} from '../../_lib/edgeHelpers';
 import {
   buildRollingAssetUrls,
   DEFAULT_RELEASE_MANIFEST,
@@ -21,7 +26,9 @@ async function fetchDirectRollingManifest(repoSlug: string): Promise<ReleaseMani
     try {
       const res = await fetchWithTimeout(
         manifestUrl,
-        { headers: { Accept: 'application/json', 'User-Agent': 'SupremeAI-Edge-Release-Resolver' } },
+        {
+          headers: { Accept: 'application/json', 'User-Agent': 'SupremeAI-Edge-Release-Resolver' },
+        },
         4000
       );
       if (!res.ok) continue;
@@ -131,9 +138,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         if (exeAsset || universalOrArm64Apk || vsixAsset) {
           const tag = String(release.tag_name || 'latest');
           const version =
-            tag !== 'latest'
-              ? tag.replace(/^v/i, '')
-              : DEFAULT_RELEASE_MANIFEST.version;
+            tag !== 'latest' ? tag.replace(/^v/i, '') : DEFAULT_RELEASE_MANIFEST.version;
           const rollingUrls = buildRollingAssetUrls(version, repoSlug, tag);
           const mappedAssets: ReleaseAssetEntry[] = assets
             .filter((a) => /\.(exe|msi|apk|vsix)$/i.test(String(a?.name || '')))
@@ -197,4 +202,3 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     env
   );
 }
-

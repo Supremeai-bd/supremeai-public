@@ -60,7 +60,8 @@ export const AdminConsoleNav: React.FC<AdminConsoleNavProps> = ({
   const { t } = useI18n();
   const providerAccounts = useProviderAccountsStore((s) => s.accounts);
   const atRiskProviderAccounts = useMemo(
-    () => providerAccounts.filter((acc) => calculateAccountRunway(acc).severity !== 'nominal').length,
+    () =>
+      providerAccounts.filter((acc) => calculateAccountRunway(acc).severity !== 'nominal').length,
     [providerAccounts]
   );
   const [showAdvancedAdmin, setShowAdvancedAdmin] = useState(false);
@@ -298,7 +299,9 @@ export const AdminConsoleNav: React.FC<AdminConsoleNavProps> = ({
           } text-left cursor-pointer`}
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            <span className={isActive ? 'text-[#9cb2ff]' : 'text-[#7e8b9d] group-hover:text-[#c1cfff]'}>
+            <span
+              className={isActive ? 'text-[#9cb2ff]' : 'text-[#7e8b9d] group-hover:text-[#c1cfff]'}
+            >
               {item.icon}
             </span>
             <span className="truncate text-[12.5px]">{item.label}</span>
@@ -373,9 +376,7 @@ export const AdminConsoleNav: React.FC<AdminConsoleNavProps> = ({
           {matchingItems.length > 0 ? (
             matchingItems.map((item) => renderAdminNavRow(item, { compact: true }))
           ) : (
-            <div className="px-2.5 py-4 text-[11.5px] text-[#7e8b9d]">
-              No matching admin tools
-            </div>
+            <div className="px-2.5 py-4 text-[11.5px] text-[#7e8b9d]">No matching admin tools</div>
           )}
         </div>
       ) : (
@@ -456,4 +457,3 @@ export const AdminConsoleNav: React.FC<AdminConsoleNavProps> = ({
     </nav>
   );
 };
-

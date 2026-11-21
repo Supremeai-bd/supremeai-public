@@ -11,7 +11,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
   if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
   if (request.method !== 'POST') {
-    return jsonEdgeResponse({ error: 'Method not allowed', exitCode: 1 }, 405, request, undefined, env);
+    return jsonEdgeResponse(
+      { error: 'Method not allowed', exitCode: 1 },
+      405,
+      request,
+      undefined,
+      env
+    );
   }
 
   const authHeader = (request.headers.get('Authorization') || '').trim();
@@ -29,7 +35,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as { command?: string };
   const rawCommand = String(body.command || '').trim();
   if (!rawCommand) {
-    return jsonEdgeResponse({ error: 'Command cannot be empty.', exitCode: 1 }, 400, request, undefined, env);
+    return jsonEdgeResponse(
+      { error: 'Command cannot be empty.', exitCode: 1 },
+      400,
+      request,
+      undefined,
+      env
+    );
   }
 
   const parts = rawCommand.split(/\s+/);

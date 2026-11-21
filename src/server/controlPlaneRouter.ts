@@ -52,8 +52,7 @@ import {
 
 const MCP_AGENT_KEY = process.env.MCP_TOWER_AGENT_KEY?.trim() || DEFAULT_MCP_AGENT_KEY;
 
-const MCP_TOWER_ORIGIN =
-  process.env.SUPREMEAI_MCP_TOWER_ORIGIN?.trim() || DEFAULT_MCP_TOWER_ORIGIN;
+const MCP_TOWER_ORIGIN = process.env.SUPREMEAI_MCP_TOWER_ORIGIN?.trim() || DEFAULT_MCP_TOWER_ORIGIN;
 
 const MCP_TOWER_CANDIDATES = resolveMcpRpcCandidates(
   process.env.SUPREMEAI_MCP_TOWER_URL?.trim() || MCP_TOWER_ORIGIN,
@@ -63,8 +62,7 @@ const MCP_TOWER_CANDIDATES = resolveMcpRpcCandidates(
 const MCP_TOWER_URL = MCP_TOWER_CANDIDATES[0];
 let activeMcpEndpointUrl = MCP_TOWER_URL;
 
-const BACKEND_GATEWAY_URL =
-  process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
+const BACKEND_GATEWAY_URL = process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
 
 const GITHUB_COMMITS_URL = 'https://api.github.com/repos/Supremeai-bd/supremeai/commits/main';
 
@@ -2089,7 +2087,8 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
       mcpReachable = false;
     }
 
-    const activeServiceChecks = liveStatusPayload?.services || liveStatusPayload?.health?.services || {};
+    const activeServiceChecks =
+      liveStatusPayload?.services || liveStatusPayload?.health?.services || {};
     const redisInfo = liveStatusPayload?.redis || parityPayload?.redis || null;
     const renderMcpServiceId = process.env.RENDER_SERVICE_ID_MCP?.trim();
 
@@ -2100,7 +2099,8 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
         surface: 'MCP Tower',
         title: 'Live MCP Tower RPC unreachable from current runtime',
         detail: `Target endpoint: ${activeMcpEndpointUrl}`,
-        recommendation: 'Verify SUPREMEAI_MCP_TOWER_URL / SUPREMEAI_TOWER_TOKEN or Render cold start.',
+        recommendation:
+          'Verify SUPREMEAI_MCP_TOWER_URL / SUPREMEAI_TOWER_TOKEN or Render cold start.',
       });
     } else {
       findings.push({
@@ -2113,7 +2113,10 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
       });
     }
 
-    if (redisInfo?.activeProvider === 'secondary' || String(redisInfo?.failover || '').includes('secondary')) {
+    if (
+      redisInfo?.activeProvider === 'secondary' ||
+      String(redisInfo?.failover || '').includes('secondary')
+    ) {
       findings.push({
         id: 'redis-failover',
         severity: 'warning',
@@ -2130,13 +2133,17 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
         severity: 'warning',
         surface: 'Render Deploy Parity',
         title: 'RENDER_SERVICE_ID_MCP not configured in local env',
-        detail: 'render-api ID srv-dbappass728c7396p580 is registered in SSOT; MCP service ID requires env binding.',
-        recommendation: 'Set RENDER_SERVICE_ID_MCP and RENDER_API_KEY for one-click redeploy & SHA verification.',
+        detail:
+          'render-api ID srv-dbappass728c7396p580 is registered in SSOT; MCP service ID requires env binding.',
+        recommendation:
+          'Set RENDER_SERVICE_ID_MCP and RENDER_API_KEY for one-click redeploy & SHA verification.',
       });
     }
 
     const driftServices = Array.isArray(parityPayload?.services)
-      ? parityPayload.services.filter((s: any) => s?.drift || s?.shaMismatch || s?.status === 'degraded')
+      ? parityPayload.services.filter(
+          (s: any) => s?.drift || s?.shaMismatch || s?.status === 'degraded'
+        )
       : [];
     for (const svc of driftServices.slice(0, 4)) {
       findings.push({
@@ -2145,7 +2152,8 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
         surface: 'Release Parity',
         title: `${svc.name || svc.service}: ${svc.drift ? 'Commit SHA drift' : svc.status}`,
         detail: `Live SHA ${svc.liveSha || svc.deployedSha || 'unknown'} vs Target ${svc.targetSha || svc.expectedSha || 'main'}`,
-        recommendation: 'Open Release Gate & Parity to redeploy drifted Render services to main HEAD.',
+        recommendation:
+          'Open Release Gate & Parity to redeploy drifted Render services to main HEAD.',
       });
     }
 
@@ -2156,7 +2164,8 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
         surface: 'Cloudflare Edge',
         title: 'Cloudflare worker status check flagged 404 deployment identity mismatch',
         detail: 'Ensure CF_ACCOUNT_ID / Pages worker route matches supremeai-studio.pages.dev.',
-        recommendation: 'Deploy functions/* via Cloudflare Pages CI and confirm /api/releases/latest.',
+        recommendation:
+          'Deploy functions/* via Cloudflare Pages CI and confirm /api/releases/latest.',
       });
     }
 

@@ -445,10 +445,18 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     let parityPayload: any = null;
     try {
       const [statusRes, parityRes] = await Promise.all([
-        callMcpTowerRpc(env, 'tools/call', { name: 'status', arguments: { include_services: true } }, 7500).catch(
-          () => null
-        ),
-        callMcpTowerRpc(env, 'tools/call', { name: 'system_parity_audit', arguments: {} }, 8000).catch(() => null),
+        callMcpTowerRpc(
+          env,
+          'tools/call',
+          { name: 'status', arguments: { include_services: true } },
+          7500
+        ).catch(() => null),
+        callMcpTowerRpc(
+          env,
+          'tools/call',
+          { name: 'system_parity_audit', arguments: {} },
+          8000
+        ).catch(() => null),
       ]);
       const parseRpc = (r: any) => {
         const txt = r?.content?.[0]?.text;

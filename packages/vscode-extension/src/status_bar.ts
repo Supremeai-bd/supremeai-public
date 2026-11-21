@@ -1,8 +1,8 @@
 /**
  * SupremeAI Status Bar — Visual telemetry indicator in VS Code.
  */
-import * as vscode from "vscode";
-import { FederationHealth, McpBridge } from "./mcp_bridge";
+import * as vscode from 'vscode';
+import { FederationHealth, McpBridge } from './mcp_bridge';
 
 export class FederationStatusBar {
   private statusBarItem: vscode.StatusBarItem;
@@ -13,9 +13,9 @@ export class FederationStatusBar {
   constructor(bridge: McpBridge) {
     this.bridge = bridge;
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    this.statusBarItem.command = "supremeai.viewRunway";
+    this.statusBarItem.command = 'supremeai.viewRunway';
     this.updateDisplay({
-      status: "nominal",
+      status: 'nominal',
       activeAgents: 0,
       openClaims: 0,
       runwayDepth: 0,
@@ -55,35 +55,39 @@ export class FederationStatusBar {
   public updateDisplay(health: FederationHealth): void {
     if (this.isDisposed) return;
 
-    let icon = "$(cloud)";
-    let label = "Nominal";
+    let icon = '$(cloud)';
+    let label = 'Nominal';
 
     switch (health.status) {
-      case "nominal":
+      case 'nominal':
         if (health.activeAgents > 0) {
-          icon = "$(sync~spin)";
+          icon = '$(sync~spin)';
           label = `Agents (${health.activeAgents})`;
         } else {
-          icon = "$(cloud)";
-          label = "Nominal";
+          icon = '$(cloud)';
+          label = 'Nominal';
         }
         this.statusBarItem.backgroundColor = undefined;
         break;
-      case "degraded":
-        icon = "$(warning)";
-        label = "Degraded";
-        this.statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
+      case 'degraded':
+        icon = '$(warning)';
+        label = 'Degraded';
+        this.statusBarItem.backgroundColor = new vscode.ThemeColor(
+          'statusBarItem.warningBackground'
+        );
         break;
-      case "critical":
-        icon = "$(error)";
-        label = "Critical";
-        this.statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.errorBackground");
+      case 'critical':
+        icon = '$(error)';
+        label = 'Critical';
+        this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         break;
-      case "offline":
+      case 'offline':
       default:
-        icon = "$(circle-slash)";
-        label = "Offline";
-        this.statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
+        icon = '$(circle-slash)';
+        label = 'Offline';
+        this.statusBarItem.backgroundColor = new vscode.ThemeColor(
+          'statusBarItem.warningBackground'
+        );
         break;
     }
 

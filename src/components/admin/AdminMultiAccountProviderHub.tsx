@@ -418,7 +418,8 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
         .attr('fill', 'currentColor')
         .attr('fill-opacity', 0.08);
 
-      const rect = g.append('rect')
+      const rect = g
+        .append('rect')
         .attr('x', 0)
         .attr('y', yPos + 5)
         .attr('height', 12)
@@ -427,11 +428,7 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
 
       const targetWidth = Math.max(4, x(item.runway.usagePct));
       if (typeof (rect as any).transition === 'function') {
-        (rect as any)
-          .attr('width', 0)
-          .transition()
-          .duration(360)
-          .attr('width', targetWidth);
+        (rect as any).attr('width', 0).transition().duration(360).attr('width', targetWidth);
       } else {
         rect.attr('width', targetWidth);
       }
@@ -654,7 +651,8 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
           resetDayOfMonth: Math.min(28, Math.max(1, Number(formResetDay) || 1)),
           region: formRegion.trim() || 'global-edge',
           keyMask: formKeyMask.trim() ? maskNewSecret(formKeyMask) : 'key_••••new1',
-          infisicalPath: formInfisicalPath.trim() || `/${meta.category}/${formProviderId.toUpperCase()}`,
+          infisicalPath:
+            formInfisicalPath.trim() || `/${meta.category}/${formProviderId.toUpperCase()}`,
           latencyMs: 140,
           linkedServices: linked.length > 0 ? linked : ['Core Platform'],
           consoleUrl: formConsoleUrl.trim() || meta.defaultConsole,
@@ -1017,7 +1015,10 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
                         >
                           <ShieldCheck className="w-3.5 h-3.5" />
                           <span>
-                            Auto-Failover {policy?.autoFailoverEnabled ? `@ ${policy.switchThresholdPct}%` : 'OFF'}
+                            Auto-Failover{' '}
+                            {policy?.autoFailoverEnabled
+                              ? `@ ${policy.switchThresholdPct}%`
+                              : 'OFF'}
                           </span>
                         </button>
 
@@ -1146,9 +1147,7 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
 
                               <div className="flex items-center justify-between text-[10.5px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
                                 <span
-                                  className={
-                                    runway.severity !== 'nominal' ? 'font-semibold' : ''
-                                  }
+                                  className={runway.severity !== 'nominal' ? 'font-semibold' : ''}
                                 >
                                   Runway: {runway.label}
                                 </span>
@@ -1292,8 +1291,8 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
                   All Accounts — Quota Burn & Days-to-Exhaustion Ranking (D3)
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Sorted by utilization urgency. Dashed vertical thresholds mark 70% warning and
-                  90% auto-failover triggers.
+                  Sorted by utilization urgency. Dashed vertical thresholds mark 70% warning and 90%
+                  auto-failover triggers.
                 </p>
               </div>
               <svg
@@ -1318,9 +1317,21 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
 
               {(
                 [
-                  { title: 'Resetting in ≤ 3 Days', items: resetCalendarGroups.soon, tone: 'text-emerald-600 dark:text-emerald-400' },
-                  { title: 'Resetting in 4–10 Days', items: resetCalendarGroups.mid, tone: 'text-[#4a70e8] dark:text-[#8aa4ff]' },
-                  { title: 'Resetting Later This Cycle', items: resetCalendarGroups.later, tone: 'text-slate-500 dark:text-slate-400' },
+                  {
+                    title: 'Resetting in ≤ 3 Days',
+                    items: resetCalendarGroups.soon,
+                    tone: 'text-emerald-600 dark:text-emerald-400',
+                  },
+                  {
+                    title: 'Resetting in 4–10 Days',
+                    items: resetCalendarGroups.mid,
+                    tone: 'text-[#4a70e8] dark:text-[#8aa4ff]',
+                  },
+                  {
+                    title: 'Resetting Later This Cycle',
+                    items: resetCalendarGroups.later,
+                    tone: 'text-slate-500 dark:text-slate-400',
+                  },
                 ] as const
               ).map((group) => (
                 <div key={group.title} className="space-y-2">
@@ -1490,7 +1501,9 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
           >
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                {editingAccount ? `Edit ${editingAccount.accountAlias}` : 'Add Provider Account to Pool'}
+                {editingAccount
+                  ? `Edit ${editingAccount.accountAlias}`
+                  : 'Add Provider Account to Pool'}
               </h3>
               <button
                 type="button"
@@ -1711,8 +1724,11 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
             </div>
 
             <div className="text-xs text-slate-500 dark:text-slate-400">
-              Owner: <strong className="text-slate-800 dark:text-slate-200">{rotatingAccount.ownerEmail}</strong> · Current:{' '}
-              <span className="font-mono">{rotatingAccount.keyMask}</span>
+              Owner:{' '}
+              <strong className="text-slate-800 dark:text-slate-200">
+                {rotatingAccount.ownerEmail}
+              </strong>{' '}
+              · Current: <span className="font-mono">{rotatingAccount.keyMask}</span>
             </div>
 
             <div className="space-y-3 text-xs">

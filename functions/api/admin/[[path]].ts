@@ -129,21 +129,100 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     Boolean(effectiveToken) &&
     configuredKeys.some((configured) => timingSafeEqualStrings(effectiveToken, configured));
 
-  if (!hasAdminCredential && path !== '/api/admin/auth/verify') {
-    return jsonEdgeResponse(
-      { error: 'Administrator elevation is required.' },
-      403,
-      request,
-      undefined,
-      env
-    );
+  if (path !== '/api/admin/auth/verify') {
+    if (!effectiveToken) {
+      return jsonEdgeResponse(
+        { error: 'Administrator authentication is required.' },
+        401,
+        request,
+        undefined,
+        env
+      );
+    }
+    if (!hasAdminCredential) {
+      return jsonEdgeResponse(
+        { error: 'Administrator elevation is required.' },
+        403,
+        request,
+        undefined,
+        env
+      );
+    }
+  }
+
+  // Handle /api/admin/auth/verify on edge
+  if (path === '/api/admin/auth/verify' && request.method === 'POST') {
+    const adminPasskey = env?.ADMIN_PASSKEY?.trim();
+    if (!adminPasskey) {
+      return jsonEdgeResponse(
+        {
+          success: false,
+          authenticated: false,
+          error: 'Admin access is not configured. Set ADMIN_PASSKEY in the environment.',
+        },
+        503,
+        request,
+        undefined,
+        env
+      );
+    }
+
+    const body = (await request.json().catch(() => ({}))) as { passkey?: string };
+    const passkey = String(body.passkey || '').trim();
+    if (!passkey) {
+      return jsonEdgeResponse(
+        {
+          success: false,
+          authenticated: false,
+          error: 'Invalid request body: passkey — Passkey is required.',
+          issues: [{ path: 'passkey', message: 'Passkey is required.' }],
+        },
+        400,
+        request,
+        undefined,
+        env
+      );
+    }
+
+    if (timingSafeEqualStrings(passkey, adminPasskey)) {
+      return jsonEdgeResponse(
+        {
+          success: true,
+          authenticated: true,
+          role: 'admin',
+          operator: 'Admin Operator',
+        },
+        200,
+        request,
+        undefined,
+        env
+      );
+    } else {
+      return jsonEdgeResponse(
+        {
+          success: false,
+          authenticated: false,
+          error: 'Invalid administrator passkey. Access denied.',
+        },
+        401,
+        request,
+        undefined,
+        env
+      );
+    }
   }
 
   // 1. Live GitHub Runs & Pulls via GitHub API on Edge
   if (path.startsWith('/api/admin/github/')) {
     const repo = incomingUrl.searchParams.get('repo')?.trim() || 'Supremeai-bd/supremeai';
     if (!isSafeGitHubRepoSlug(repo)) {
-      return jsonEdgeResponse({ error: 'Invalid GitHub repository slug.' }, 400, request, undefined, env);
+      return jsonEdgeResponse(
+        { error: 'Invalid GitHub repository slug.' },
+        400,
+        request,
+        undefined,
+        env
+      );
     }
     const token = env?.GITHUB_TOKEN?.trim() || env?.GITHUB_READONLY_TOKEN?.trim() || '';
     const ghHeaders: Record<string, string> = {
@@ -161,9 +240,21 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         );
         const data = (await res.json().catch(() => ({}))) as any;
         const runs = Array.isArray(data.workflow_runs) ? data.workflow_runs : [];
-        return jsonEdgeResponse({ runs, tokenConfigured: Boolean(token) }, 200, request, undefined, env);
+        return jsonEdgeResponse(
+          { runs, tokenConfigured: Boolean(token) },
+          200,
+          request,
+          undefined,
+          env
+        );
       } catch {
-        return jsonEdgeResponse({ runs: [], tokenConfigured: Boolean(token) }, 200, request, undefined, env);
+        return jsonEdgeResponse(
+          { runs: [], tokenConfigured: Boolean(token) },
+          200,
+          request,
+          undefined,
+          env
+        );
       }
     }
 
@@ -176,9 +267,21 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         );
         const data = (await res.json().catch(() => [])) as any[];
         const pulls = Array.isArray(data) ? data : [];
-        return jsonEdgeResponse({ pulls, tokenConfigured: Boolean(token) }, 200, request, undefined, env);
+        return jsonEdgeResponse(
+          { pulls, tokenConfigured: Boolean(token) },
+          200,
+          request,
+          undefined,
+          env
+        );
       } catch {
-        return jsonEdgeResponse({ pulls: [], tokenConfigured: Boolean(token) }, 200, request, undefined, env);
+        return jsonEdgeResponse(
+          { pulls: [], tokenConfigured: Boolean(token) },
+          200,
+          request,
+          undefined,
+          env
+        );
       }
     }
   }

@@ -1,47 +1,45 @@
 /**
  * Command: SupremeAI: Dispatch Task to Federation
  */
-import * as vscode from "vscode";
-import { McpBridge, TaskDispatchRequest } from "../mcp_bridge";
+import * as vscode from 'vscode';
+import { McpBridge, TaskDispatchRequest } from '../mcp_bridge';
 
-const FEDERATION_REPOSITORIES = [
-  "Supremeai-bd/supremeai",
-  "Supremeai-bd/supremeai-public",
-];
+const FEDERATION_REPOSITORIES = ['Supremeai-bd/supremeai', 'Supremeai-bd/supremeai-public'];
 
 export async function submitTaskCommand(bridge: McpBridge): Promise<void> {
   const selectedRepo = await vscode.window.showQuickPick(FEDERATION_REPOSITORIES, {
-    placeHolder: "Select target federation repository for this task",
-    title: "SupremeAI: Dispatch Task (Step 1/4)",
+    placeHolder: 'Select target federation repository for this task',
+    title: 'SupremeAI: Dispatch Task (Step 1/4)',
   });
   if (!selectedRepo) return;
 
   const title = await vscode.window.showInputBox({
-    prompt: "Enter task title (e.g. feat(gateway): add token bucket rate limiter)",
-    placeHolder: "feat(scope): concise summary of work",
-    title: "SupremeAI: Dispatch Task (Step 2/4)",
-    validateInput: (text) => (text.trim().length < 5 ? "Title must be at least 5 characters" : null),
+    prompt: 'Enter task title (e.g. feat(gateway): add token bucket rate limiter)',
+    placeHolder: 'feat(scope): concise summary of work',
+    title: 'SupremeAI: Dispatch Task (Step 2/4)',
+    validateInput: (text) =>
+      text.trim().length < 5 ? 'Title must be at least 5 characters' : null,
   });
   if (!title) return;
 
   const activeDoc = vscode.window.activeTextEditor?.document;
-  const defaultPath = activeDoc ? vscode.workspace.asRelativePath(activeDoc.uri) : "";
+  const defaultPath = activeDoc ? vscode.workspace.asRelativePath(activeDoc.uri) : '';
   const scopeInput = await vscode.window.showInputBox({
-    prompt: "Enter declared scope paths (comma-separated)",
+    prompt: 'Enter declared scope paths (comma-separated)',
     value: defaultPath,
-    placeHolder: "src/tools/example.ts, tests/test_example.ts",
-    title: "SupremeAI: Dispatch Task (Step 3/4)",
+    placeHolder: 'src/tools/example.ts, tests/test_example.ts',
+    title: 'SupremeAI: Dispatch Task (Step 3/4)',
   });
   if (scopeInput === undefined) return;
   const scopePaths = scopeInput
-    .split(",")
+    .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 
   const description = await vscode.window.showInputBox({
-    prompt: "Enter task mission and acceptance criteria",
-    placeHolder: "Detailed specification for the autonomous agent...",
-    title: "SupremeAI: Dispatch Task (Step 4/4)",
+    prompt: 'Enter task mission and acceptance criteria',
+    placeHolder: 'Detailed specification for the autonomous agent...',
+    title: 'SupremeAI: Dispatch Task (Step 4/4)',
   });
   if (!description) return;
 
@@ -57,16 +55,16 @@ export async function submitTaskCommand(bridge: McpBridge): Promise<void> {
         title,
         scopePaths,
         description,
-        priority: "P1-high",
+        priority: 'P1-high',
       };
       const result = await bridge.dispatchTask(req);
       if (result.success) {
         vscode.window.showInformationMessage(
-          `✅ Task successfully queued on ${selectedRepo} (${result.taskId || "dispatched"}).`
+          `✅ Task successfully queued on ${selectedRepo} (${result.taskId || 'dispatched'}).`
         );
       } else {
         vscode.window.showErrorMessage(
-          `❌ Failed to dispatch task: ${result.error || "Unknown error"}`
+          `❌ Failed to dispatch task: ${result.error || 'Unknown error'}`
         );
       }
     }

@@ -104,14 +104,17 @@ export const EN_DICT = {
   navSettings: 'Settings',
   // Settings
   settingsTitle: 'Account & Workspace Settings',
-  settingsSubtitleUser: 'Manage your profile, appearance, language, 3D voice avatar, and security settings.',
-  settingsSubtitleDev: 'Manage your profile, appearance, language, 3D voice avatar, and developer preferences.',
+  settingsSubtitleUser:
+    'Manage your profile, appearance, language, 3D voice avatar, and security settings.',
+  settingsSubtitleDev:
+    'Manage your profile, appearance, language, 3D voice avatar, and developer preferences.',
   tabGeneral: 'General',
   tabAppearance: 'Appearance',
   tabVoiceAvatar: 'Voice & Avatar',
   tabAccount: 'Account & Security',
   languageCardTitle: 'Language & Default AI Response',
-  languageCardSubtitle: 'Changes the workspace interface language, default AI chat/research reply language, and global TTS voice settings.',
+  languageCardSubtitle:
+    'Changes the workspace interface language, default AI chat/research reply language, and global TTS voice settings.',
   langSyncUiLabel: 'Interface UI',
   langSyncUiValueEn: 'English (EN)',
   langSyncUiValueBn: 'Bengali (বাংলা)',
@@ -123,7 +126,8 @@ export const EN_DICT = {
   globalTtsConfigLabel: 'Global TTS Configuration',
   ttsLocaleLabel: 'Active Locale',
   ttsNeuralVoiceLabel: 'Neural Voice',
-  langUnifiedSyncNote: 'Synced live across workspace interface, AI chat/research prompts, and the global TTS engine.',
+  langUnifiedSyncNote:
+    'Synced live across workspace interface, AI chat/research prompts, and the global TTS engine.',
   savePreferences: 'Save Preferences',
   settingsSavedToast: 'Settings saved successfully!',
   preferencesLocalHint: 'Preferences saved locally and applied live.',
@@ -135,7 +139,8 @@ export const EN_DICT = {
   activeVoiceLabel: 'Active Voice',
   launchVoiceCompanion: 'Launch Voice Companion',
   hologramAvatarTitle: '3D Hologram Avatar',
-  hologramAvatarSubtitle: 'Choose a preset 3D portrait or upload any photo to convert it into a translucent hologram.',
+  hologramAvatarSubtitle:
+    'Choose a preset 3D portrait or upload any photo to convert it into a translucent hologram.',
   voicePersonaTitle: 'Voice Persona & Bilingual Speech',
   voicePersonaSubtitle: 'Select your preferred voice persona and default speech language.',
   // Quick Switcher & Chat UI Strings
@@ -182,12 +187,14 @@ export const EN_DICT = {
   authSignInDesc: 'Sign in to access your workspace, settings, and SupremeAI reasoning models.',
   authSignUpDesc: 'Create your account to unlock Settings, History, and full Workspace tools.',
   authReasonPrefix: 'Sign in or create a free account to access',
-  authMaintenanceNotice: 'Scheduled maintenance is currently active. Only administrator accounts can access the workspace.',
+  authMaintenanceNotice:
+    'Scheduled maintenance is currently active. Only administrator accounts can access the workspace.',
   authSignupsPausedNotice: 'New workspace signups are currently paused by the administrator.',
   authFullNameLabel: 'Full Name',
   authWorkEmailLabel: 'Work Email Address',
   authPasswordLabel: 'Password',
-  authFreeTierNote: 'Every new account starts on the Free tier in clean Standard Mode — upgrade or unlock Developer Tools anytime from Settings.',
+  authFreeTierNote:
+    'Every new account starts on the Free tier in clean Standard Mode — upgrade or unlock Developer Tools anytime from Settings.',
   authRememberDevice: 'Remember me on this device',
   authProcessing: 'Processing...',
   authSignInBtn: 'Sign In to Studio',
@@ -198,15 +205,20 @@ export const EN_DICT = {
   authSignupErrorFallback: 'Registration failed. Please check your input.',
   // Tips & Micro Survey
   tipDevTitle: 'One-Prompt Live Builder',
-  tipDevDesc: 'Describe any web app, chart, or workflow in chat — Preview and live Code editing open automatically without setup.',
+  tipDevDesc:
+    'Describe any web app, chart, or workflow in chat — Preview and live Code editing open automatically without setup.',
   tipRagTitle: 'Automatic Knowledge Grounding',
-  tipRagDesc: 'Upload docs in Knowledge Base and mention them naturally in chat — SupremeAI grounds answers automatically.',
+  tipRagDesc:
+    'Upload docs in Knowledge Base and mention them naturally in chat — SupremeAI grounds answers automatically.',
   tipResearchTitle: 'Structured Deep Research',
-  tipResearchDesc: 'Ask for a "deep research report" or "comprehensive analysis" to trigger multi-source citations automatically.',
+  tipResearchDesc:
+    'Ask for a "deep research report" or "comprehensive analysis" to trigger multi-source citations automatically.',
   tipRecipesTitle: 'Ready-Made Prompt Recipes',
-  tipRecipesDesc: 'Browse curated templates for writing, planning, summarizing, or building via the + menu in the chat bar.',
+  tipRecipesDesc:
+    'Browse curated templates for writing, planning, summarizing, or building via the + menu in the chat bar.',
   tipAppearanceTitle: 'Live Screens & Reading Width',
-  tipAppearanceDesc: 'Customize your ambient screen backdrop, theme mode, and reading column width in Settings.',
+  tipAppearanceDesc:
+    'Customize your ambient screen backdrop, theme mode, and reading column width in Settings.',
   tipActionOpenSettings: 'Open Settings',
   tipActionToggleResearch: 'Try Research',
   tipActionBrowseRecipes: 'Browse Recipes',
@@ -265,8 +277,10 @@ export const EN_DICT = {
   // Plan & Usage
   planUsageDevTitle: 'Plan, Billing & Token Usage',
   planUsageStdTitle: 'Plan, Usage & Billing',
-  planUsageDevDesc: 'Monitor monthly SupremeAI quota, 7-day chat telemetry, credit top-ups, and Stripe billing receipts.',
-  planUsageStdDesc: 'Track your monthly allowance, 7-day activity, credit top-ups, and billing receipts.',
+  planUsageDevDesc:
+    'Monitor monthly SupremeAI quota, 7-day chat telemetry, credit top-ups, and Stripe billing receipts.',
+  planUsageStdDesc:
+    'Track your monthly allowance, 7-day activity, credit top-ups, and billing receipts.',
   topUpCreditsBtn: 'Top Up Credits',
   tabOverviewQuota: 'Overview & Quota',
   tab7DayActivity: '7-Day Activity',
@@ -289,7 +303,8 @@ export const EN_DICT = {
   addPayAsYouGo: 'Add Pay-As-You-Go',
   usageByModelTitle: 'Usage Breakdown by Model',
   currentCycleLabel: 'Current Cycle',
-  noModelUsageYet: 'No model usage recorded in active sessions yet. Start a chat to see real breakdown metrics.',
+  noModelUsageYet:
+    'No model usage recorded in active sessions yet. Start a chat to see real breakdown metrics.',
   walletBalanceLabel: 'Wallet Balance',
   accountCreditLabel: 'Account Credit',
   allowanceLabel: 'Allowance',
@@ -328,7 +343,8 @@ export const EN_DICT = {
   // Team View
   teamDevTitle: 'Team & Workspace Management',
   teamStdTitle: 'Team & Collaboration',
-  teamDevDesc: 'Invite engineering team members, assign fine-grained RBAC roles, and audit workspace security compliance.',
+  teamDevDesc:
+    'Invite engineering team members, assign fine-grained RBAC roles, and audit workspace security compliance.',
   teamStdDesc: 'Invite team members and manage shared workspace access.',
   inviteMemberBtn: 'Invite Member',
   workspaceSeatUsage: 'Workspace Seat Usage',
@@ -353,7 +369,8 @@ export const EN_DICT = {
   sendInvitationBtn: 'Send Invitation',
   // Projects View
   projectsTitle: 'My GitHub Projects',
-  projectsSubtitle: 'Connect your repositories to chat with your codebase, automate reviews, and inspect branches.',
+  projectsSubtitle:
+    'Connect your repositories to chat with your codebase, automate reviews, and inspect branches.',
   addGithubProjectBtn: 'Add GitHub Project',
   filterProjectsPlaceholder: 'Filter connected projects...',
   aiReviewBtn: 'AI Review',
@@ -379,12 +396,14 @@ export const EN_DICT = {
   forkedFromLabel: 'Forked from',
   gitCloneBtn: 'git clone',
   noProjectsTitle: 'No connected repositories yet',
-  noProjectsDesc: 'Connect a GitHub repository to track its branch, build health, fork workflows, and chat with your codebase.',
+  noProjectsDesc:
+    'Connect a GitHub repository to track its branch, build health, fork workflows, and chat with your codebase.',
   noMatchingProjectsDesc: 'No connected repositories match your filter.',
   clearFilterBtn: 'Clear filter',
   // Plugins View
   pluginsTitle: 'Plugins & Extensions Hub',
-  pluginsSubtitle: 'Supercharge your SupremeAI experience with connectors for GitHub, live web documentation, code auditing, and exporters.',
+  pluginsSubtitle:
+    'Supercharge your SupremeAI experience with connectors for GitHub, live web documentation, code auditing, and exporters.',
   addCustomPluginBtn: 'Add Custom Plugin',
   allPluginsFilter: 'All Plugins',
   searchPluginsPlaceholder: 'Search plugins...',
@@ -399,12 +418,14 @@ export const EN_DICT = {
   // API Keys View
   apiKeysTelemetryEyebrow: 'MULTI-PROVIDER KEYS · LLM GATEWAY TELEMETRY',
   apiKeysTitle: 'API Keys & AI Providers',
-  apiKeysSubtitle: 'Manage credentials across AI providers, monitor LLM Gateway response latency, and configure webhooks.',
+  apiKeysSubtitle:
+    'Manage credentials across AI providers, monitor LLM Gateway response latency, and configure webhooks.',
   tabApiKeys: 'API Keys',
   tabAiProvidersHealth: 'AI Providers & Health',
   tabWebhooks: 'Webhooks',
   providerMatrixTitle: 'Configured AI Provider Directory & Health Matrix',
-  providerMatrixDesc: 'Live health status and average LLM Gateway response latency for each AI provider. Add, edit, or remove bound keys directly.',
+  providerMatrixDesc:
+    'Live health status and average LLM Gateway response latency for each AI provider. Add, edit, or remove bound keys directly.',
   refreshGatewayBtn: 'Refresh Gateway',
   addProviderKeyBtn: 'Add Provider Key',
   colAiProvider: 'AI Provider',
@@ -418,7 +439,8 @@ export const EN_DICT = {
   // Knowledge Base View
   kbTitle: 'Knowledge Base & Grounding (RAG)',
   kbBadge: 'Vector In-Memory Cache',
-  kbSubtitle: 'Ground SupremeAI chat sessions in your custom documentation, engineering specs, and private GitHub codebases.',
+  kbSubtitle:
+    'Ground SupremeAI chat sessions in your custom documentation, engineering specs, and private GitHub codebases.',
   uploadCustomDocsBtn: 'Upload Custom Docs',
   indexedDocsMetric: 'Indexed Knowledge Docs',
   vectorChunksMetric: 'Semantic Vector Chunks',
@@ -426,8 +448,10 @@ export const EN_DICT = {
   filterDocsPlaceholder: 'Filter documents by title...',
   inspectBtn: 'Inspect',
   ragProbeTitle: 'RAG Semantic Context Probe',
-  ragProbeDesc: 'Test semantic retrieval across all active grounding documents to preview how prompt queries fetch vectorized chunks.',
-  ragProbePlaceholder: "Type a technical question (e.g. 'How does event streaming handle backpressure?')...",
+  ragProbeDesc:
+    'Test semantic retrieval across all active grounding documents to preview how prompt queries fetch vectorized chunks.',
+  ragProbePlaceholder:
+    "Type a technical question (e.g. 'How does event streaming handle backpressure?')...",
   probeChunksBtn: 'Probe Chunks',
   closeInspectorBtn: 'Close Inspector',
   // Prompt Library Modal
@@ -445,21 +469,27 @@ export const EN_DICT = {
   savePromptBtn: 'Save Prompt',
   searchPromptsPlaceholder: 'Search prompt templates by title, description or tags...',
   useInChatBtn: 'Use in Chat',
-  noPromptMatches: 'No prompt recipes matched your query. Try searching for different keywords or create a new template.',
+  noPromptMatches:
+    'No prompt recipes matched your query. Try searching for different keywords or create a new template.',
   // Settings Extra & Subtabs
   workspaceExperienceLabel: 'Workspace Experience',
   developerStudioLabel: 'Developer Studio',
   standardWorkspaceLabel: 'Standard Workspace',
-  workspaceExpDevDesc: 'Developer tools are active: API Keys, Knowledge & RAG, Repositories, Plugins, and the split Workspace Dock.',
-  workspaceExpStdDesc: 'Streamlined workspace active for writing, research, and chat without technical clutter.',
+  workspaceExpDevDesc:
+    'Developer tools are active: API Keys, Knowledge & RAG, Repositories, Plugins, and the split Workspace Dock.',
+  workspaceExpStdDesc:
+    'Streamlined workspace active for writing, research, and chat without technical clutter.',
   hideDeveloperToolsBtn: 'Hide Developer Tools',
   needDevAccessTitle: 'Need API keys, repositories, or code tools?',
-  needDevAccessDesc: 'Your account is currently in clean Standard Mode. Enable developer access anytime to unlock the Standard / Developer switch.',
+  needDevAccessDesc:
+    'Your account is currently in clean Standard Mode. Enable developer access anytime to unlock the Standard / Developer switch.',
   enableDeveloperAccessBtn: 'Enable Developer Access',
   activeWorkspaceLabel: 'Active Workspace',
   customerWorkspaceLabel: 'Customer Workspace',
-  adminModeSummary: 'You are in Admin Studio with central control over platform policies, models, customers, and telemetry.',
-  customerModeSummary: 'You are in Customer mode with streamlined chat, billing, and personal workspace preferences.',
+  adminModeSummary:
+    'You are in Admin Studio with central control over platform policies, models, customers, and telemetry.',
+  customerModeSummary:
+    'You are in Customer mode with streamlined chat, billing, and personal workspace preferences.',
   switchToUserViewBtn: 'Switch to User View',
   profileInfoTitle: 'Profile Information',
   monthlyTokenQuotaTitle: 'Monthly Token Quota',
@@ -483,14 +513,17 @@ export const EN_DICT = {
   autoPrReviewLabel: 'Automatic Pull Request Review',
   autoPrReviewDesc: 'Trigger automated AI code audits when branches are pushed.',
   ragChatSettingLabel: 'Knowledge Base Grounding (RAG) in Chat',
-  ragChatSettingDesc: 'Show document grounding controls in the chat bar and answer from your uploaded Knowledge Base files.',
+  ragChatSettingDesc:
+    'Show document grounding controls in the chat bar and answer from your uploaded Knowledge Base files.',
   manageDocsBtn: 'Manage Docs',
   workspaceTipsSettingLabel: 'Workspace Discovery Tips',
-  workspaceTipsSettingDesc: 'Show helpful rotating tips in Chat for shortcuts, research tools, and developer options.',
+  workspaceTipsSettingDesc:
+    'Show helpful rotating tips in Chat for shortcuts, research tools, and developer options.',
   emailDigestSettingLabel: 'Email Notifications & Digest',
   emailDigestSettingDesc: 'Receive weekly summary of workspace activity and updates.',
   appearanceHeaderTitle: 'Appearance, OS Sync & Live Screens',
-  appearanceHeaderDesc: 'Real-time animated screens, theme-tinted glass surfaces, and per-theme atmospheric controls.',
+  appearanceHeaderDesc:
+    'Real-time animated screens, theme-tinted glass surfaces, and per-theme atmospheric controls.',
   colorSchemeSyncLabel: 'Color Scheme Synchronization',
   schemeAutoTitle: 'Auto (OS Sync)',
   schemeLightTitle: 'Light',
@@ -517,7 +550,8 @@ export const EN_DICT = {
   noTrustedTokenMsg: 'No active 7-day browser trust token on this device.',
   revokeTrustedBtn: 'Revoke Trusted Browser',
   feedbackCardTitle: 'Product Feedback & Feature Suggestions',
-  feedbackCardDesc: 'Tell us what feels great or suggest features you want added to SupremeAI Studio.',
+  feedbackCardDesc:
+    'Tell us what feels great or suggest features you want added to SupremeAI Studio.',
   shareFeedbackBtn: 'Share Feedback',
   activeSessionMgmtTitle: 'Active Session Management',
   activeSessionMgmtDesc: 'Signing out will clear your session token and lock the workspace.',
@@ -556,7 +590,8 @@ export const EN_DICT = {
   wsActive: 'Active',
   wsConsoleEmpty: 'No console output yet. Click Run to execute.',
   wsDomEmpty: 'Run HTML, React TSX/JSX, or DOM-manipulating JS to inspect live UI output here.',
-  wsSandboxPlaceholder: 'Write or paste JavaScript, TypeScript, React JSX/TSX, HTML, or JSON (Ctrl/Cmd + Enter to run)...',
+  wsSandboxPlaceholder:
+    'Write or paste JavaScript, TypeScript, React JSX/TSX, HTML, or JSON (Ctrl/Cmd + Enter to run)...',
   wsDesktopViewport: 'Desktop Viewport (100%)',
   wsTabletViewport: 'Tablet Viewport (768px)',
   wsMobileViewport: 'Mobile Viewport (375px)',
@@ -607,8 +642,10 @@ export const EN_DICT = {
   wsBrowserBookmarkLabelPlaceholder: 'Bookmark title (optional)',
   wsBrowserBookmarkUrlPlaceholder: 'Website URL (https://...)',
   wsBrowserBookmarkEmpty: 'No bookmarks yet — open any webpage and click the star icon or + Add.',
-  wsBrowserStartSubtitle: 'Enter any website URL or search topic above, or open one of your saved bookmarks.',
-  wsBrowserBlockedNotice: 'This site blocked automated proxy requests. Open it directly in a new browser tab.',
+  wsBrowserStartSubtitle:
+    'Enter any website URL or search topic above, or open one of your saved bookmarks.',
+  wsBrowserBlockedNotice:
+    'This site blocked automated proxy requests. Open it directly in a new browser tab.',
   wsGraphSearchPlaceholder: 'Search architecture or service nodes...',
   wsGraphAllCategories: 'All Categories',
   wsGraphZoomIn: 'Zoom In',
@@ -632,17 +669,21 @@ export const EN_DICT = {
   wsSavedSnippets: 'Saved:',
   wsSnippetNamePrompt: 'Snippet name (e.g. Route Benchmark)',
   wsPreviewEmptyTitle: 'Live Preview Canvas',
-  wsPreviewEmptyHint: 'No preview loaded yet. Generate code from chat or write code in the Code tab.',
+  wsPreviewEmptyHint:
+    'No preview loaded yet. Generate code from chat or write code in the Code tab.',
   wsPreviewChatCardTitle: 'Generate code from chat',
-  wsPreviewChatCardDesc: 'Ask SupremeAI for HTML, React TSX, SVG, or Mermaid code, then click Preview on the response block.',
+  wsPreviewChatCardDesc:
+    'Ask SupremeAI for HTML, React TSX, SVG, or Mermaid code, then click Preview on the response block.',
   wsPreviewChatCardAction: 'Prompt in Chat',
   wsPreviewCodeCardTitle: 'Write code in the Code tab',
-  wsPreviewCodeCardDesc: 'Open the built-in Code editor to paste, edit, and run HTML, React JSX/TSX, or Mermaid live.',
+  wsPreviewCodeCardDesc:
+    'Open the built-in Code editor to paste, edit, and run HTML, React JSX/TSX, or Mermaid live.',
   wsPreviewSupportedFormats: 'Supports HTML · React JSX/TSX · SVG · Mermaid',
   wsOpenCodeTab: 'Open Code Tab',
   wsPopoutPreview: 'Open Full Screen in New Tab',
   wsRuntimeErrorBanner: 'Runtime Error:',
-  wsTerminalFallbackReady: 'Edge Client Shell active for local diagnostics (help, status, history, date, echo, ping, clear).',
+  wsTerminalFallbackReady:
+    'Edge Client Shell active for local diagnostics (help, status, history, date, echo, ping, clear).',
   wsCodeLanguageLabel: 'Language',
   wsNewFile: 'New File',
   wsSaveLocalFile: 'Save Scratchpad',
@@ -666,11 +707,14 @@ export const EN_DICT = {
   wsGraphEdgeSource: 'From',
   wsGraphEdgeTarget: 'To',
   wsGraphEdgeLabelPlaceholder: 'Edge label (optional)',
-  wsGraphMermaidPlaceholder: 'Paste Mermaid flowchart (e.g. graph TD; A[Client]-->B[Gateway]; B-->C[LLM])',
-  wsGraphEmptyCustom: 'Empty Custom Graph — click + Node or Import Mermaid to build your own interactive diagram.',
+  wsGraphMermaidPlaceholder:
+    'Paste Mermaid flowchart (e.g. graph TD; A[Client]-->B[Gateway]; B-->C[LLM])',
+  wsGraphEmptyCustom:
+    'Empty Custom Graph — click + Node or Import Mermaid to build your own interactive diagram.',
   wsLiveArtifactSync: 'Live Sync',
   wsLiveArtifactSyncOption: 'Live Artifact Sync',
-  wsLiveArtifactSyncDesc: 'Auto-open and live-update Workspace Preview/Sandbox while AI streams code',
+  wsLiveArtifactSyncDesc:
+    'Auto-open and live-update Workspace Preview/Sandbox while AI streams code',
   wsLiveSyncStreaming: 'Syncing',
   wsInspectElement: 'Inspect UI',
   wsInspectElementActive: 'Inspector ON — click any element inside preview to prompt AI',
@@ -709,7 +753,8 @@ export const EN_DICT = {
   gitOpenCommitLink: 'Open Commit',
   gitOpenPrLink: 'Open PR / MR',
   gitSettingsCardTitle: 'GitHub & GitLab Integration',
-  gitSettingsCardDesc: 'Store personal access tokens locally in your browser to push workspace artifacts directly to GitHub or GitLab.',
+  gitSettingsCardDesc:
+    'Store personal access tokens locally in your browser to push workspace artifacts directly to GitHub or GitLab.',
   gitSaveTokensBtn: 'Save Git Tokens',
   gitTokensSavedMsg: 'Git integration tokens saved locally.',
   wsVaultBtn: 'Vault',
@@ -718,22 +763,27 @@ export const EN_DICT = {
   wsVaultSessionTab: 'Session Snapshot',
   wsVaultCredentialsTab: 'Credentials',
   wsVaultScheduleTab: 'Schedule Task',
-  wsVaultSessionDesc: 'Save cookies or storageState after solving 2FA/OTP so scheduled AI tasks run authenticated without passwords.',
+  wsVaultSessionDesc:
+    'Save cookies or storageState after solving 2FA/OTP so scheduled AI tasks run authenticated without passwords.',
   wsVaultSessionInputLabel: 'Session Cookie Header or Playwright storageState JSON',
-  wsVaultSessionInputPlaceholder: 'Paste cookie string (session=abc; csrf=xyz) or Playwright storageState JSON...',
+  wsVaultSessionInputPlaceholder:
+    'Paste cookie string (session=abc; csrf=xyz) or Playwright storageState JSON...',
   wsVaultCapturedHint: 'Captured from current proxy response — ready to save.',
   wsVaultSaveSessionBtn: 'Remember Active Session',
   wsVaultUsernameLabel: 'Username or Email',
   wsVaultPasswordLabel: 'Password (AES-256 encrypted)',
   wsVaultSaveCredsBtn: 'Save Encrypted Credentials',
-  wsVaultScheduleDesc: 'Dispatch an authenticated scheduled task to Chat using an opaque vault reference (no secrets enter the AI prompt).',
-  wsVaultSchedulePromptPlaceholder: 'e.g. Every morning at 8:00 AM open this dashboard, extract metrics, and summarize here...',
+  wsVaultScheduleDesc:
+    'Dispatch an authenticated scheduled task to Chat using an opaque vault reference (no secrets enter the AI prompt).',
+  wsVaultSchedulePromptPlaceholder:
+    'e.g. Every morning at 8:00 AM open this dashboard, extract metrics, and summarize here...',
   wsVaultSendScheduleBtn: 'Prepare Scheduled Task in Chat',
   wsVaultSavedEntriesTitle: 'Saved for this domain',
   wsVaultEmptyDomain: 'No saved session or credentials for this domain yet.',
   wsVaultApplySession: 'Use Session',
   wsVaultActiveSessionBadge: 'Session Active',
-  wsVaultNoUrlHint: 'Navigate to a website first (or enter a domain below) to bind an isolated session.',
+  wsVaultNoUrlHint:
+    'Navigate to a website first (or enter a domain below) to bind an isolated session.',
   wsBrowserNewTab: 'New Tab',
   wsBrowserCloseTab: 'Close Tab',
   wsAutofillTitle: 'Saved Login Detected',
@@ -769,10 +819,13 @@ export const EN_DICT = {
   wsBrowserSaveCookiesTooltip: '1-click save active site session cookies',
   wsBrowserSavePasswordBtn: 'Save Password',
   wsBrowserSavePasswordPromptTitle: 'Save password for',
-  wsBrowserNoCookiesYet: 'No login cookies detected on this page yet. Sign in first or use Vault Advanced import.',
+  wsBrowserNoCookiesYet:
+    'No login cookies detected on this page yet. Sign in first or use Vault Advanced import.',
   wsVaultSessionReadyTitle: '1-Click Session Capture',
-  wsVaultSessionAutoDetected: 'Active session cookies detected for this site and ready for 1-click encrypted save.',
-  wsVaultSessionNoneDetected: 'Open a website and log in to auto-capture session cookies, or use Advanced import below.',
+  wsVaultSessionAutoDetected:
+    'Active session cookies detected for this site and ready for 1-click encrypted save.',
+  wsVaultSessionNoneDetected:
+    'Open a website and log in to auto-capture session cookies, or use Advanced import below.',
   wsVaultAdvancedRawToggle: 'Advanced: Import raw Cookie / storageState JSON',
   wsBrowserSavePromptSave: 'Save',
   wsBrowserSavePromptUpdate: 'Update password for',
@@ -796,9 +849,11 @@ export const EN_DICT = {
   wsBrowserChatAuthWallLabel: 'Login-Protected Site',
   wsBrowserFocusBtn: 'Focus Virtual Browser',
   wsBrowserOpenExternalBtn: 'Open External Tab',
-  wsBrowserStatusBlockedHint: 'Preview limited by login or anti-bot wall; open externally for your full session.',
+  wsBrowserStatusBlockedHint:
+    'Preview limited by login or anti-bot wall; open externally for your full session.',
   wsGmailConnectTitle: 'Sign in with Google to access Gmail',
-  wsGmailConnectSubtitle: 'Google blocks embedded password pages inside virtual frames for account security. Sign in once below to read your Gmail inbox directly here.',
+  wsGmailConnectSubtitle:
+    'Google blocks embedded password pages inside virtual frames for account security. Sign in once below to read your Gmail inbox directly here.',
   wsGmailSignInBtn: 'Sign in with Google',
   wsGmailSigningIn: 'Signing in...',
   wsGmailConnectedAs: 'Connected as',
@@ -849,7 +904,8 @@ export const EN_DICT = {
   workspaceFallbackTitle: 'Workspace',
   viewErrorSuffix: 'Encountered an Error',
   usageAnalyticsTitle: 'Message Activity & Usage Analytics',
-  usageAnalyticsSubtitle: 'Real-time token telemetry and interaction volume across SupremeAI models over the rolling 7-day window.',
+  usageAnalyticsSubtitle:
+    'Real-time token telemetry and interaction volume across SupremeAI models over the rolling 7-day window.',
   userVsAiBreakdownBtn: 'User vs AI Breakdown',
   totalTrafficBtn: 'Total Traffic',
   liveWalletBalanceLabel: 'Live Wallet Balance',
@@ -896,7 +952,8 @@ export const EN_DICT = {
   roleViewerDesc: 'Viewer (Read-only access)',
   loadingLabel: 'Loading...',
   customerDirectoryTitle: 'Customer & Account Directory',
-  customerDirectorySubtitle: 'Real-time subscriber management across Free, Pro, and Enterprise tiers with token quota telemetry.',
+  customerDirectorySubtitle:
+    'Real-time subscriber management across Free, Pro, and Enterprise tiers with token quota telemetry.',
   downloadCsvBtn: 'Download CSV',
   addCustomerBtn: 'Add Customer',
   totalCustomersLabel: 'Total Customers',
@@ -931,7 +988,8 @@ export const EN_DICT = {
   noCustomersYet: 'No customer records loaded yet.',
   loginAsUserBtn: 'Login as User',
   modelMatrixTitle: 'SupremeAI Intelligence Matrix',
-  modelMatrixSubtitle: 'Specification, governance status, reasoning capabilities, and throughput benchmarks across SupremeAI foundation models deployed in SupremeAI Studio.',
+  modelMatrixSubtitle:
+    'Specification, governance status, reasoning capabilities, and throughput benchmarks across SupremeAI foundation models deployed in SupremeAI Studio.',
   contextWindowLabel: 'Context Window',
   reasoningDepthLabel: 'Reasoning Depth',
   minPlanTierLabel: 'Min Plan Tier',
@@ -949,18 +1007,22 @@ export const EN_DICT = {
   colInferenceProfile: 'Inference Profile',
   colRecommendedRole: 'Recommended Supreme Role',
   repoHubTitle: 'SupremeAI Ecosystem Repositories',
-  repoHubSubtitle: 'Overview and integration topology between the core SupremeAI engine and the featherweight SupremeAI Studio frontend interface.',
+  repoHubSubtitle:
+    'Overview and integration topology between the core SupremeAI engine and the featherweight SupremeAI Studio frontend interface.',
   coreEngineSubtitle: 'Core AI Engine & Backend Services',
-  coreEngineDesc: 'The foundation repository containing core model orchestration, agent execution loops, and backend pipelines.',
+  coreEngineDesc:
+    'The foundation repository containing core model orchestration, agent execution loops, and backend pipelines.',
   primaryBranchLabel: 'Primary Branch',
   organizationLabel: 'Organization',
   studioFrontendSubtitle: 'Featherweight Web Studio Application',
-  studioFrontendDesc: 'Ultra-lightweight React 19 + Tailwind v4 + Express studio frontend designed with zero clutter, real-time SupremeAI streaming, and role personas.',
+  studioFrontendDesc:
+    'Ultra-lightweight React 19 + Tailwind v4 + Express studio frontend designed with zero clutter, real-time SupremeAI streaming, and role personas.',
   stackLabel: 'Stack',
   aiIntegrationLabel: 'AI Integration',
   repoArchitectureTitle: 'SupremeAI Studio Architecture',
   roleLabTitle: 'Role & System Instruction Lab',
-  roleLabSubtitle: 'Test and configure specialized AI system prompts. Switch between deep reasoning, fast code synthesis, and systems architecture roles.',
+  roleLabSubtitle:
+    'Test and configure specialized AI system prompts. Switch between deep reasoning, fast code synthesis, and systems architecture roles.',
   promptSpecTitle: 'Prompt Specification',
   modelLabel: 'Model:',
   systemInstructionLabel: 'System Instruction',
@@ -969,18 +1031,22 @@ export const EN_DICT = {
   runningLabel: 'Running...',
   runTestBtn: 'Run Test',
   modelOutputPreviewTitle: 'Model Output Preview',
-  roleLabEmptyOutput: 'Click "Run Test" to execute this role configuration against the selected SupremeAI model.',
+  roleLabEmptyOutput:
+    'Click "Run Test" to execute this role configuration against the selected SupremeAI model.',
   configurePersonaTitle: 'Configure Persona & System Instructions',
   selectPresetRoleLabel: 'Select Preset Role',
   associatedModelLabel: 'Associated Model',
   promptConfigLabel: 'System Instruction (Prompt Configuration)',
   resetToDefaultBtn: 'Reset to default',
-  personaPlaceholder: 'Define persona, technical guidelines, reasoning framework, or domain rules...',
-  personaHint: "The system instruction directs SupremeAI's tone, role boundaries, code standards, and response depth.",
+  personaPlaceholder:
+    'Define persona, technical guidelines, reasoning framework, or domain rules...',
+  personaHint:
+    "The system instruction directs SupremeAI's tone, role boundaries, code standards, and response depth.",
   applyRoleBtn: 'Apply Role',
   llmGatewayTitle: 'LLM Gateway & Cost Guard',
   llmGatewayBadge: 'Intelligent Model Router',
-  llmGatewaySubtitle: 'Dynamic provider routing, automated 503 load fallbacks, token pricing margins, and error rate circuit breakers.',
+  llmGatewaySubtitle:
+    'Dynamic provider routing, automated 503 load fallbacks, token pricing margins, and error rate circuit breakers.',
   currentGatewayTraffic: 'Current Gateway Traffic:',
   gatewayHealthScore: 'Gateway Health Score',
   avgGatewayLatency: 'Avg Gateway Latency',
@@ -1032,7 +1098,8 @@ export const EN_DICT = {
   wsCodeFilterFiles: 'Filter files...',
   wsCodeActiveBuffer: 'Live Session Buffer',
   wsNonBrowserBadge: 'CLI / Server Code',
-  wsNonBrowserHint: 'Runs outside the browser DOM. Edit in Code or execute shell commands in Terminal.',
+  wsNonBrowserHint:
+    'Runs outside the browser DOM. Edit in Code or execute shell commands in Terminal.',
   wsOpenInCodeBtn: 'Open in Code',
   wsOpenInTerminalBtn: 'Open Terminal',
   wsScriptRunnerBtn: 'Sandbox VM',
@@ -1041,17 +1108,22 @@ export const EN_DICT = {
   opsConsoleTitle: 'Ops & Admin Console',
   autoModelBadge: 'Auto',
   autoModelTitle: 'SupremeAI · Auto',
-  autoModelDesc: 'Automatically picks the best model tier, grounding, and research depth for each prompt.',
+  autoModelDesc:
+    'Automatically picks the best model tier, grounding, and research depth for each prompt.',
   manualModelToggle: 'Advanced: Pick model manually',
   autoModelSettingLabel: 'Smart Auto Model Routing',
-  autoModelSettingDesc: 'Automatically route between Spark, Core, Reason, and Deep based on prompt intent.',
+  autoModelSettingDesc:
+    'Automatically route between Spark, Core, Reason, and Deep based on prompt intent.',
   quickStartersHeader: 'Quick Starters',
   starterBuildAppTitle: 'Build Web App',
-  starterBuildAppPrompt: 'Build a sleek, interactive web application with modern UI and live preview.',
+  starterBuildAppPrompt:
+    'Build a sleek, interactive web application with modern UI and live preview.',
   starterResearchTitle: 'Deep Research Report',
-  starterResearchPrompt: 'Generate a structured deep research report with key takeaways and sources on: ',
+  starterResearchPrompt:
+    'Generate a structured deep research report with key takeaways and sources on: ',
   starterAnalyzeTitle: 'Analyze & Solve',
-  starterAnalyzePrompt: 'Analyze this problem step-by-step and deliver the cleanest, production-ready solution.',
+  starterAnalyzePrompt:
+    'Analyze this problem step-by-step and deliver the cleanest, production-ready solution.',
   wsMoreOptions: 'More options',
   wsAutoHealingNotice: 'Resolving runtime error automatically...',
   wsAutoHealingRetry: 'Auto-fix could not resolve after 2 attempts',
@@ -1064,7 +1136,8 @@ export const EN_DICT = {
   wbSearchGroundingHint: 'Ground answers in live web sources & citations',
   wbStructuredOutputLabel: 'Structured JSON Output',
   wbStructuredOutputHint: 'Force valid JSON response (optional schema)',
-  wbJsonSchemaPlaceholder: 'Optional JSON Schema, e.g. {"type":"object","properties":{"summary":{"type":"string"}}}',
+  wbJsonSchemaPlaceholder:
+    'Optional JSON Schema, e.g. {"type":"object","properties":{"summary":{"type":"string"}}}',
   wbJsonSchemaInvalid: 'Invalid JSON schema syntax',
   wbJsonModeDisablesSearch: 'Search grounding pauses while JSON output is active.',
   wbAgentLoopLabel: 'Autonomous Agent Mode',
@@ -1077,7 +1150,8 @@ export const EN_DICT = {
   wsScheduleAutoActive: 'Auto-runner active · checks every 60s',
   wsScheduleRunHistoryToast: 'Scheduled Job Executed',
   kbAutoRagStatusLabel: 'Knowledge Base Auto-RAG',
-  kbAutoRagStatusDesc: 'Uploaded documents are automatically matched and grounded in chat whenever relevant.',
+  kbAutoRagStatusDesc:
+    'Uploaded documents are automatically matched and grounded in chat whenever relevant.',
   kbAutoMatchedBadge: 'Auto-Matched',
   kbAutoRagMetric: 'Auto-RAG Indexing',
   kbAutoRagActiveValue: 'Automatic',
@@ -1106,7 +1180,8 @@ export const EN_DICT = {
   visionErrRetryIn: 'Retry after ~{sec}s',
   visionOcrActionBtn: 'Read Text via Browser OCR (No API Key)',
   visionOcrRunning: 'Scanning image text locally ({pct}%)...',
-  visionOcrNoticeBanner: 'Text extracted via browser OCR only — the full visual scene/layout was not analyzed.',
+  visionOcrNoticeBanner:
+    'Text extracted via browser OCR only — the full visual scene/layout was not analyzed.',
   visionOcrNoTextFound: 'No readable text was detected in this image via browser OCR.',
   visionOcrSendToTextAi: 'Send Extracted Text to Free Text AI',
   visionOcrPreviewLabel: 'Extracted OCR Text (Inspect & Edit before sending)',
@@ -1124,12 +1199,10 @@ export const EN_DICT = {
     'Chat engine, model catalogue, and core runtime health. Required 100% live for normal operation.',
   syncTier1Sla: '100% Required',
   syncTier2Title: 'Tier 2: User Experience & Speed',
-  syncTier2Desc:
-    'Conversation archive, adaptive latency routing, and AI provider health mesh.',
+  syncTier2Desc: 'Conversation archive, adaptive latency routing, and AI provider health mesh.',
   syncTier2Sla: 'High Priority',
   syncTier3Title: 'Tier 3: Agent Tools & Ecosystem',
-  syncTier3Desc:
-    'Autonomous task engine, MCP tool manifests, and capability registry.',
+  syncTier3Desc: 'Autonomous task engine, MCP tool manifests, and capability registry.',
   syncTier3Sla: 'Tools & Skills',
   syncTier4Title: 'Tier 4: Enterprise & Deep Auto-Ops',
   syncTier4Desc:
@@ -1322,7 +1395,8 @@ export const EN_DICT = {
   mtRebooting: 'Rebooting...',
   mtRequiresReboot: 'Requires immediate reboot',
   mtResetFilters: 'Reset filters',
-  mtSelectToolHint: 'Select an MCP tool from the registry list to inspect arguments and run live calls.',
+  mtSelectToolHint:
+    'Select an MCP tool from the registry list to inspect arguments and run live calls.',
   mtServicePort: 'Service & Port',
   mtServiceMesh: 'Service Mesh',
   mtStandardPool: 'Standard latency pool',
@@ -1347,7 +1421,8 @@ export const EN_DICT = {
   ovSchemaParity: 'Database Schema Parity',
   ovDestructiveHint: 'Destructive operations require explicit confirmation.',
   ovEmergencyLock: 'Emergency Maintenance Lock',
-  ovModelGovernanceHint: 'Enable/disable SupremeAI models or enforce minimum subscription tier per model.',
+  ovModelGovernanceHint:
+    'Enable/disable SupremeAI models or enforce minimum subscription tier per model.',
   ovFlushDlq: 'Flush DLQ',
   ovFreePlus: 'Free+',
   ovGatewayLoad: 'Gateway & Host Load',

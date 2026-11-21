@@ -3,11 +3,10 @@
  * Communicates via HTTPS/JSON-RPC to the live SupremeAI Control Tower endpoint.
  */
 
-export const DEFAULT_LIVE_MCP_TOWER_URL =
-  "https://supremeai-mcp-tower-live.onrender.com/mcp";
+export const DEFAULT_LIVE_MCP_TOWER_URL = 'https://supremeai-mcp-tower-live.onrender.com/mcp';
 
 export interface FederationHealth {
-  status: "nominal" | "degraded" | "critical" | "offline";
+  status: 'nominal' | 'degraded' | 'critical' | 'offline';
   activeAgents: number;
   openClaims: number;
   runwayDepth: number;
@@ -19,8 +18,8 @@ export interface RunwayItem {
   id: string;
   repo: string;
   title: string;
-  stage: "queued" | "in_gates" | "landed" | "rejected";
-  ciStatus: "pass" | "fail" | "pending";
+  stage: 'queued' | 'in_gates' | 'landed' | 'rejected';
+  ciStatus: 'pass' | 'fail' | 'pending';
   author: string;
 }
 
@@ -29,7 +28,7 @@ export interface TaskDispatchRequest {
   title: string;
   scopePaths: string[];
   description: string;
-  priority?: "P0-critical" | "P1-high" | "P2-medium" | "P3-low";
+  priority?: 'P0-critical' | 'P1-high' | 'P2-medium' | 'P3-low';
 }
 
 export interface TaskDispatchResponse {
@@ -60,11 +59,11 @@ export class McpBridge {
 
     try {
       const healthUrl = this.towerUrl
-        .replace(/\/agents\/[^/]+\/mcp\/?$/i, "/health")
-        .replace(/\/mcp\/?$/i, "/health");
+        .replace(/\/agents\/[^/]+\/mcp\/?$/i, '/health')
+        .replace(/\/mcp\/?$/i, '/health');
       const res = await fetch(healthUrl, {
-        method: "GET",
-        headers: { Accept: "application/json" },
+        method: 'GET',
+        headers: { Accept: 'application/json' },
         signal: controller.signal,
       });
 
@@ -72,7 +71,7 @@ export class McpBridge {
 
       if (!res.ok) {
         return {
-          status: "degraded",
+          status: 'degraded',
           activeAgents: 0,
           openClaims: 0,
           runwayDepth: 0,
@@ -83,16 +82,16 @@ export class McpBridge {
 
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       return {
-        status: (data.status as FederationHealth["status"]) || "nominal",
-        activeAgents: typeof data.activeAgents === "number" ? data.activeAgents : 0,
-        openClaims: typeof data.openClaims === "number" ? data.openClaims : 0,
-        runwayDepth: typeof data.runwayDepth === "number" ? data.runwayDepth : 0,
+        status: (data.status as FederationHealth['status']) || 'nominal',
+        activeAgents: typeof data.activeAgents === 'number' ? data.activeAgents : 0,
+        openClaims: typeof data.openClaims === 'number' ? data.openClaims : 0,
+        runwayDepth: typeof data.runwayDepth === 'number' ? data.runwayDepth : 0,
         latencyMs,
         lastChecked: new Date().toISOString(),
       };
     } catch {
       return {
-        status: "offline",
+        status: 'offline',
         activeAgents: 0,
         openClaims: 0,
         runwayDepth: 0,
@@ -110,18 +109,18 @@ export class McpBridge {
 
     try {
       const payload = {
-        jsonrpc: "2.0",
+        jsonrpc: '2.0',
         id: Date.now(),
-        method: "tools/call",
+        method: 'tools/call',
         params: {
-          name: "work_runway_status",
+          name: 'work_runway_status',
           arguments: {},
         },
       };
 
       const res = await fetch(this.towerUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
@@ -145,7 +144,7 @@ export class McpBridge {
 
   public async dispatchTask(req: TaskDispatchRequest): Promise<TaskDispatchResponse> {
     if (!req.title || !req.repo) {
-      return { success: false, error: "Task title and repository are required." };
+      return { success: false, error: 'Task title and repository are required.' };
     }
 
     const controller = new AbortController();
@@ -153,29 +152,29 @@ export class McpBridge {
 
     try {
       const bodyLines = [
-        req.description || "",
-        "",
-        `**Scope paths:** ${req.scopePaths.length ? req.scopePaths.join(", ") : "(none)"}`,
-        `**Priority:** ${req.priority || "P1-high"}`,
+        req.description || '',
+        '',
+        `**Scope paths:** ${req.scopePaths.length ? req.scopePaths.join(', ') : '(none)'}`,
+        `**Priority:** ${req.priority || 'P1-high'}`,
       ];
       const payload = {
-        jsonrpc: "2.0",
+        jsonrpc: '2.0',
         id: Date.now(),
-        method: "tools/call",
+        method: 'tools/call',
         params: {
-          name: "github.create_issue",
+          name: 'github.create_issue',
           arguments: {
             title: req.title,
-            body: bodyLines.join("\n"),
+            body: bodyLines.join('\n'),
             repo: req.repo,
-            labels: [req.priority || "P1-high", "status:unclaimed"],
+            labels: [req.priority || 'P1-high', 'status:unclaimed'],
           },
         },
       };
 
       const res = await fetch(this.towerUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
@@ -190,16 +189,16 @@ export class McpBridge {
       };
 
       if (data.error) {
-        return { success: false, error: data.error.message || "MCP Dispatch Error" };
+        return { success: false, error: data.error.message || 'MCP Dispatch Error' };
       }
 
       if (!data.result) {
-        return { success: false, error: "MCP response missing result" };
+        return { success: false, error: 'MCP response missing result' };
       }
 
-      const responseText = data.result.content?.[0]?.text || "";
+      const responseText = data.result.content?.[0]?.text || '';
       if (data.result.isError) {
-        return { success: false, error: responseText || "MCP tool reported an error" };
+        return { success: false, error: responseText || 'MCP tool reported an error' };
       }
 
       let taskId: string | undefined;
@@ -213,8 +212,8 @@ export class McpBridge {
             (parsed.id as string) ||
             undefined;
           const rawIssue = parsed.issueNumber ?? parsed.issue_number ?? parsed.issue;
-          if (typeof rawIssue === "number") issueNumber = rawIssue;
-          else if (typeof rawIssue === "string" && /^\d+$/.test(rawIssue)) {
+          if (typeof rawIssue === 'number') issueNumber = rawIssue;
+          else if (typeof rawIssue === 'string' && /^\d+$/.test(rawIssue)) {
             issueNumber = Number(rawIssue);
           }
         } catch {
@@ -223,7 +222,7 @@ export class McpBridge {
       }
 
       if (!responseText && !taskId) {
-        return { success: false, error: "MCP dispatch returned no result content" };
+        return { success: false, error: 'MCP dispatch returned no result content' };
       }
 
       return {
@@ -234,7 +233,7 @@ export class McpBridge {
     } catch (err) {
       return {
         success: false,
-        error: err instanceof Error ? err.message : "Network error during dispatch",
+        error: err instanceof Error ? err.message : 'Network error during dispatch',
       };
     } finally {
       clearTimeout(timer);
@@ -251,18 +250,18 @@ export class McpBridge {
 
     try {
       const payload = {
-        jsonrpc: "2.0",
+        jsonrpc: '2.0',
         id: Date.now(),
-        method: "tools/call",
+        method: 'tools/call',
         params: {
-          name: "emergency_kill_switch",
+          name: 'emergency_kill_switch',
           arguments: { pin },
         },
       };
 
       const res = await fetch(this.towerUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         signal: controller.signal,
       });

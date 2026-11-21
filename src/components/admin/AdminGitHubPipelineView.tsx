@@ -124,8 +124,12 @@ export const AdminGitHubPipelineView: React.FC = () => {
             className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono"
           >
             <option value="Supremeai-bd/supremeai">Supremeai-bd/supremeai (Monorepo SSOT)</option>
-            <option value="Supremeai-bd/supremeai-public">Supremeai-bd/supremeai-public (Studio Mirror)</option>
-            <option value="Supremeai-bd/supremeai-frontend">Supremeai-bd/supremeai-frontend (Legacy Archived)</option>
+            <option value="Supremeai-bd/supremeai-public">
+              Supremeai-bd/supremeai-public (Studio Mirror)
+            </option>
+            <option value="Supremeai-bd/supremeai-frontend">
+              Supremeai-bd/supremeai-frontend (Legacy Archived)
+            </option>
           </select>
           <button
             type="button"

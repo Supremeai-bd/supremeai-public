@@ -760,8 +760,12 @@ function persistScheduledTasks(tasks: BrowserScheduledTask[]): void {
 }
 
 function scheduledTaskHeaders(): Record<string, string> {
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('supremeai_access_token') : null;
-  return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const token =
+    typeof localStorage !== 'undefined' ? localStorage.getItem('supremeai_access_token') : null;
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 }
 
 export async function saveScheduledTask(params: {

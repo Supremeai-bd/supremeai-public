@@ -306,7 +306,11 @@ export default function App() {
     let applyingRemote = false;
     const client = new RealtimeSyncClient({
       onEnvelope: (envelope) => {
-        if (envelope.domain === 'theme' && envelope.payload && typeof envelope.payload === 'object') {
+        if (
+          envelope.domain === 'theme' &&
+          envelope.payload &&
+          typeof envelope.payload === 'object'
+        ) {
           applyingRemote = true;
           useThemeStore.getState().applyRemoteThemeConfig(envelope.payload as SyncThemePayload);
           window.setTimeout(() => {
@@ -836,15 +840,24 @@ export default function App() {
     switch (action) {
       case 'toggle_dark_mode':
         useThemeStore.getState().setThemeMode('dark');
-        toast.success(bn ? 'ডার্ক মোড চালু' : 'Dark Mode Active', bn ? 'থিম ডার্ক মোডে পরিবর্তন করা হয়েছে।' : 'Switched workspace theme to dark mode.');
+        toast.success(
+          bn ? 'ডার্ক মোড চালু' : 'Dark Mode Active',
+          bn ? 'থিম ডার্ক মোডে পরিবর্তন করা হয়েছে।' : 'Switched workspace theme to dark mode.'
+        );
         return true;
       case 'toggle_light_mode':
         useThemeStore.getState().setThemeMode('light');
-        toast.success(bn ? 'লাইট মোড চালু' : 'Light Mode Active', bn ? 'থিম লাইট মোডে পরিবর্তন করা হয়েছে।' : 'Switched workspace theme to light mode.');
+        toast.success(
+          bn ? 'লাইট মোড চালু' : 'Light Mode Active',
+          bn ? 'থিম লাইট মোডে পরিবর্তন করা হয়েছে।' : 'Switched workspace theme to light mode.'
+        );
         return true;
       case 'toggle_voice':
         setIsLiveVoiceOpen((v) => !v);
-        toast.info(bn ? 'ভয়েস মোড' : 'Voice Mode', bn ? 'লাইভ ভয়েস ইন্টারফেস পরিবর্তন করা হয়েছে।' : 'Toggled live voice companion mode.');
+        toast.info(
+          bn ? 'ভয়েস মোড' : 'Voice Mode',
+          bn ? 'লাইভ ভয়েস ইন্টারফেস পরিবর্তন করা হয়েছে।' : 'Toggled live voice companion mode.'
+        );
         return true;
       case 'open_usage':
         handleSelectTab('user-billing');

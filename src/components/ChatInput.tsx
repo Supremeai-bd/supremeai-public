@@ -779,123 +779,123 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   <ChevronDown className="w-3 h-3 opacity-75 shrink-0" />
                 </button>
 
-              {/* Model Menu Dropdown (Developer Mode only): Auto Routing First + Collapsible Manual Selection */}
-              {developerMode && showModelMenu && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setShowModelMenu(false)} />
-                  <div className="absolute right-0 bottom-full mb-2 w-76 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-40 p-1.5 space-y-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        updateSettings({ autoModelRouting: true });
-                        setShowModelMenu(false);
-                      }}
-                      className={`w-full text-left p-2.5 rounded-lg border transition-colors cursor-pointer ${
-                        autoModelRouting
-                          ? 'theme-accent-active font-medium'
-                          : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-700 dark:text-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold flex items-center gap-2">
-                          <Sparkles className="w-3.5 h-3.5 theme-accent-text shrink-0" />
-                          <span>{t.autoModelTitle}</span>
-                        </span>
-                        {autoModelRouting && (
-                          <Check className="w-3.5 h-3.5 theme-accent-text shrink-0" />
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                        {t.autoModelDesc}
-                      </p>
-                    </button>
-
-                    <div className="border-t border-slate-100 dark:border-slate-700/70 my-1 pt-1">
+                {/* Model Menu Dropdown (Developer Mode only): Auto Routing First + Collapsible Manual Selection */}
+                {developerMode && showModelMenu && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setShowModelMenu(false)} />
+                    <div className="absolute right-0 bottom-full mb-2 w-76 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-40 p-1.5 space-y-1">
                       <button
                         type="button"
-                        onClick={() => setShowManualModels((v) => !v)}
-                        className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer"
+                        onClick={() => {
+                          updateSettings({ autoModelRouting: true });
+                          setShowModelMenu(false);
+                        }}
+                        className={`w-full text-left p-2.5 rounded-lg border transition-colors cursor-pointer ${
+                          autoModelRouting
+                            ? 'theme-accent-active font-medium'
+                            : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-700 dark:text-slate-200'
+                        }`}
                       >
-                        <span>{t.manualModelToggle}</span>
-                        {showManualModels ? (
-                          <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-                        ) : (
-                          <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-                        )}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold flex items-center gap-2">
+                            <Sparkles className="w-3.5 h-3.5 theme-accent-text shrink-0" />
+                            <span>{t.autoModelTitle}</span>
+                          </span>
+                          {autoModelRouting && (
+                            <Check className="w-3.5 h-3.5 theme-accent-text shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                          {t.autoModelDesc}
+                        </p>
                       </button>
-                    </div>
 
-                    {showManualModels && (
-                      <div className="space-y-0.5 max-h-60 overflow-y-auto pt-0.5">
-                        {SUPREMEAI_MODELS.map((model) => {
-                          const policy = config.modelPolicies[model.id] || {
-                            enabled: true,
-                            minTier: 'Free',
-                          };
-                          const isDisabledByAdmin = !policy.enabled && currentRole !== 'admin';
-                          const isTierLocked =
-                            currentRole !== 'admin' &&
-                            TIER_RANK[userTier] < TIER_RANK[policy.minTier];
-                          const isBlocked = isDisabledByAdmin || isTierLocked;
-                          const modelTheme = getModelColorTheme(model.id);
-                          const isSelected = !autoModelRouting && model.id === activeModel.id;
-
-                          return (
-                            <button
-                              key={model.id}
-                              type="button"
-                              disabled={isBlocked}
-                              onClick={() => {
-                                if (isBlocked) return;
-                                updateSettings({ autoModelRouting: false });
-                                onSelectModel(model);
-                                setShowModelMenu(false);
-                              }}
-                              className={`w-full text-left p-2 rounded-lg transition-colors ${
-                                isBlocked
-                                  ? 'opacity-50 cursor-not-allowed bg-slate-50/50 dark:bg-slate-900/30 text-slate-400'
-                                  : isSelected
-                                    ? `${modelTheme.menuActiveClass} font-medium cursor-pointer`
-                                    : 'hover:bg-slate-50 dark:hover:bg-slate-700/50 border border-transparent text-slate-700 dark:text-slate-300 cursor-pointer'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-xs font-semibold flex items-center gap-2">
-                                  {isBlocked ? (
-                                    <Lock className="w-3 h-3 text-amber-500 shrink-0" />
-                                  ) : (
-                                    <span
-                                      className={`w-2.5 h-2.5 rounded-full shrink-0 ${modelTheme.dotClass}`}
-                                    />
-                                  )}
-                                  <span className={isSelected ? modelTheme.activeTextClass : ''}>
-                                    {model.name}
-                                  </span>
-                                </span>
-                                {(isDisabledByAdmin ||
-                                  isTierLocked ||
-                                  developerMode ||
-                                  currentRole === 'admin') && (
-                                  <span className="text-[10px] font-mono text-slate-400">
-                                    {isDisabledByAdmin
-                                      ? 'Disabled'
-                                      : isTierLocked
-                                        ? `${policy.minTier}+`
-                                        : model.latencyRating}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 pl-4.5 line-clamp-1">
-                                {model.tagline}
-                              </p>
-                            </button>
-                          );
-                        })}
+                      <div className="border-t border-slate-100 dark:border-slate-700/70 my-1 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowManualModels((v) => !v)}
+                          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/40 cursor-pointer"
+                        >
+                          <span>{t.manualModelToggle}</span>
+                          {showManualModels ? (
+                            <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                          ) : (
+                            <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                          )}
+                        </button>
                       </div>
-                    )}
-                  </div>
-                </>
-              )}
+
+                      {showManualModels && (
+                        <div className="space-y-0.5 max-h-60 overflow-y-auto pt-0.5">
+                          {SUPREMEAI_MODELS.map((model) => {
+                            const policy = config.modelPolicies[model.id] || {
+                              enabled: true,
+                              minTier: 'Free',
+                            };
+                            const isDisabledByAdmin = !policy.enabled && currentRole !== 'admin';
+                            const isTierLocked =
+                              currentRole !== 'admin' &&
+                              TIER_RANK[userTier] < TIER_RANK[policy.minTier];
+                            const isBlocked = isDisabledByAdmin || isTierLocked;
+                            const modelTheme = getModelColorTheme(model.id);
+                            const isSelected = !autoModelRouting && model.id === activeModel.id;
+
+                            return (
+                              <button
+                                key={model.id}
+                                type="button"
+                                disabled={isBlocked}
+                                onClick={() => {
+                                  if (isBlocked) return;
+                                  updateSettings({ autoModelRouting: false });
+                                  onSelectModel(model);
+                                  setShowModelMenu(false);
+                                }}
+                                className={`w-full text-left p-2 rounded-lg transition-colors ${
+                                  isBlocked
+                                    ? 'opacity-50 cursor-not-allowed bg-slate-50/50 dark:bg-slate-900/30 text-slate-400'
+                                    : isSelected
+                                      ? `${modelTheme.menuActiveClass} font-medium cursor-pointer`
+                                      : 'hover:bg-slate-50 dark:hover:bg-slate-700/50 border border-transparent text-slate-700 dark:text-slate-300 cursor-pointer'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold flex items-center gap-2">
+                                    {isBlocked ? (
+                                      <Lock className="w-3 h-3 text-amber-500 shrink-0" />
+                                    ) : (
+                                      <span
+                                        className={`w-2.5 h-2.5 rounded-full shrink-0 ${modelTheme.dotClass}`}
+                                      />
+                                    )}
+                                    <span className={isSelected ? modelTheme.activeTextClass : ''}>
+                                      {model.name}
+                                    </span>
+                                  </span>
+                                  {(isDisabledByAdmin ||
+                                    isTierLocked ||
+                                    developerMode ||
+                                    currentRole === 'admin') && (
+                                    <span className="text-[10px] font-mono text-slate-400">
+                                      {isDisabledByAdmin
+                                        ? 'Disabled'
+                                        : isTierLocked
+                                          ? `${policy.minTier}+`
+                                          : model.latencyRating}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 pl-4.5 line-clamp-1">
+                                  {model.tagline}
+                                </p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

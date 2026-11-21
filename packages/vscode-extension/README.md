@@ -4,6 +4,7 @@ Unified VS Code `.vsix` extension inside the `Supremeai-bd/supremeai-public` sin
 Every single push builds **Web + Desktop (`.exe`/`.msi`) + Android (`.apk`) + VS Code (`.vsix`)** together and keeps versions and endpoints synchronized.
 
 ## Key Features
+
 - **Federation Runway Telemetry**: Live status bar indicator showing active autonomous agents, open claims, and CI gate health via `https://supremeai-mcp-tower-live.onrender.com/mcp`.
 - **In-Editor Chat Sidebar & Inline Selection Actions**: Ask, explain, or fix code directly using SupremeAI Gateway (`https://supremeai-api-ulw0.onrender.com`).
 - **Task Dispatch & Emergency Kill-Switch**: Dispatch work to federation repositories or trigger emergency autonomy halt.

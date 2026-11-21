@@ -189,14 +189,18 @@ export function validateEdgeGitLabHost(
   if (!allowedOrigins.has(parsed.origin)) {
     return {
       valid: false,
-      reason: 'Untrusted GitLab host. Only https://gitlab.com or configured GITLAB_HOST is permitted.',
+      reason:
+        'Untrusted GitLab host. Only https://gitlab.com or configured GITLAB_HOST is permitted.',
     };
   }
   return { valid: true, origin: parsed.origin };
 }
 
 export function isRestrictedEdgeHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  const host = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '');
   if (!host) return true;
   if (
     host === 'localhost' ||

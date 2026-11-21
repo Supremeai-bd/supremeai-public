@@ -94,7 +94,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [showInlinePassword, setShowInlinePassword] = useState(false);
   const [inlineError, setInlineError] = useState('');
   const [showMoreWorkspace, setShowMoreWorkspace] = useState(false);
-  const [memoryTopicsCount, setMemoryTopicsCount] = useState(() => loadUserMemory().recentTopics.length);
+  const [memoryTopicsCount, setMemoryTopicsCount] = useState(
+    () => loadUserMemory().recentTopics.length
+  );
   const authLogin = useAuthStore((s) => s.login);
   const authLoading = useAuthStore((s) => s.isLoading);
 

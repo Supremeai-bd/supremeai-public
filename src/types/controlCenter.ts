@@ -402,4 +402,3 @@ export interface EcosystemDiagnosticsReport {
   rawStatus?: unknown;
   rawParity?: unknown;
 }
-

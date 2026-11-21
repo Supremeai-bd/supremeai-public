@@ -119,7 +119,12 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       try {
         const fallbackTarget = `${FALLBACK_UPSTREAM_ORIGIN}${incomingUrl.pathname}${incomingUrl.search}`;
         const fallbackRes = await fetch(fallbackTarget, upstreamInit);
-        if (fallbackRes.ok || fallbackRes.status === 401 || fallbackRes.status === 400 || fallbackRes.status === 422) {
+        if (
+          fallbackRes.ok ||
+          fallbackRes.status === 401 ||
+          fallbackRes.status === 400 ||
+          fallbackRes.status === 422
+        ) {
           upstreamResponse = fallbackRes;
         }
       } catch {

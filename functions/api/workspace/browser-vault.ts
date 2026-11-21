@@ -194,9 +194,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
 
       const body = (await request.json().catch(() => ({}))) as { id?: string };
       const targetId = String(incomingUrl.searchParams.get('id') || body.id || '').trim();
-      const entries = targetId
-        ? loaded.entries.filter((e) => e.id !== targetId)
-        : loaded.entries;
+      const entries = targetId ? loaded.entries.filter((e) => e.id !== targetId) : loaded.entries;
 
       const saveRes = await fetchWithTimeout(
         `${upstreamOrigin}/api/v1/user/preferences`,

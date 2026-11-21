@@ -4,7 +4,9 @@ import { basename, dirname, join } from 'node:path';
 const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
 const { GITHUB_REPOSITORY, RELEASE_TAG, WEB_STUDIO_URL } = process.env;
 if (!GITHUB_REPOSITORY || !['latest', `v${version}`].includes(RELEASE_TAG)) {
-  throw new Error('Expected GITHUB_REPOSITORY and a RELEASE_TAG matching package.json (or latest).');
+  throw new Error(
+    'Expected GITHUB_REPOSITORY and a RELEASE_TAG matching package.json (or latest).'
+  );
 }
 
 const normalizeAndRename = (dir, relativePath) => {
@@ -26,7 +28,9 @@ const desktopFiles = existsSync(desktopDir)
 
 const installers = desktopFiles.filter((file) => file.endsWith(`_${version}_x64-setup.exe`));
 if (installers.length !== 1) {
-  throw new Error(`Expected exactly one NSIS x64 installer for ${version}; found ${installers.length}.`);
+  throw new Error(
+    `Expected exactly one NSIS x64 installer for ${version}; found ${installers.length}.`
+  );
 }
 const exeAsset = normalizeAndRename(desktopDir, installers[0]);
 const windowsExeUrl = downloadUrlFor(exeAsset);
@@ -45,8 +49,7 @@ const androidFiles = existsSync(androidDir)
 const normalizedApks = androidFiles.map((file) => normalizeAndRename(androidDir, file));
 const arm64Apk =
   normalizedApks.find((name) => /universal|arm64|aarch64/i.test(name)) || normalizedApks[0] || null;
-const armv7Apk =
-  normalizedApks.find((name) => /armv7|armeabi/i.test(name)) || null;
+const armv7Apk = normalizedApks.find((name) => /armv7|armeabi/i.test(name)) || null;
 
 const androidApkUrl = arm64Apk ? downloadUrlFor(arm64Apk) : undefined;
 const androidArmv7ApkUrl = armv7Apk ? downloadUrlFor(armv7Apk) : undefined;
@@ -102,4 +105,3 @@ const manifest = {
 const jsonOutput = `${JSON.stringify(manifest, null, 2)}\n`;
 writeFileSync('latest-desktop.json', jsonOutput);
 writeFileSync('latest-release.json', jsonOutput);
-

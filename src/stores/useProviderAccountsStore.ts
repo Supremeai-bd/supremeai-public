@@ -125,9 +125,7 @@ export function calculateAccountRunway(acc: ProviderAccountRecord): RunwayEstima
 export function getDaysUntilReset(resetDayOfMonth: number): number {
   const now = new Date();
   const clampedDay = Math.min(28, Math.max(1, Math.round(resetDayOfMonth || 1)));
-  const currentMonthReset = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), clampedDay)
-  );
+  const currentMonthReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), clampedDay));
   const target =
     currentMonthReset.getTime() > now.getTime()
       ? currentMonthReset
@@ -697,7 +695,8 @@ const INITIAL_AUDIT: ProviderAccountAuditEntry[] = [
     providerId: 'gemini',
     accountAlias: 'Gemini-Free-Pool-A',
     action: 'probe',
-    summary: 'Detected 92% monthly token utilization + 19 HTTP 429 events; Gemini-Free-Pool-B ready for failover.',
+    summary:
+      'Detected 92% monthly token utilization + 19 HTTP 429 events; Gemini-Free-Pool-B ready for failover.',
   },
   {
     id: 'aud_init_2',
@@ -706,7 +705,8 @@ const INITIAL_AUDIT: ProviderAccountAuditEntry[] = [
     providerId: 'render',
     accountAlias: 'Render-Core-Acc-1',
     action: 'probe',
-    summary: 'Build minutes at 93% (35 mins remaining). Standby Render-Overflow-Acc-2 verified healthy.',
+    summary:
+      'Build minutes at 93% (35 mins remaining). Standby Render-Overflow-Acc-2 verified healthy.',
   },
 ];
 
@@ -771,13 +771,21 @@ interface ProviderAccountsStoreState {
   lastGlobalSweepAt: string;
 
   setPrimaryAccount: (accountId: string, actor?: string) => void;
-  triggerPoolFailover: (providerId: ProviderPoolId, actor?: string) => {
+  triggerPoolFailover: (
+    providerId: ProviderPoolId,
+    actor?: string
+  ) => {
     switched: boolean;
     message: string;
   };
   autoRebalanceAllPools: (actor?: string) => number;
   toggleAccountPause: (accountId: string, actor?: string) => void;
-  rotateAccountKey: (accountId: string, newKeyMask: string, infisicalPath?: string, actor?: string) => void;
+  rotateAccountKey: (
+    accountId: string,
+    newKeyMask: string,
+    infisicalPath?: string,
+    actor?: string
+  ) => void;
   updatePoolPolicy: (
     providerId: ProviderPoolId,
     patch: Partial<ProviderPoolPolicy>,
@@ -850,7 +858,11 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
     };
 
     const nextAudit = [entry, ...state.auditLog].slice(0, 60);
-    savePersistedState({ accounts: updatedAccounts, policies: state.policies, auditLog: nextAudit });
+    savePersistedState({
+      accounts: updatedAccounts,
+      policies: state.policies,
+      auditLog: nextAudit,
+    });
     set({ accounts: updatedAccounts, auditLog: nextAudit });
   },
 
@@ -861,7 +873,10 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
       .sort((a, b) => a.priority - b.priority);
 
     if (pool.length < 2) {
-      return { switched: false, message: 'Add at least 2 accounts in this pool to enable failover.' };
+      return {
+        switched: false,
+        message: 'Add at least 2 accounts in this pool to enable failover.',
+      };
     }
 
     const currentPrimary = pool[0];
@@ -915,7 +930,11 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
     };
 
     const nextAudit = [entry, ...state.auditLog].slice(0, 60);
-    savePersistedState({ accounts: updatedAccounts, policies: state.policies, auditLog: nextAudit });
+    savePersistedState({
+      accounts: updatedAccounts,
+      policies: state.policies,
+      auditLog: nextAudit,
+    });
     set({ accounts: updatedAccounts, auditLog: nextAudit });
 
     return {
@@ -942,7 +961,8 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
       const shouldFailover =
         runway.usagePct >= threshold ||
         primary.status === 'exhausted' ||
-        (policy?.failoverOn429 && (primary.status === 'rate-limited' || primary.errors24h.http429 >= 10));
+        (policy?.failoverOn429 &&
+          (primary.status === 'rate-limited' || primary.errors24h.http429 >= 10));
 
       if (shouldFailover) {
         const res = get().triggerPoolFailover(pid, actor);
@@ -980,7 +1000,11 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
     };
 
     const nextAudit = [entry, ...state.auditLog].slice(0, 60);
-    savePersistedState({ accounts: updatedAccounts, policies: state.policies, auditLog: nextAudit });
+    savePersistedState({
+      accounts: updatedAccounts,
+      policies: state.policies,
+      auditLog: nextAudit,
+    });
     set({ accounts: updatedAccounts, auditLog: nextAudit });
   },
 
@@ -1014,7 +1038,11 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
     };
 
     const nextAudit = [entry, ...state.auditLog].slice(0, 60);
-    savePersistedState({ accounts: updatedAccounts, policies: state.policies, auditLog: nextAudit });
+    savePersistedState({
+      accounts: updatedAccounts,
+      policies: state.policies,
+      auditLog: nextAudit,
+    });
     set({ accounts: updatedAccounts, auditLog: nextAudit });
   },
 
@@ -1068,7 +1096,11 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
     };
 
     const nextAudit = [entry, ...state.auditLog].slice(0, 60);
-    savePersistedState({ accounts: updatedAccounts, policies: state.policies, auditLog: nextAudit });
+    savePersistedState({
+      accounts: updatedAccounts,
+      policies: state.policies,
+      auditLog: nextAudit,
+    });
     set({ accounts: updatedAccounts, auditLog: nextAudit });
   },
 
@@ -1092,7 +1124,11 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
     };
 
     const nextAudit = [entry, ...state.auditLog].slice(0, 60);
-    savePersistedState({ accounts: updatedAccounts, policies: state.policies, auditLog: nextAudit });
+    savePersistedState({
+      accounts: updatedAccounts,
+      policies: state.policies,
+      auditLog: nextAudit,
+    });
     set({ accounts: updatedAccounts, auditLog: nextAudit });
   },
 
@@ -1113,7 +1149,11 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
     };
 
     const nextAudit = [entry, ...state.auditLog].slice(0, 60);
-    savePersistedState({ accounts: updatedAccounts, policies: state.policies, auditLog: nextAudit });
+    savePersistedState({
+      accounts: updatedAccounts,
+      policies: state.policies,
+      auditLog: nextAudit,
+    });
     set({ accounts: updatedAccounts, auditLog: nextAudit });
   },
 
@@ -1150,7 +1190,11 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
       };
 
       const nextAudit = [entry, ...latest.auditLog].slice(0, 60);
-      savePersistedState({ accounts: updatedAccounts, policies: latest.policies, auditLog: nextAudit });
+      savePersistedState({
+        accounts: updatedAccounts,
+        policies: latest.policies,
+        auditLog: nextAudit,
+      });
       set({
         accounts: updatedAccounts,
         auditLog: nextAudit,
@@ -1195,7 +1239,11 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
       };
 
       const nextAudit = [entry, ...latest.auditLog].slice(0, 60);
-      savePersistedState({ accounts: updatedAccounts, policies: latest.policies, auditLog: nextAudit });
+      savePersistedState({
+        accounts: updatedAccounts,
+        policies: latest.policies,
+        auditLog: nextAudit,
+      });
       set({
         accounts: updatedAccounts,
         auditLog: nextAudit,

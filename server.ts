@@ -49,6 +49,16 @@ import {
 } from './src/config/releaseDownloads';
 import QRCode from 'qrcode';
 import { buildOtpAuthUri, generateTotpSecret, verifyTotpToken } from './src/server/totp';
+import { buildDurableAuditRow } from './src/server/auditPayload';
+import {
+  loginSchema,
+  signupSchema,
+  refreshSchema,
+  totpConfirmSchema,
+  verify2faSchema,
+  adminPasskeySchema,
+  parseBody,
+} from './src/server/validation';
 import { PLAN_CATALOG, TOPUP_PACKAGES, getPlanSpec } from './src/config/plans';
 import {
   buildJsonViewerHtml,
@@ -1222,7 +1232,9 @@ async function startServer() {
     for (let hop = 0; hop <= maxRedirects; hop += 1) {
       const check = await resolveAndCheckProxyTarget(currentUrl, currentLocal);
       if (check.restricted) {
-        throw new Error(check.reason || 'Blocked outbound request to restricted or private target.');
+        throw new Error(
+          check.reason || 'Blocked outbound request to restricted or private target.'
+        );
       }
 
       const response = await fetch(currentUrl.toString(), currentInit);
@@ -1581,8 +1593,6 @@ async function startServer() {
     },
   ];
 
-  // GET /api/mcp-tower/health - Live MCP Tower reachability probe (mirrors Edge Function parity)
-
   // MCP Tower proxy surface (health, services, reboot, probe, SSE stream) now
   // lives in src/server/routes/mcpTowerRoutes.ts. The four callbacks are passed
   // as lazy closures on purpose: `recordAudit`/`resolveAuditActor`/
@@ -1704,7 +1714,8 @@ async function startServer() {
           actor: 'system-agent-scheduler',
           action: 'AUTONOMOUS_SWARM_SCALE',
           resource: 'Swarm Worker: solver-daemon-01',
-          details: 'Auto-scaled worker concurrency to 4 threads during high GitHub issue throughput.',
+          details:
+            'Auto-scaled worker concurrency to 4 threads during high GitHub issue throughput.',
           ipAddress: '127.0.0.1',
         },
         {
@@ -1761,17 +1772,11 @@ async function startServer() {
       auditRecords.length = 200;
     }
     // Best-effort durable audit trail (survives redeploy when Supabase is configured).
-    void supabaseRestRequest('audit_logs', 'POST', [
-      {
-        id: entry.id,
-        actor: entry.actor,
-        action: entry.action,
-        resource: entry.resource,
-        details: entry.details,
-        ip_address: entry.ipAddress,
-        created_at: new Date().toISOString(),
-      },
-    ]).catch(() => {});
+    // NOTE: `audit_logs.id` is a bigint identity column, so the local `entry.id`
+    // (an `audit_<ts>_<rand>` string used only for the in-memory list) must NOT be
+    // sent — Postgres rejects it with 22P02 and the row is never written. The
+    // durable id is assigned by the database.
+    void supabaseRestRequest('audit_logs', 'POST', [buildDurableAuditRow(entry)]).catch(() => {});
   };
 
   let blockedIps: { ip: string; reason: string; date: string }[] = isProduction
@@ -1842,6 +1847,46 @@ async function startServer() {
   };
   void loadPlatformState();
 
+  // Startup schema probe. The durable audit + platform-state writers swallow
+  // errors so they can never break a request, which previously hid the fact
+  // that `platform_settings` did not exist and that `audit_logs` had no
+  // partition covering "now". Surface that drift in the logs instead of
+  // failing silently.
+  const verifyGatewaySchema = async () => {
+    const checks: Array<{ table: string; path: string; requiredColumns: string[] }> = [
+      {
+        table: 'platform_settings',
+        path: 'platform_settings?select=id&limit=1',
+        requiredColumns: ['id', 'value', 'updated_at'],
+      },
+      {
+        table: 'audit_logs',
+        path: 'audit_logs?select=id,actor,action,resource,details,ip_address,created_at&limit=1',
+        requiredColumns: [
+          'id',
+          'actor',
+          'action',
+          'resource',
+          'details',
+          'ip_address',
+          'created_at',
+        ],
+      },
+    ];
+    for (const check of checks) {
+      try {
+        await supabaseRestRequest(check.path, 'GET');
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(
+          `[schema] ${check.table} is not usable by the gateway (expected columns: ${check.requiredColumns.join(', ')}). ` +
+            `Durable writes to this table will be dropped. Apply supabase/migrations before deploying. Cause: ${detail}`
+        );
+      }
+    }
+  };
+  void verifyGatewaySchema();
+
   // --- User Authentication & Unified Customer Directory ---
   const envAdminEmails = [
     process.env.ADMIN_EMAIL,
@@ -1850,13 +1895,17 @@ async function startServer() {
     .map((e) => (e || '').trim().toLowerCase())
     .filter(Boolean);
 
-  // Personal emails removed from source control; configure additional admins via ADMIN_EMAIL / ADMIN_EMAILS.
-  const SEEDED_ADMIN_EMAILS = new Set([
-    'admin@supremeai.bd',
-    'admin@njel.com.bd',
-    ...envAdminEmails,
-  ]);
-  const ADMIN_USER_IDS = new Set(['admin_root_001', 'admin_njel_99']);
+  // Personal/organisational emails are never seeded from source control. The only
+  // built-in admin identities come from ADMIN_EMAIL / ADMIN_EMAILS, and users or
+  // customers declared admin in the database (see getDatabaseAdminEmails below).
+  const SEEDED_ADMIN_EMAILS = new Set<string>(envAdminEmails);
+  // Admin user IDs are likewise environment-driven, never hardcoded.
+  const ADMIN_USER_IDS = new Set(
+    (process.env.ADMIN_USER_IDS || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+  );
   const ADMIN_RBAC_ROLES = new Set(['admin', 'super_admin', 'superadmin', 'root_admin', 'owner']);
 
   type RbacRole = 'admin' | 'super_admin' | 'developer' | 'user';
@@ -1961,167 +2010,167 @@ async function startServer() {
   let customerDirectory: ServerCustomerRecord[] = isProduction
     ? []
     : [
-    {
-      id: 'cust_001',
-      name: 'Studio Developer',
-      email: 'demo.developer@supremeai.bd',
-      tier: 'Pro',
-      status: 'active',
-      mrr: 29,
-      tokensUsed: 142500,
-      tokenLimit: 1000000,
-      connectedRepos: 2,
-      joinedDate: '2026-01-14',
-      lastActive: 'Just now',
-      githubHandle: 'supremeai-dev',
-      region: 'Asia/Dhaka',
-      isDeveloperEligible: true,
-    },
-    {
-      id: 'cust_sarah',
-      name: 'Sarah Chen',
-      email: 'sarah.chen@fintech.io',
-      tier: 'Pro',
-      status: 'active',
-      mrr: 29,
-      tokensUsed: 384200,
-      tokenLimit: 1000000,
-      connectedRepos: 4,
-      joinedDate: '2026-03-10',
-      lastActive: '5 mins ago',
-      githubHandle: 'sarah-fintech',
-      region: 'US/West',
-      isDeveloperEligible: true,
-    },
-    {
-      id: 'cust_alex',
-      name: 'Alex Johnson',
-      email: 'alex.j@partner.io',
-      tier: 'Free',
-      status: 'active',
-      mrr: 0,
-      tokensUsed: 24500,
-      tokenLimit: 100000,
-      connectedRepos: 1,
-      joinedDate: '2026-04-01',
-      lastActive: '1 hour ago',
-      githubHandle: 'alexj-partner',
-      region: 'Europe/London',
-      isDeveloperEligible: false,
-    },
-    {
-      id: 'cust_002',
-      name: 'Rahim Chowdhury',
-      email: 'rahim.chowdhury@techscale.io',
-      tier: 'Enterprise',
-      status: 'active',
-      mrr: 199,
-      tokensUsed: 1845000,
-      tokenLimit: 5000000,
-      connectedRepos: 14,
-      joinedDate: '2025-11-03',
-      lastActive: '12 mins ago',
-      githubHandle: 'rahim-techscale',
-      region: 'Asia/Singapore',
-      isDeveloperEligible: true,
-    },
-    {
-      id: 'cust_003',
-      name: 'Sarah Jenkins',
-      email: 'sarah.j@vertexlabs.ai',
-      tier: 'Enterprise',
-      status: 'active',
-      mrr: 199,
-      tokensUsed: 2910000,
-      tokenLimit: 5000000,
-      connectedRepos: 8,
-      joinedDate: '2025-10-22',
-      lastActive: '45 mins ago',
-      githubHandle: 'sjenkins-ai',
-      region: 'US/East',
-      isDeveloperEligible: true,
-    },
-    {
-      id: 'cust_004',
-      name: 'Demo Developer',
-      email: 'developer@supremeai.bd',
-      tier: 'Pro',
-      status: 'active',
-      mrr: 29,
-      tokensUsed: 620400,
-      tokenLimit: 1000000,
-      connectedRepos: 3,
-      joinedDate: '2026-02-01',
-      lastActive: '2 hours ago',
-      githubHandle: 'demo-developer',
-      region: 'Asia/Dhaka',
-      isDeveloperEligible: true,
-    },
-    {
-      id: 'cust_005',
-      name: 'Elena Rostova',
-      email: 'elena@novasoft.eu',
-      tier: 'Pro',
-      status: 'past_due',
-      mrr: 29,
-      tokensUsed: 980200,
-      tokenLimit: 1000000,
-      connectedRepos: 4,
-      joinedDate: '2026-01-18',
-      lastActive: '5 hours ago',
-      githubHandle: 'elena-novasoft',
-      region: 'Europe/Berlin',
-      isDeveloperEligible: false,
-    },
-    {
-      id: 'cust_006',
-      name: 'Marcus Brody',
-      email: 'marcus.brody@openbuild.dev',
-      tier: 'Free',
-      status: 'active',
-      mrr: 0,
-      tokensUsed: 42100,
-      tokenLimit: 100000,
-      connectedRepos: 1,
-      joinedDate: '2026-02-10',
-      lastActive: '1 day ago',
-      githubHandle: 'mbrody',
-      region: 'US/West',
-      isDeveloperEligible: false,
-    },
-    {
-      id: 'cust_007',
-      name: 'Fatima Al-Mansoor',
-      email: 'fatima@cloudcore.ae',
-      tier: 'Enterprise',
-      status: 'active',
-      mrr: 199,
-      tokensUsed: 3120000,
-      tokenLimit: 5000000,
-      connectedRepos: 12,
-      joinedDate: '2025-12-08',
-      lastActive: '3 hours ago',
-      githubHandle: 'fatima-cloud',
-      region: 'MiddleEast/Dubai',
-      isDeveloperEligible: true,
-    },
-    {
-      id: 'cust_010',
-      name: 'David Zhao',
-      email: 'zhao.david@quantmatrix.com',
-      tier: 'Free',
-      status: 'suspended',
-      mrr: 0,
-      tokensUsed: 100000,
-      tokenLimit: 100000,
-      connectedRepos: 0,
-      joinedDate: '2026-02-04',
-      lastActive: '7 days ago',
-      githubHandle: 'zhaodavid',
-      region: 'Asia/Tokyo',
-      isDeveloperEligible: false,
-    },
-  ];
+        {
+          id: 'cust_001',
+          name: 'Studio Developer',
+          email: 'demo.developer@supremeai.bd',
+          tier: 'Pro',
+          status: 'active',
+          mrr: 29,
+          tokensUsed: 142500,
+          tokenLimit: 1000000,
+          connectedRepos: 2,
+          joinedDate: '2026-01-14',
+          lastActive: 'Just now',
+          githubHandle: 'supremeai-dev',
+          region: 'Asia/Dhaka',
+          isDeveloperEligible: true,
+        },
+        {
+          id: 'cust_sarah',
+          name: 'Sarah Chen',
+          email: 'sarah.chen@fintech.io',
+          tier: 'Pro',
+          status: 'active',
+          mrr: 29,
+          tokensUsed: 384200,
+          tokenLimit: 1000000,
+          connectedRepos: 4,
+          joinedDate: '2026-03-10',
+          lastActive: '5 mins ago',
+          githubHandle: 'sarah-fintech',
+          region: 'US/West',
+          isDeveloperEligible: true,
+        },
+        {
+          id: 'cust_alex',
+          name: 'Alex Johnson',
+          email: 'alex.j@partner.io',
+          tier: 'Free',
+          status: 'active',
+          mrr: 0,
+          tokensUsed: 24500,
+          tokenLimit: 100000,
+          connectedRepos: 1,
+          joinedDate: '2026-04-01',
+          lastActive: '1 hour ago',
+          githubHandle: 'alexj-partner',
+          region: 'Europe/London',
+          isDeveloperEligible: false,
+        },
+        {
+          id: 'cust_002',
+          name: 'Rahim Chowdhury',
+          email: 'rahim.chowdhury@techscale.io',
+          tier: 'Enterprise',
+          status: 'active',
+          mrr: 199,
+          tokensUsed: 1845000,
+          tokenLimit: 5000000,
+          connectedRepos: 14,
+          joinedDate: '2025-11-03',
+          lastActive: '12 mins ago',
+          githubHandle: 'rahim-techscale',
+          region: 'Asia/Singapore',
+          isDeveloperEligible: true,
+        },
+        {
+          id: 'cust_003',
+          name: 'Sarah Jenkins',
+          email: 'sarah.j@vertexlabs.ai',
+          tier: 'Enterprise',
+          status: 'active',
+          mrr: 199,
+          tokensUsed: 2910000,
+          tokenLimit: 5000000,
+          connectedRepos: 8,
+          joinedDate: '2025-10-22',
+          lastActive: '45 mins ago',
+          githubHandle: 'sjenkins-ai',
+          region: 'US/East',
+          isDeveloperEligible: true,
+        },
+        {
+          id: 'cust_004',
+          name: 'Demo Developer',
+          email: 'developer@supremeai.bd',
+          tier: 'Pro',
+          status: 'active',
+          mrr: 29,
+          tokensUsed: 620400,
+          tokenLimit: 1000000,
+          connectedRepos: 3,
+          joinedDate: '2026-02-01',
+          lastActive: '2 hours ago',
+          githubHandle: 'demo-developer',
+          region: 'Asia/Dhaka',
+          isDeveloperEligible: true,
+        },
+        {
+          id: 'cust_005',
+          name: 'Elena Rostova',
+          email: 'elena@novasoft.eu',
+          tier: 'Pro',
+          status: 'past_due',
+          mrr: 29,
+          tokensUsed: 980200,
+          tokenLimit: 1000000,
+          connectedRepos: 4,
+          joinedDate: '2026-01-18',
+          lastActive: '5 hours ago',
+          githubHandle: 'elena-novasoft',
+          region: 'Europe/Berlin',
+          isDeveloperEligible: false,
+        },
+        {
+          id: 'cust_006',
+          name: 'Marcus Brody',
+          email: 'marcus.brody@openbuild.dev',
+          tier: 'Free',
+          status: 'active',
+          mrr: 0,
+          tokensUsed: 42100,
+          tokenLimit: 100000,
+          connectedRepos: 1,
+          joinedDate: '2026-02-10',
+          lastActive: '1 day ago',
+          githubHandle: 'mbrody',
+          region: 'US/West',
+          isDeveloperEligible: false,
+        },
+        {
+          id: 'cust_007',
+          name: 'Fatima Al-Mansoor',
+          email: 'fatima@cloudcore.ae',
+          tier: 'Enterprise',
+          status: 'active',
+          mrr: 199,
+          tokensUsed: 3120000,
+          tokenLimit: 5000000,
+          connectedRepos: 12,
+          joinedDate: '2025-12-08',
+          lastActive: '3 hours ago',
+          githubHandle: 'fatima-cloud',
+          region: 'MiddleEast/Dubai',
+          isDeveloperEligible: true,
+        },
+        {
+          id: 'cust_010',
+          name: 'David Zhao',
+          email: 'zhao.david@quantmatrix.com',
+          tier: 'Free',
+          status: 'suspended',
+          mrr: 0,
+          tokensUsed: 100000,
+          tokenLimit: 100000,
+          connectedRepos: 0,
+          joinedDate: '2026-02-04',
+          lastActive: '7 days ago',
+          githubHandle: 'zhaodavid',
+          region: 'Asia/Tokyo',
+          isDeveloperEligible: false,
+        },
+      ];
 
   // Provider Health & Failover Registry (server-managed + Infisical Vault synced secrets)
   const maskServerSecret = (val: string) => {
@@ -2413,55 +2462,55 @@ async function startServer() {
   }> = isProduction
     ? []
     : [
-    {
-      id: 'vault_infisical_gateway_master',
-      secretName: 'SUPREMEAI_GATEWAY_SIGNING_KEY',
-      infisicalPath: '/core/SUPREMEAI_GATEWAY_SIGNING_KEY',
-      environment: 'prod' as const,
-      provider: 'supremeai',
-      providerDisplayName: 'SupremeAI Gateway Mesh',
-      maskedKey: 'sk-supreme-••••••••••••••••not-configured',
-      version: 9,
-      status: 'healthy' as const,
-      latencyMs: 12,
-      avgLatencyMs: 15,
-      p95LatencyMs: 24,
-      lastChecked: 'Just now (HTTP 200)',
-      lastSyncedAt: new Date().toISOString(),
-    },
-    {
-      id: 'vault_infisical_gemini_staging',
-      secretName: 'GEMINI_API_KEY_STAGING',
-      infisicalPath: '/staging/ai-providers/GEMINI_API_KEY',
-      environment: 'staging' as const,
-      provider: 'google_ai_studio',
-      providerDisplayName: 'Google AI Studio (Staging)',
-      maskedKey: 'gsk-••••••••••••••••not-configured',
-      version: 3,
-      status: 'healthy' as const,
-      latencyMs: 31,
-      avgLatencyMs: 34,
-      p95LatencyMs: 56,
-      lastChecked: '5m ago (HTTP 200)',
-      lastSyncedAt: new Date().toISOString(),
-    },
-    {
-      id: 'vault_infisical_openai_dev',
-      secretName: 'OPENAI_API_KEY_DEV',
-      infisicalPath: '/dev/ai-providers/OPENAI_API_KEY',
-      environment: 'dev' as const,
-      provider: 'openai',
-      providerDisplayName: 'OpenAI Platform (Dev Sandbox)',
-      maskedKey: 'sk-proj-••••••••••••••••not-configured',
-      version: 2,
-      status: 'healthy' as const,
-      latencyMs: 152,
-      avgLatencyMs: 158,
-      p95LatencyMs: 262,
-      lastChecked: '18m ago (HTTP 200)',
-      lastSyncedAt: new Date().toISOString(),
-    },
-  ];
+        {
+          id: 'vault_infisical_gateway_master',
+          secretName: 'SUPREMEAI_GATEWAY_SIGNING_KEY',
+          infisicalPath: '/core/SUPREMEAI_GATEWAY_SIGNING_KEY',
+          environment: 'prod' as const,
+          provider: 'supremeai',
+          providerDisplayName: 'SupremeAI Gateway Mesh',
+          maskedKey: 'sk-supreme-••••••••••••••••not-configured',
+          version: 9,
+          status: 'healthy' as const,
+          latencyMs: 12,
+          avgLatencyMs: 15,
+          p95LatencyMs: 24,
+          lastChecked: 'Just now (HTTP 200)',
+          lastSyncedAt: new Date().toISOString(),
+        },
+        {
+          id: 'vault_infisical_gemini_staging',
+          secretName: 'GEMINI_API_KEY_STAGING',
+          infisicalPath: '/staging/ai-providers/GEMINI_API_KEY',
+          environment: 'staging' as const,
+          provider: 'google_ai_studio',
+          providerDisplayName: 'Google AI Studio (Staging)',
+          maskedKey: 'gsk-••••••••••••••••not-configured',
+          version: 3,
+          status: 'healthy' as const,
+          latencyMs: 31,
+          avgLatencyMs: 34,
+          p95LatencyMs: 56,
+          lastChecked: '5m ago (HTTP 200)',
+          lastSyncedAt: new Date().toISOString(),
+        },
+        {
+          id: 'vault_infisical_openai_dev',
+          secretName: 'OPENAI_API_KEY_DEV',
+          infisicalPath: '/dev/ai-providers/OPENAI_API_KEY',
+          environment: 'dev' as const,
+          provider: 'openai',
+          providerDisplayName: 'OpenAI Platform (Dev Sandbox)',
+          maskedKey: 'sk-proj-••••••••••••••••not-configured',
+          version: 2,
+          status: 'healthy' as const,
+          latencyMs: 152,
+          avgLatencyMs: 158,
+          p95LatencyMs: 262,
+          lastChecked: '18m ago (HTTP 200)',
+          lastSyncedAt: new Date().toISOString(),
+        },
+      ];
 
   const buildInfisicalVaultKeys = () => {
     const nowIso = new Date().toISOString();
@@ -2503,91 +2552,91 @@ async function startServer() {
   }> = isProduction
     ? []
     : [
-    {
-      id: 'key_prod_01',
-      name: 'SupremeAI Studio Production CLI',
-      provider: 'supremeai',
-      keyPrefix: 'sk-supreme-example',
-      secretMasked: 'sk-supreme-••••••••••••••••not-configured',
-      createdAt: '2026-03-12',
-      lastUsed: '2 minutes ago',
-      rateLimitRpm: 600,
-      status: 'active',
-      healthStatus: 'healthy',
-      lastChecked: '2 mins ago',
-      permissions: ['chat:write', 'models:read', 'knowledge:read', 'agents:invoke'],
-    },
-    {
-      id: 'key_gemini_02',
-      name: 'Google AI Studio (Gemini Flash Primary)',
-      provider: 'google_ai_studio',
-      keyPrefix: 'gsk-example',
-      secretMasked: 'gsk-••••••••••••••••not-configured',
-      createdAt: '2026-04-01',
-      lastUsed: '5 minutes ago',
-      rateLimitRpm: 360,
-      status: 'active',
-      healthStatus: 'healthy',
-      lastChecked: 'Just now',
-      permissions: ['chat:write', 'models:read', 'knowledge:read'],
-    },
-    {
-      id: 'key_openai_03',
-      name: 'OpenAI GPT-4o Fallback Bridge',
-      provider: 'openai',
-      keyPrefix: 'sk-proj-example',
-      secretMasked: 'sk-proj-••••••••••••••••not-configured',
-      createdAt: '2026-04-08',
-      lastUsed: '18 minutes ago',
-      rateLimitRpm: 240,
-      status: 'active',
-      healthStatus: 'healthy',
-      lastChecked: '12 mins ago',
-      permissions: ['chat:write', 'models:read'],
-    },
-    {
-      id: 'key_anthropic_04',
-      name: 'Anthropic Claude Sonnet Review Worker',
-      provider: 'anthropic',
-      keyPrefix: 'sk-ant-example',
-      secretMasked: 'sk-ant-••••••••••••••••not-configured',
-      createdAt: '2026-04-12',
-      lastUsed: '1 hour ago',
-      rateLimitRpm: 120,
-      status: 'active',
-      healthStatus: 'degraded',
-      lastChecked: '1 hour ago',
-      permissions: ['chat:write', 'agents:invoke'],
-    },
-    {
-      id: 'key_groq_05',
-      name: 'Groq LPU Ultra-Fast Synthesis',
-      provider: 'groq',
-      keyPrefix: 'gsk-example',
-      secretMasked: 'gsk-••••••••••••••••not-configured',
-      createdAt: '2026-04-20',
-      lastUsed: '25 minutes ago',
-      rateLimitRpm: 480,
-      status: 'active',
-      healthStatus: 'healthy',
-      lastChecked: '4 mins ago',
-      permissions: ['chat:write', 'models:read'],
-    },
-    {
-      id: 'key_revoked_06',
-      name: 'Legacy Staging Key (Deprecated)',
-      provider: 'mistral',
-      keyPrefix: 'msk-example',
-      secretMasked: 'msk-••••••••••••••••not-configured',
-      createdAt: '2026-01-15',
-      lastUsed: '34 days ago',
-      rateLimitRpm: 60,
-      status: 'revoked',
-      healthStatus: 'untested',
-      lastChecked: '34 days ago',
-      permissions: ['models:read'],
-    },
-  ];
+        {
+          id: 'key_prod_01',
+          name: 'SupremeAI Studio Production CLI',
+          provider: 'supremeai',
+          keyPrefix: 'sk-supreme-example',
+          secretMasked: 'sk-supreme-••••••••••••••••not-configured',
+          createdAt: '2026-03-12',
+          lastUsed: '2 minutes ago',
+          rateLimitRpm: 600,
+          status: 'active',
+          healthStatus: 'healthy',
+          lastChecked: '2 mins ago',
+          permissions: ['chat:write', 'models:read', 'knowledge:read', 'agents:invoke'],
+        },
+        {
+          id: 'key_gemini_02',
+          name: 'Google AI Studio (Gemini Flash Primary)',
+          provider: 'google_ai_studio',
+          keyPrefix: 'gsk-example',
+          secretMasked: 'gsk-••••••••••••••••not-configured',
+          createdAt: '2026-04-01',
+          lastUsed: '5 minutes ago',
+          rateLimitRpm: 360,
+          status: 'active',
+          healthStatus: 'healthy',
+          lastChecked: 'Just now',
+          permissions: ['chat:write', 'models:read', 'knowledge:read'],
+        },
+        {
+          id: 'key_openai_03',
+          name: 'OpenAI GPT-4o Fallback Bridge',
+          provider: 'openai',
+          keyPrefix: 'sk-proj-example',
+          secretMasked: 'sk-proj-••••••••••••••••not-configured',
+          createdAt: '2026-04-08',
+          lastUsed: '18 minutes ago',
+          rateLimitRpm: 240,
+          status: 'active',
+          healthStatus: 'healthy',
+          lastChecked: '12 mins ago',
+          permissions: ['chat:write', 'models:read'],
+        },
+        {
+          id: 'key_anthropic_04',
+          name: 'Anthropic Claude Sonnet Review Worker',
+          provider: 'anthropic',
+          keyPrefix: 'sk-ant-example',
+          secretMasked: 'sk-ant-••••••••••••••••not-configured',
+          createdAt: '2026-04-12',
+          lastUsed: '1 hour ago',
+          rateLimitRpm: 120,
+          status: 'active',
+          healthStatus: 'degraded',
+          lastChecked: '1 hour ago',
+          permissions: ['chat:write', 'agents:invoke'],
+        },
+        {
+          id: 'key_groq_05',
+          name: 'Groq LPU Ultra-Fast Synthesis',
+          provider: 'groq',
+          keyPrefix: 'gsk-example',
+          secretMasked: 'gsk-••••••••••••••••not-configured',
+          createdAt: '2026-04-20',
+          lastUsed: '25 minutes ago',
+          rateLimitRpm: 480,
+          status: 'active',
+          healthStatus: 'healthy',
+          lastChecked: '4 mins ago',
+          permissions: ['chat:write', 'models:read'],
+        },
+        {
+          id: 'key_revoked_06',
+          name: 'Legacy Staging Key (Deprecated)',
+          provider: 'mistral',
+          keyPrefix: 'msk-example',
+          secretMasked: 'msk-••••••••••••••••not-configured',
+          createdAt: '2026-01-15',
+          lastUsed: '34 days ago',
+          rateLimitRpm: 60,
+          status: 'revoked',
+          healthStatus: 'untested',
+          lastChecked: '34 days ago',
+          permissions: ['models:read'],
+        },
+      ];
 
   const activeAuthSessions = new Map<string, string>();
   // Local (dev/preview) refresh-token registry. The production gateway issues
@@ -2741,9 +2790,11 @@ async function startServer() {
       return;
     }
 
-    const { email, username, password } = req.body || {};
+    const parsed = parseBody(loginSchema, req, res);
+    if (!parsed.ok) return;
+    const { email, username, password } = parsed.data;
     const rawEmail = email || username;
-    if (!rawEmail || !password) {
+    if (!rawEmail) {
       res.status(400).json({ error: 'Email and password are required.' });
       return;
     }
@@ -2791,8 +2842,7 @@ async function startServer() {
 
     // Fallback to upstream database-backed gateway if configured and user is not in local usersDb
     if (!user) {
-      const remoteGatewayUrl =
-        process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
+      const remoteGatewayUrl = process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
       try {
         const upstreamRes = await fetch(`${remoteGatewayUrl}/api/v1/auth/login`, {
           method: 'POST',
@@ -2920,7 +2970,8 @@ async function startServer() {
         res.status(upstreamRes.status || 401).json({ error: String(upstreamErrMsg) });
         return;
       } catch (err: unknown) {
-        const isAbort = err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
+        const isAbort =
+          err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
         res.status(isAbort ? 504 : 502).json({
           error: isAbort
             ? 'Authentication gateway timed out while waking up. Please try signing in again.'
@@ -2945,13 +2996,10 @@ async function startServer() {
       return;
     }
 
-    const {
-      name,
-      email,
-      username,
-      password,
-    } = req.body || {};
-    const rawEmail = email || username;
+    const parsed = parseBody(signupSchema, req, res);
+    if (!parsed.ok) return;
+    const { name, email, password } = parsed.data;
+    const rawEmail = email;
     const cleanName = String(name || (rawEmail ? String(rawEmail).split('@')[0] : '')).trim();
     if (!cleanName || !rawEmail || !password) {
       res.status(400).json({ error: 'Name, email, and password are required.' });
@@ -2965,8 +3013,7 @@ async function startServer() {
       return;
     }
 
-    const remoteGatewayUrl =
-      process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
+    const remoteGatewayUrl = process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
     if (remoteGatewayUrl) {
       try {
         const upstreamRes = await fetch(`${remoteGatewayUrl}/api/v1/auth/register`, {
@@ -3026,7 +3073,11 @@ async function startServer() {
           });
           return;
         }
-        if (upstreamRes.status === 409 || upstreamRes.status === 400 || upstreamRes.status === 422) {
+        if (
+          upstreamRes.status === 409 ||
+          upstreamRes.status === 400 ||
+          upstreamRes.status === 422
+        ) {
           res.status(upstreamRes.status).json({
             error:
               upstreamData?.detail ||
@@ -3047,9 +3098,7 @@ async function startServer() {
     const rbac = resolveRbacUserProfile(cleanEmail, undefined, existingCust);
     const isAdmin = rbac.isAdminEligible;
     const devEligible = isAdmin || Boolean(existingCust?.isDeveloperEligible);
-    const assignedPlan: PlanTier = isAdmin
-      ? 'Enterprise'
-      : existingCust?.tier || 'Free';
+    const assignedPlan: PlanTier = isAdmin ? 'Enterprise' : existingCust?.tier || 'Free';
     const newUser: ServerUser = {
       id: `usr_${Date.now()}`,
       name: cleanName,
@@ -3174,8 +3223,7 @@ async function startServer() {
 
     // Try upstream gateway if bearer token is an upstream JWT
     if (!token.startsWith('tok_') && !token.startsWith('mock_tok_')) {
-      const remoteGatewayUrl =
-        process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
+      const remoteGatewayUrl = process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
       try {
         const upstreamRes = await fetch(`${remoteGatewayUrl}/api/v1/auth/me`, {
           method: 'GET',
@@ -3258,8 +3306,7 @@ async function startServer() {
   };
 
   const handleGuestTokenRequest = async (_req: Request, res: Response) => {
-    const remoteGatewayUrl =
-      process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
+    const remoteGatewayUrl = process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
     try {
       const upstreamRes = await fetch(`${remoteGatewayUrl}/api/v1/auth/guest`, {
         method: 'POST',
@@ -3293,14 +3340,17 @@ async function startServer() {
 
   const handleRefreshRequest = async (req: Request, res: Response) => {
     const cookies = parseCookieHeader(req.headers.cookie);
-    const presented = String(
-      req.body?.refresh_token || cookies.supremeai_refresh_token || ''
-    ).trim();
+    // Body is optional here: the refresh token may legitimately arrive only as
+    // an httpOnly cookie. Validate the shape when a body is present, but never
+    // reject a cookie-only refresh.
+    const parsedRefresh = parseBody(refreshSchema, req, res);
+    const bodyRefreshToken = parsedRefresh.ok ? parsedRefresh.data.refresh_token : undefined;
+    if (!parsedRefresh.ok && !cookies.supremeai_refresh_token) return;
+    const presented = String(bodyRefreshToken || cookies.supremeai_refresh_token || '').trim();
     const entry = presented ? activeRefreshTokens.get(presented) : undefined;
 
     if (!entry && presented && !presented.startsWith('rt_')) {
-      const remoteGatewayUrl =
-        process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
+      const remoteGatewayUrl = process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
       try {
         const upstreamRes = await fetch(`${remoteGatewayUrl}/api/v1/auth/refresh`, {
           method: 'POST',
@@ -3499,12 +3549,8 @@ async function startServer() {
                 const merged: ReleaseManifest = {
                   ...normalized,
                   publishedAt: normalized.publishedAt || String(release.published_at || ''),
-                  windowsExeUrl: String(
-                    exeAsset?.browser_download_url || normalized.windowsExeUrl
-                  ),
-                  windowsMsiUrl: String(
-                    msiAsset?.browser_download_url || normalized.windowsMsiUrl
-                  ),
+                  windowsExeUrl: String(exeAsset?.browser_download_url || normalized.windowsExeUrl),
+                  windowsMsiUrl: String(msiAsset?.browser_download_url || normalized.windowsMsiUrl),
                   androidApkUrl: String(
                     universalOrArm64Apk?.browser_download_url || normalized.androidApkUrl
                   ),
@@ -3527,9 +3573,7 @@ async function startServer() {
           if (exeAsset || universalOrArm64Apk || vsixAsset) {
             const tag = String(release.tag_name || 'latest');
             const version =
-              tag !== 'latest'
-                ? tag.replace(/^v/i, '')
-                : DEFAULT_RELEASE_MANIFEST.version;
+              tag !== 'latest' ? tag.replace(/^v/i, '') : DEFAULT_RELEASE_MANIFEST.version;
             const rollingUrls = buildRollingAssetUrls(version, repoSlug, tag);
             const mappedAssets: ReleaseAssetEntry[] = assets
               .filter((a) => /\.(exe|msi|apk|vsix)$/i.test(String(a?.name || '')))
@@ -3560,21 +3604,15 @@ async function startServer() {
               publishedAt: String(release.published_at || ''),
               releasePageUrl: String(release.html_url || rollingUrls.releasePageUrl),
               webUrl: DEFAULT_WEB_STUDIO_URL,
-              windowsExeUrl: String(
-                exeAsset?.browser_download_url || rollingUrls.windowsExeUrl
-              ),
-              windowsMsiUrl: String(
-                msiAsset?.browser_download_url || rollingUrls.windowsMsiUrl
-              ),
+              windowsExeUrl: String(exeAsset?.browser_download_url || rollingUrls.windowsExeUrl),
+              windowsMsiUrl: String(msiAsset?.browser_download_url || rollingUrls.windowsMsiUrl),
               androidApkUrl: String(
                 universalOrArm64Apk?.browser_download_url || rollingUrls.androidApkUrl
               ),
               ...(armv7Apk?.browser_download_url
                 ? { androidArmv7ApkUrl: String(armv7Apk.browser_download_url) }
                 : {}),
-              vscodeVsixUrl: String(
-                vsixAsset?.browser_download_url || rollingUrls.vscodeVsixUrl
-              ),
+              vscodeVsixUrl: String(vsixAsset?.browser_download_url || rollingUrls.vscodeVsixUrl),
               provenance: 'live-github',
               assets: mappedAssets,
             };
@@ -3893,7 +3931,9 @@ async function startServer() {
 
   // POST /api/auth/totp/confirm - Confirm Authenticator pairing with a live 6-digit RFC 6238 code
   app.post('/api/auth/totp/confirm', async (req: Request, res: Response) => {
-    const { userEmail, token, trustFor7Days = false } = req.body || {};
+    const parsed = parseBody(totpConfirmSchema, req, res);
+    if (!parsed.ok) return;
+    const { userEmail, token, trustFor7Days = false } = parsed.data;
     const { cleanEmail, isEligible } = await resolveAdminEligibilityForTotp(req, userEmail);
     if (!isEligible) {
       res
@@ -3955,7 +3995,9 @@ async function startServer() {
 
   // POST /api/auth/verify-2fa (Real RFC 6238 TOTP token only, with replay protection & 7-day trust)
   app.post('/api/auth/verify-2fa', async (req: Request, res: Response) => {
-    const { token, method, trustFor7Days = false, userEmail } = req.body || {};
+    const parsed = parseBody(verify2faSchema, req, res);
+    if (!parsed.ok) return;
+    const { token, method, trustFor7Days = false, userEmail } = parsed.data;
 
     const { cleanEmail, isEligible } = await resolveAdminEligibilityForTotp(req, userEmail);
     if (!isEligible) {
@@ -4198,7 +4240,6 @@ async function startServer() {
   // 'admin' / 'supremeai' accept-any bypass. Auth now fails closed when
   // ADMIN_PASSKEY is not configured in the environment.
   app.post('/api/admin/auth/verify', (req: Request, res: Response) => {
-    const { passkey } = req.body || {};
     const validPass = process.env.ADMIN_PASSKEY;
 
     if (!validPass) {
@@ -4209,6 +4250,10 @@ async function startServer() {
       });
       return;
     }
+
+    const parsed = parseBody(adminPasskeySchema, req, res);
+    if (!parsed.ok) return;
+    const { passkey } = parsed.data;
 
     const a = Buffer.from(String(passkey ?? ''));
     const b = Buffer.from(validPass);
@@ -5756,9 +5801,6 @@ async function startServer() {
       message: `Synced ${vaultKeys.length} API keys from Infisical Vault.`,
     });
   });
-
-  // Register Unified Central Control Center Proxy & MCP Tower Routes
-  registerControlPlaneRoutes(app, { recordAudit, isIpBlocked });
 
   // Dynamic User & Admin Workspace Stores (persistent for runtime lifecycle)
   interface UserWalletRecord {
@@ -8128,8 +8170,14 @@ async function startServer() {
         res.json({ exitCode: 1, stderr: `cat: ${targetRel}: Cannot resolve file` });
         return;
       }
-      if (realTarget !== workspaceRealRoot && !realTarget.startsWith(workspaceRealRoot + path.sep)) {
-        res.json({ exitCode: 1, stderr: 'Security guard: symlink escape outside workspace denied.' });
+      if (
+        realTarget !== workspaceRealRoot &&
+        !realTarget.startsWith(workspaceRealRoot + path.sep)
+      ) {
+        res.json({
+          exitCode: 1,
+          stderr: 'Security guard: symlink escape outside workspace denied.',
+        });
         return;
       }
       const resolvedRel = path.relative(workspaceRealRoot, realTarget);
@@ -8196,7 +8244,10 @@ async function startServer() {
     } else if (rawCommand === 'npm -v' || rawCommand === 'npm --version') {
       execSpec = { bin: 'npm', binArgs: ['-v'] };
     } else if (rawCommand === 'git status' || rawCommand === 'git status -s') {
-      execSpec = { bin: 'git', binArgs: rawCommand === 'git status -s' ? ['status', '-s'] : ['status'] };
+      execSpec = {
+        bin: 'git',
+        binArgs: rawCommand === 'git status -s' ? ['status', '-s'] : ['status'],
+      };
     } else if (rawCommand === 'git branch') {
       execSpec = { bin: 'git', binArgs: ['branch'] };
     } else if (rawCommand === 'git log' || /^git log -n [1-9]\d{0,1}$/.test(rawCommand)) {
@@ -8328,8 +8379,7 @@ async function startServer() {
 
   app.post('/api/workspace/project-run', async (req: Request, res: Response) => {
     const callerIdentity = (req as any).authIdentity as
-      | { email: string; isAdmin: boolean; tier: PlanTier }
-      | undefined;
+      { email: string; isAdmin: boolean; tier: PlanTier } | undefined;
     if (process.env.ALLOW_UNSANDBOXED_PROJECT_RUN !== 'true' || !callerIdentity?.isAdmin) {
       res.status(403).json({
         error:
@@ -9995,8 +10045,9 @@ async function startServer() {
       const recentContext = Array.isArray(req.body?.recentTurns)
         ? req.body.recentTurns
             .slice(-4)
-            .map((t: { role?: string; content?: string }) =>
-              `${t.role || 'user'}: ${String(t.content || '').slice(0, 220)}`
+            .map(
+              (t: { role?: string; content?: string }) =>
+                `${t.role || 'user'}: ${String(t.content || '').slice(0, 220)}`
             )
             .join('\n')
         : '';
@@ -10999,6 +11050,9 @@ Rules:
     }
   });
 
+  // Register Unified Central Control Center Proxy & MCP Tower Routes
+  registerControlPlaneRoutes(app, { recordAudit, isIpBlocked });
+
   // Express Vite Dev Server or Production Static Serving
   let viteServerPromise: Promise<Awaited<ReturnType<typeof createViteServer>>> | null = null;
   if (isProduction) {
@@ -11112,7 +11166,8 @@ Rules:
         }
 
         if (isProduction) {
-          const isGuest = wsToken.startsWith('tok_guest_') || wsToken.startsWith('sk-supreme-guest');
+          const isGuest =
+            wsToken.startsWith('tok_guest_') || wsToken.startsWith('sk-supreme-guest');
           const identity = wsToken && !isGuest ? await verifyBearerIdentity(wsToken) : null;
           if (!identity && !isGuest) {
             socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');

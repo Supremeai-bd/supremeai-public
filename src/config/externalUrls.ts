@@ -59,10 +59,7 @@ export const EXTERNAL_URLS = {
     'https://github.com/Supremeai-bd/supremeai'
   ),
   webStudioUrl: getEnvVar('VITE_WEB_STUDIO_URL', 'https://supremeai-studio.pages.dev'),
-  mcpTowerUrl: getEnvVar(
-    'VITE_MCP_TOWER_URL',
-    'https://supremeai-mcp-tower-live.onrender.com/mcp'
-  ),
+  mcpTowerUrl: getEnvVar('VITE_MCP_TOWER_URL', 'https://supremeai-mcp-tower-live.onrender.com/mcp'),
 };
 
 export const getRuntimeOrigin = (): string => {

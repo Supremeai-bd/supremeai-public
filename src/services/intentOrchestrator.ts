@@ -80,7 +80,12 @@ export function detectPromptLanguage(text: string): 'en' | 'bn' | 'banglish' {
 
 export function loadUserMemory(): UserMemoryProfile {
   if (typeof localStorage === 'undefined') {
-    return { preferredLanguage: 'en', recentTopics: [], interactionCount: 0, updatedAt: Date.now() };
+    return {
+      preferredLanguage: 'en',
+      recentTopics: [],
+      interactionCount: 0,
+      updatedAt: Date.now(),
+    };
   }
   try {
     const raw = localStorage.getItem(USER_MEMORY_STORAGE_KEY);
@@ -233,9 +238,7 @@ export function detectDirectDashboardAction(
     ) {
       return 'open_admin_ai';
     }
-    if (
-      /\b(open|show|check)\s+(customers?|security|audit\s*log|hitl)\b/i.test(t)
-    ) {
+    if (/\b(open|show|check)\s+(customers?|security|audit\s*log|hitl)\b/i.test(t)) {
       return 'open_admin_security';
     }
     if (
@@ -438,7 +441,9 @@ export async function orchestrateUserIntent(params: {
   const enableProjectBuilder = base.enableProjectBuilder || isBanglishBuild;
   const enableLiveArtifactSync = base.enableLiveArtifactSync || isBanglishBuild;
   const enableSearchGrounding =
-    (base.enableSearchGrounding || isBanglishWeb) && !base.enableJsonOutput && !base.enableDeepResearch;
+    (base.enableSearchGrounding || isBanglishWeb) &&
+    !base.enableJsonOutput &&
+    !base.enableDeepResearch;
 
   let primaryGoal: IntentPrimaryGoal = 'chat';
   let autoOpenDockTab: AutoDockTab = 'none';
@@ -584,9 +589,7 @@ export async function orchestrateUserIntent(params: {
             dashboardAction: ai.dashboardAction || 'none',
             needsClarification: allowClarify,
             clarificationQuestion: allowClarify ? ai.clarificationQuestion?.trim() : undefined,
-            clarificationOptions: allowClarify
-              ? ai.clarificationOptions?.slice(0, 4)
-              : undefined,
+            clarificationOptions: allowClarify ? ai.clarificationOptions?.slice(0, 4) : undefined,
             planSummary: ai.planSummary?.trim() || result.planSummary,
             inferredLanguage: ai.inferredLanguage || result.inferredLanguage,
             inferredTopic: ai.inferredTopic?.trim(),

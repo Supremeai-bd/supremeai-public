@@ -151,8 +151,20 @@ describe('AdminQuickStatsCard & computeMcpQuickStats', () => {
       healthSnapshot: null,
       trafficSummary: null,
       services: [
-        makeService({ id: 'a', displayName: 'Node A', latencyMs: 80, cpuPercent: 10, memoryMb: 120 }),
-        makeService({ id: 'b', displayName: 'Node B', latencyMs: 220, cpuPercent: 30, memoryMb: 280 }),
+        makeService({
+          id: 'a',
+          displayName: 'Node A',
+          latencyMs: 80,
+          cpuPercent: 10,
+          memoryMb: 120,
+        }),
+        makeService({
+          id: 'b',
+          displayName: 'Node B',
+          latencyMs: 220,
+          cpuPercent: 30,
+          memoryMb: 280,
+        }),
       ],
     });
 

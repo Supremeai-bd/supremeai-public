@@ -26,10 +26,14 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = 'server.ts';
 
-// Ratchet: lowered by every extraction, never raised.
+// Ratchet: lowered by every extraction, never raised by branch-local changes.
 // 11782 → 11495 after extracting the MCP Tower proxy group
 //         (src/server/routes/mcpTowerRoutes.ts).
-const BUDGET = 11495;
+// Re-baselined to 11550 on merge with main (PR #24): main added 57 net lines
+// of validation/audit hardening to server.ts after this branch was cut
+// (spread across ~30 hunks of existing inline code, not a new route group).
+// The ratchet continues from the merged baseline; future extractions lower it.
+const BUDGET = 11550;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

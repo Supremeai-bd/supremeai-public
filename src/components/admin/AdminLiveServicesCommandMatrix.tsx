@@ -182,7 +182,10 @@ const ServiceMiniSparkline: React.FC<{
 
     const maxLat = Math.max(20, d3.max(pts, (d) => d.latencyMs) || 20);
     const minLat = Math.max(0, (d3.min(pts, (d) => d.latencyMs) || 0) * 0.75);
-    const y = d3.scaleLinear().domain([minLat, maxLat * 1.15]).range([height - padY, padY]);
+    const y = d3
+      .scaleLinear()
+      .domain([minLat, maxLat * 1.15])
+      .range([height - padY, padY]);
 
     const area = d3
       .area<TelemetrySample>()
@@ -215,13 +218,7 @@ const ServiceMiniSparkline: React.FC<{
       .attr('fill', color);
   }, [samples, color, serviceId]);
 
-  return (
-    <svg
-      ref={svgRef}
-      className="w-[128px] h-[34px] block shrink-0"
-      aria-hidden="true"
-    />
-  );
+  return <svg ref={svgRef} className="w-[128px] h-[34px] block shrink-0" aria-hidden="true" />;
 };
 
 export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMatrixProps> = ({
@@ -340,13 +337,19 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
         rawStatus: metric.rawStatus || metric.status,
         latencyMs: Math.round(metric.latencyMs ?? existing?.latencyMs ?? 0),
         p50LatencyMs:
-          metric.p50LatencyMs != null ? Math.round(metric.p50LatencyMs) : existing?.p50LatencyMs ?? null,
+          metric.p50LatencyMs != null
+            ? Math.round(metric.p50LatencyMs)
+            : (existing?.p50LatencyMs ?? null),
         p95LatencyMs:
-          metric.p95LatencyMs != null ? Math.round(metric.p95LatencyMs) : existing?.p95LatencyMs ?? null,
+          metric.p95LatencyMs != null
+            ? Math.round(metric.p95LatencyMs)
+            : (existing?.p95LatencyMs ?? null),
         cpuPercent: Math.round(metric.cpuPercent ?? existing?.cpuPercent ?? 0),
         memoryMb: Math.round(metric.memoryMb ?? existing?.memoryMb ?? 0),
         memoryPercent:
-          metric.memoryPercent != null ? Math.round(metric.memoryPercent) : existing?.memoryPercent ?? null,
+          metric.memoryPercent != null
+            ? Math.round(metric.memoryPercent)
+            : (existing?.memoryPercent ?? null),
         uptime: existing?.uptime || 'Live Probe',
         version: existing?.version || metric.source,
         endpoint: existing?.endpoint || metric.provider,
@@ -556,12 +559,7 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
         events.push({
           id: `log-${s.id}-${log.id}`,
           kind: 'log',
-          severity:
-            log.level === 'error'
-              ? 'critical'
-              : log.level === 'warn'
-                ? 'warning'
-                : 'info',
+          severity: log.level === 'error' ? 'critical' : log.level === 'warn' ? 'warning' : 'info',
           source: s.displayName,
           title: `[${log.level.toUpperCase()}] Runtime Event`,
           detail: log.message,
@@ -616,7 +614,15 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
     });
 
     return events;
-  }, [healthSnapshot?.alerts, unifiedServices, workers, jobs, healerIncidents, pipelines, cronTasks]);
+  }, [
+    healthSnapshot?.alerts,
+    unifiedServices,
+    workers,
+    jobs,
+    healerIncidents,
+    pipelines,
+    cronTasks,
+  ]);
 
   const filteredActivities = useMemo(() => {
     if (activityFilter === 'all') return activityFeed.slice(0, 18);
@@ -697,7 +703,10 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
         .attr('x2', nx)
         .attr('y2', ny)
         .attr('stroke', color)
-        .attr('stroke-opacity', isSelected || isHovered ? 0.85 : svc.status === 'healthy' ? 0.28 : 0.6)
+        .attr(
+          'stroke-opacity',
+          isSelected || isHovered ? 0.85 : svc.status === 'healthy' ? 0.28 : 0.6
+        )
         .attr('stroke-width', isSelected || isHovered ? 2.2 : 1.35)
         .attr('stroke-dasharray', svc.status === 'healthy' ? 'none' : '4 3');
 
@@ -764,8 +773,7 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
       const labelDist = ringRadius + nodeRadius + 15;
       const lx = cx + Math.cos(angle) * labelDist;
       const ly = cy + Math.sin(angle) * labelDist;
-      const anchor =
-        Math.cos(angle) > 0.25 ? 'start' : Math.cos(angle) < -0.25 ? 'end' : 'middle';
+      const anchor = Math.cos(angle) > 0.25 ? 'start' : Math.cos(angle) < -0.25 ? 'end' : 'middle';
       const shortName =
         svc.displayName.length > 18 ? `${svc.displayName.slice(0, 17)}…` : svc.displayName;
 
@@ -831,7 +839,15 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
       .attr('font-size', 9)
       .attr('font-family', 'JetBrains Mono, monospace')
       .text(`${trafficSummary?.rpm ?? 0} RPM`);
-  }, [viewMode, filteredServices, vizWidth, selectedService?.id, hoveredNodeId, fleetCounts, trafficSummary?.rpm]);
+  }, [
+    viewMode,
+    filteredServices,
+    vizWidth,
+    selectedService?.id,
+    hoveredNodeId,
+    fleetCounts,
+    trafficSummary?.rpm,
+  ]);
 
   // ─── D3 Scatter Plot Renderer (Latency ms vs CPU %) ───
   useEffect(() => {
@@ -851,10 +867,7 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const maxLat = Math.max(
-      400,
-      (d3.max(filteredServices, (d) => d.latencyMs) || 300) * 1.18
-    );
+    const maxLat = Math.max(400, (d3.max(filteredServices, (d) => d.latencyMs) || 300) * 1.18);
     const maxCpu = Math.max(100, d3.max(filteredServices, (d) => d.cpuPercent) || 100);
 
     const x = d3.scaleLinear().domain([0, maxLat]).nice().range([0, innerW]);
@@ -1423,7 +1436,9 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
           ) : viewMode === 'topology' ? (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/60 p-3">
               <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1 mb-1">
-                <span>Live MCP Constellation — Node size = CPU load · Click any node to inspect</span>
+                <span>
+                  Live MCP Constellation — Node size = CPU load · Click any node to inspect
+                </span>
                 <span className="font-mono tabular-nums">
                   {filteredServices.length} active nodes
                 </span>
@@ -1597,8 +1612,12 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
                       {w.currentTask || 'Idle'}
                     </div>
                     <div className="flex items-center justify-between text-[10.5px] font-mono tabular-nums text-slate-400">
-                      <span>CPU {w.cpuPercent}% · {w.memoryMb}MB</span>
-                      <span>{w.successRate}% ok ({w.processedCount})</span>
+                      <span>
+                        CPU {w.cpuPercent}% · {w.memoryMb}MB
+                      </span>
+                      <span>
+                        {w.successRate}% ok ({w.processedCount})
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -1666,7 +1685,8 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
                     {selectedService.displayName}
                   </div>
                   <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
-                    {selectedService.provider} · {selectedService.category} · {selectedService.version}
+                    {selectedService.provider} · {selectedService.category} ·{' '}
+                    {selectedService.version}
                   </div>
                 </div>
                 <span

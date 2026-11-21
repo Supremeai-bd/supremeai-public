@@ -1,7 +1,7 @@
 /**
  * Lightweight context gathering for SupremeAI chat/code actions.
  */
-import * as vscode from "vscode";
+import * as vscode from 'vscode';
 
 export interface EditorContext {
   filePath: string;
@@ -35,5 +35,5 @@ export function buildPrompt(question: string, ctx?: EditorContext): string {
     parts.push(`File: ${ctx.filePath} (${ctx.language})`);
   }
   parts.push(`Question: ${question}`);
-  return parts.join("\n\n");
+  return parts.join('\n\n');
 }

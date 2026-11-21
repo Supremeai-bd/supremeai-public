@@ -12,14 +12,7 @@
     "chatsMerge": "per-conversation-id-max-updatedAt",
     "collectionsMerge": "domain-updatedAt-timestamp"
   },
-  "domains": [
-    "chats",
-    "theme",
-    "roles",
-    "knowledge",
-    "plugins",
-    "voice_avatar"
-  ],
+  "domains": ["chats", "theme", "roles", "knowledge", "plugins", "voice_avatar"],
   "platforms": ["web", "desktop", "android", "ios"],
   "envelopeSchema": {
     "deviceId": "string (persistent client UUID)",

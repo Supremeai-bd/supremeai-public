@@ -178,6 +178,22 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       trustFor7Days?: boolean;
     };
     const code = String(body.token || '').trim();
+    if (!code || !/^\d{6}$/.test(code)) {
+      return jsonEdgeResponse(
+        {
+          success: false,
+          error:
+            'Invalid request body: token — Enter the 6-digit code from your authenticator app.',
+          issues: [
+            { path: 'token', message: 'Enter the 6-digit code from your authenticator app.' },
+          ],
+        },
+        400,
+        request,
+        undefined,
+        env
+      );
+    }
     const vaultEntry = await loadTotpSecretFromPrefs(upstreamOrigin, authHeader);
     const activeSecret = envSecret || vaultEntry?.secret || '';
 

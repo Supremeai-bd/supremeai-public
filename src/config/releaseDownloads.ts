@@ -145,14 +145,12 @@ export function normalizeRemoteReleaseManifest(
   const resolvedRepo = String(mf.repo || repoSlug || GITHUB_PUBLIC_REPO_SLUG).trim();
   const rollingUrls = buildRollingAssetUrls(version, resolvedRepo, tag);
 
-  const downloads = (mf.downloads && typeof mf.downloads === 'object' ? mf.downloads : {}) as Record<
-    string,
-    any
-  >;
-  const platforms = (mf.platforms && typeof mf.platforms === 'object' ? mf.platforms : {}) as Record<
-    string,
-    any
-  >;
+  const downloads = (
+    mf.downloads && typeof mf.downloads === 'object' ? mf.downloads : {}
+  ) as Record<string, any>;
+  const platforms = (
+    mf.platforms && typeof mf.platforms === 'object' ? mf.platforms : {}
+  ) as Record<string, any>;
 
   const windowsExeUrl = String(
     downloads.windowsExeUrl || platforms['windows-x86_64']?.url || rollingUrls.windowsExeUrl
@@ -288,4 +286,3 @@ export function buildCounterpartShortcuts(
 
   return [apkShortcut, exeShortcut, vsixShortcut];
 }
-

@@ -1,16 +1,82 @@
 {
   "version": "1.0.0",
   "themes": [
-    { "id": "alpine-dunes", "name": "Alpine Dunes", "accentHex": "#0284c7", "recommendedScheme": "light", "scenicPhoto": "bg_alpine_dunes" },
-    { "id": "misty-fjords", "name": "Misty Fjords", "accentHex": "#0d9488", "recommendedScheme": "both", "scenicPhoto": "bg_misty_fjords" },
-    { "id": "emerald-highlands", "name": "Emerald Highlands", "accentHex": "#059669", "recommendedScheme": "both", "scenicPhoto": "bg_emerald_highlands" },
-    { "id": "amber-canyon", "name": "Amber Canyon", "accentHex": "#d97706", "recommendedScheme": "light", "scenicPhoto": "bg_amber_canyon" },
-    { "id": "midnight-peaks", "name": "Midnight Peaks", "accentHex": "#6366f1", "recommendedScheme": "dark", "scenicPhoto": "bg_obsidian_peaks" },
-    { "id": "nebula", "name": "Cosmic Nebula", "accentHex": "#8b5cf6", "recommendedScheme": "dark", "scenicPhoto": null },
-    { "id": "cyberpunk", "name": "Neon Synthwave", "accentHex": "#10b981", "recommendedScheme": "dark", "scenicPhoto": null },
-    { "id": "aurora-borealis", "name": "Aurora Borealis", "accentHex": "#06b6d4", "recommendedScheme": "dark", "scenicPhoto": null },
-    { "id": "oceanic-horizon", "name": "Oceanic Horizon", "accentHex": "#0284c7", "recommendedScheme": "both", "scenicPhoto": null },
-    { "id": "solar-meadow", "name": "Solar Meadow", "accentHex": "#ea580c", "recommendedScheme": "light", "scenicPhoto": null },
-    { "id": "cyber-studio", "name": "Cyber Studio", "accentHex": "#2563eb", "recommendedScheme": "both", "scenicPhoto": null }
+    {
+      "id": "alpine-dunes",
+      "name": "Alpine Dunes",
+      "accentHex": "#0284c7",
+      "recommendedScheme": "light",
+      "scenicPhoto": "bg_alpine_dunes"
+    },
+    {
+      "id": "misty-fjords",
+      "name": "Misty Fjords",
+      "accentHex": "#0d9488",
+      "recommendedScheme": "both",
+      "scenicPhoto": "bg_misty_fjords"
+    },
+    {
+      "id": "emerald-highlands",
+      "name": "Emerald Highlands",
+      "accentHex": "#059669",
+      "recommendedScheme": "both",
+      "scenicPhoto": "bg_emerald_highlands"
+    },
+    {
+      "id": "amber-canyon",
+      "name": "Amber Canyon",
+      "accentHex": "#d97706",
+      "recommendedScheme": "light",
+      "scenicPhoto": "bg_amber_canyon"
+    },
+    {
+      "id": "midnight-peaks",
+      "name": "Midnight Peaks",
+      "accentHex": "#6366f1",
+      "recommendedScheme": "dark",
+      "scenicPhoto": "bg_obsidian_peaks"
+    },
+    {
+      "id": "nebula",
+      "name": "Cosmic Nebula",
+      "accentHex": "#8b5cf6",
+      "recommendedScheme": "dark",
+      "scenicPhoto": null
+    },
+    {
+      "id": "cyberpunk",
+      "name": "Neon Synthwave",
+      "accentHex": "#10b981",
+      "recommendedScheme": "dark",
+      "scenicPhoto": null
+    },
+    {
+      "id": "aurora-borealis",
+      "name": "Aurora Borealis",
+      "accentHex": "#06b6d4",
+      "recommendedScheme": "dark",
+      "scenicPhoto": null
+    },
+    {
+      "id": "oceanic-horizon",
+      "name": "Oceanic Horizon",
+      "accentHex": "#0284c7",
+      "recommendedScheme": "both",
+      "scenicPhoto": null
+    },
+    {
+      "id": "solar-meadow",
+      "name": "Solar Meadow",
+      "accentHex": "#ea580c",
+      "recommendedScheme": "light",
+      "scenicPhoto": null
+    },
+    {
+      "id": "cyber-studio",
+      "name": "Cyber Studio",
+      "accentHex": "#2563eb",
+      "recommendedScheme": "both",
+      "scenicPhoto": null
+    }
   ]
 }

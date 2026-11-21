@@ -12,11 +12,7 @@ import {
   extractCapturedCookieHeader,
   processProxiedHtml,
 } from '../../../src/shared/browserProxyHtml';
-import {
-  applyCorsHeaders,
-  isRestrictedEdgeHost,
-  safeEdgeFetch,
-} from '../../_lib/edgeHelpers';
+import { applyCorsHeaders, isRestrictedEdgeHost, safeEdgeFetch } from '../../_lib/edgeHelpers';
 
 interface PagesContext {
   request: Request;

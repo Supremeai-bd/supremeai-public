@@ -11,8 +11,9 @@ export function mockEdgePreferences() {
       return new Response(null, { status: 401 });
     }
     if (url.pathname === '/api/admin/totp-setup') return new Response(null, { status: 204 });
-    if (url.pathname !== '/api/v1/user/preferences') throw new Error(`Unexpected path: ${url.pathname}`);
-    if (request.method === 'POST') preferences = { ...preferences, ...await request.json() };
+    if (url.pathname !== '/api/v1/user/preferences')
+      throw new Error(`Unexpected path: ${url.pathname}`);
+    if (request.method === 'POST') preferences = { ...preferences, ...(await request.json()) };
     return Response.json({ preferences });
   };
 }

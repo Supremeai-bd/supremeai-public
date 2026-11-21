@@ -23,12 +23,5 @@
     "noImplicitOverride": true
   },
   "include": ["src", "server.ts", "vite.config.ts"],
-  "exclude": [
-    "dist",
-    "src-tauri",
-    "functions",
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "src/test"
-  ]
+  "exclude": ["dist", "src-tauri", "functions", "src/**/*.test.ts", "src/**/*.test.tsx", "src/test"]
 }

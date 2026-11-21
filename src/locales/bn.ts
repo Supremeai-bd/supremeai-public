@@ -112,7 +112,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   tabVoiceAvatar: 'ভয়েস ও অবতার',
   tabAccount: 'অ্যাকাউন্ট ও নিরাপত্তা',
   languageCardTitle: 'ভাষা ও ডিফল্ট AI উত্তর',
-  languageCardSubtitle: 'এটি ওয়ার্কস্পেসের ইন্টারফেস ভাষা, AI চ্যাট ও রিসার্চের ডিফল্ট ভাষা এবং গ্লোবাল TTS ভয়েস সেটিংস পরিবর্তন করে।',
+  languageCardSubtitle:
+    'এটি ওয়ার্কস্পেসের ইন্টারফেস ভাষা, AI চ্যাট ও রিসার্চের ডিফল্ট ভাষা এবং গ্লোবাল TTS ভয়েস সেটিংস পরিবর্তন করে।',
   langSyncUiLabel: 'ইন্টারফেস UI',
   langSyncUiValueEn: 'ইংরেজি (EN)',
   langSyncUiValueBn: 'বাংলা (বাং)',
@@ -124,7 +125,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   globalTtsConfigLabel: 'গ্লোবাল TTS কনফিগারেশন',
   ttsLocaleLabel: 'সক্রিয় লোকেল',
   ttsNeuralVoiceLabel: 'নিউরাল ভয়েস',
-  langUnifiedSyncNote: 'ভাষা পরিবর্তন করলে সাথে সাথে UI, AI চ্যাট ও রিসার্চ প্রম্পট এবং গ্লোবাল TTS ভয়েস আপডেট হয়।',
+  langUnifiedSyncNote:
+    'ভাষা পরিবর্তন করলে সাথে সাথে UI, AI চ্যাট ও রিসার্চ প্রম্পট এবং গ্লোবাল TTS ভয়েস আপডেট হয়।',
   savePreferences: 'সেটিংস সংরক্ষণ করুন',
   settingsSavedToast: 'সেটিংস সফলভাবে সংরক্ষিত হয়েছে!',
   preferencesLocalHint: 'সেটিংস লোকালভাবে সংরক্ষিত ও লাইভ প্রয়োগ হয়েছে।',
@@ -183,12 +185,14 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   authSignInDesc: 'আপনার ওয়ার্কস্পেস, সেটিংস এবং SupremeAI মডেল ব্যবহার করতে সাইন ইন করুন।',
   authSignUpDesc: 'সেটিংস, চ্যাট ইতিহাস এবং সব ওয়ার্কস্পেস টুল আনলক করতে অ্যাকাউন্ট তৈরি করুন।',
   authReasonPrefix: 'এই সুবিধাটি ব্যবহার করতে সাইন ইন করুন বা ফ্রি অ্যাকাউন্ট খুলুন:',
-  authMaintenanceNotice: 'বর্তমানে রক্ষণাবেক্ষণের কাজ চলছে। শুধুমাত্র অ্যাডমিন অ্যাকাউন্ট এখন প্রবেশ করতে পারবে।',
+  authMaintenanceNotice:
+    'বর্তমানে রক্ষণাবেক্ষণের কাজ চলছে। শুধুমাত্র অ্যাডমিন অ্যাকাউন্ট এখন প্রবেশ করতে পারবে।',
   authSignupsPausedNotice: 'অ্যাডমিনিস্ট্রেটর সাময়িকভাবে নতুন সাইন-আপ বন্ধ রেখেছেন।',
   authFullNameLabel: 'পুরো নাম',
   authWorkEmailLabel: 'ইমেইল ঠিকানা',
   authPasswordLabel: 'পাসওয়ার্ড',
-  authFreeTierNote: 'প্রতিটি নতুন অ্যাকাউন্ট ফ্রি প্ল্যান ও সহজ স্ট্যান্ডার্ড মোডে শুরু হয় — প্রয়োজনে পরে সেটিংস থেকে ডেভেলপার টুলস বা প্রো প্ল্যান চালু করতে পারবেন।',
+  authFreeTierNote:
+    'প্রতিটি নতুন অ্যাকাউন্ট ফ্রি প্ল্যান ও সহজ স্ট্যান্ডার্ড মোডে শুরু হয় — প্রয়োজনে পরে সেটিংস থেকে ডেভেলপার টুলস বা প্রো প্ল্যান চালু করতে পারবেন।',
   authRememberDevice: 'এই ডিভাইসে লগইন মনে রাখুন',
   authProcessing: 'যাচাই হচ্ছে...',
   authSignInBtn: 'স্টুডিওতে সাইন ইন করুন',
@@ -199,15 +203,20 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   authSignupErrorFallback: 'অ্যাকাউন্ট তৈরি ব্যর্থ হয়েছে। তথ্যগুলো পুনরায় যাচাই করুন।',
   // Tips & Micro Survey
   tipDevTitle: 'এক প্রম্পটেই লাইভ অ্যাপ তৈরি',
-  tipDevDesc: 'চ্যাটে শুধু কী বানাতে চান তা বলুন — কোনো সেটিংস ছাড়াই স্বয়ংক্রিয়ভাবে লাইভ প্রিভিউ ও কোড এডিটর খুলে যাবে।',
+  tipDevDesc:
+    'চ্যাটে শুধু কী বানাতে চান তা বলুন — কোনো সেটিংস ছাড়াই স্বয়ংক্রিয়ভাবে লাইভ প্রিভিউ ও কোড এডিটর খুলে যাবে।',
   tipRagTitle: 'স্বয়ংক্রিয় নলেজ গ্রাউন্ডিং',
-  tipRagDesc: 'নলেজ বেসে ডকুমেন্ট আপলোড করে চ্যাটে তার কথা উল্লেখ করলেই AI স্বয়ংক্রিয়ভাবে সেখান থেকে উত্তর দেবে।',
+  tipRagDesc:
+    'নলেজ বেসে ডকুমেন্ট আপলোড করে চ্যাটে তার কথা উল্লেখ করলেই AI স্বয়ংক্রিয়ভাবে সেখান থেকে উত্তর দেবে।',
   tipResearchTitle: 'স্ট্রাকচার্ড ডিপ রিসার্চ',
-  tipResearchDesc: 'বিস্তারিত তথ্য ও সূত্রসহ রিপোর্ট পেতে চ্যাটে "ডিপ রিসার্চ রিপোর্ট" লিখলেই রিসার্চ স্বয়ংক্রিয়ভাবে চালু হবে।',
+  tipResearchDesc:
+    'বিস্তারিত তথ্য ও সূত্রসহ রিপোর্ট পেতে চ্যাটে "ডিপ রিসার্চ রিপোর্ট" লিখলেই রিসার্চ স্বয়ংক্রিয়ভাবে চালু হবে।',
   tipRecipesTitle: 'রেডিমেড প্রম্পট রেসিপি',
-  tipRecipesDesc: 'লেখালেখি, পরিকল্পনা, সারসংক্ষেপ বা অ্যাপ তৈরির জন্য চ্যাট বারের + মেনু থেকে তৈরি টেমপ্লেট বেছে নিন।',
+  tipRecipesDesc:
+    'লেখালেখি, পরিকল্পনা, সারসংক্ষেপ বা অ্যাপ তৈরির জন্য চ্যাট বারের + মেনু থেকে তৈরি টেমপ্লেট বেছে নিন।',
   tipAppearanceTitle: 'লাইভ স্ক্রিন ও পড়ার প্রস্থ',
-  tipAppearanceDesc: 'সেটিংস থেকে আপনার পছন্দের অ্যাম্বিয়েন্ট ব্যাকগ্রাউন্ড, থিম এবং চ্যাটের প্রস্থ কাস্টমাইজ করুন।',
+  tipAppearanceDesc:
+    'সেটিংস থেকে আপনার পছন্দের অ্যাম্বিয়েন্ট ব্যাকগ্রাউন্ড, থিম এবং চ্যাটের প্রস্থ কাস্টমাইজ করুন।',
   tipActionOpenSettings: 'সেটিংস খুলুন',
   tipActionToggleResearch: 'রিসার্চ শুরু করুন',
   tipActionBrowseRecipes: 'রেসিপি দেখুন',
@@ -329,7 +338,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   // Team View
   teamDevTitle: 'টিম ও ওয়ার্কস্পেস ম্যানেজমেন্ট',
   teamStdTitle: 'টিম ও সহযোগিতা',
-  teamDevDesc: 'ইঞ্জিনিয়ারিং টিমের সদস্য আমন্ত্রণ জানান, RBAC রোল দিন এবং নিরাপত্তা কমপ্লায়েন্স যাচাই করুন।',
+  teamDevDesc:
+    'ইঞ্জিনিয়ারিং টিমের সদস্য আমন্ত্রণ জানান, RBAC রোল দিন এবং নিরাপত্তা কমপ্লায়েন্স যাচাই করুন।',
   teamStdDesc: 'টিমের সদস্যদের আমন্ত্রণ জানান এবং শেয়ার্ড ওয়ার্কস্পেস অ্যাক্সেস পরিচালনা করুন।',
   inviteMemberBtn: 'সদস্য আমন্ত্রণ',
   workspaceSeatUsage: 'ওয়ার্কস্পেস সিট ব্যবহার',
@@ -354,7 +364,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   sendInvitationBtn: 'আমন্ত্রণ পাঠান',
   // Projects View
   projectsTitle: 'আমার GitHub প্রজেক্টস',
-  projectsSubtitle: 'আপনার কোডবেসের সাথে চ্যাট করতে, অটোমেটেড রিভিউ পেতে এবং ব্রাঞ্চ দেখতে রিপোজিটরি যুক্ত করুন।',
+  projectsSubtitle:
+    'আপনার কোডবেসের সাথে চ্যাট করতে, অটোমেটেড রিভিউ পেতে এবং ব্রাঞ্চ দেখতে রিপোজিটরি যুক্ত করুন।',
   addGithubProjectBtn: 'GitHub প্রজেক্ট যোগ করুন',
   filterProjectsPlaceholder: 'যুক্ত প্রজেক্ট খুঁজুন...',
   aiReviewBtn: 'AI রিভিউ',
@@ -380,12 +391,14 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   forkedFromLabel: 'ফর্ক করা হয়েছে:',
   gitCloneBtn: 'git clone',
   noProjectsTitle: 'এখনো কোনো রিপোজিটরি যুক্ত নেই',
-  noProjectsDesc: 'ব্রাঞ্চ, বিল্ড হেলথ, ফর্ক ওয়ার্কফ্লো দেখতে এবং কোডবেসের সাথে চ্যাট করতে একটি GitHub রিপোজিটরি যুক্ত করুন।',
+  noProjectsDesc:
+    'ব্রাঞ্চ, বিল্ড হেলথ, ফর্ক ওয়ার্কফ্লো দেখতে এবং কোডবেসের সাথে চ্যাট করতে একটি GitHub রিপোজিটরি যুক্ত করুন।',
   noMatchingProjectsDesc: 'আপনার খোঁজের সাথে কোনো যুক্ত রিপোজিটরি মেলেনি।',
   clearFilterBtn: 'ফিল্টার মুছুন',
   // Plugins View
   pluginsTitle: 'প্লাগইন ও এক্সটেনশন হাব',
-  pluginsSubtitle: 'GitHub, ওয়েব ডকুমেন্টেশন, কোড অডিট ও এক্সপোর্ট কানেক্টর দিয়ে আপনার ওয়ার্কস্পেস সমৃদ্ধ করুন।',
+  pluginsSubtitle:
+    'GitHub, ওয়েব ডকুমেন্টেশন, কোড অডিট ও এক্সপোর্ট কানেক্টর দিয়ে আপনার ওয়ার্কস্পেস সমৃদ্ধ করুন।',
   addCustomPluginBtn: 'কাস্টম প্লাগইন যোগ করুন',
   allPluginsFilter: 'সব প্লাগইন',
   searchPluginsPlaceholder: 'প্লাগইন খুঁজুন...',
@@ -400,12 +413,14 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   // API Keys View
   apiKeysTelemetryEyebrow: 'মাল্টি-প্রোভাইডার কী · LLM গেটওয়ে টেলিমেট্রি',
   apiKeysTitle: 'API কী ও AI প্রোভাইডার',
-  apiKeysSubtitle: 'বিভিন্ন AI প্রোভাইডারের কী পরিচালনা করুন, গেটওয়ে লেটেন্সি দেখুন এবং ওয়েবহুক সেটআপ করুন।',
+  apiKeysSubtitle:
+    'বিভিন্ন AI প্রোভাইডারের কী পরিচালনা করুন, গেটওয়ে লেটেন্সি দেখুন এবং ওয়েবহুক সেটআপ করুন।',
   tabApiKeys: 'API কী',
   tabAiProvidersHealth: 'AI প্রোভাইডার ও হেলথ',
   tabWebhooks: 'ওয়েবহুক',
   providerMatrixTitle: 'কনফিগারকৃত AI প্রোভাইডার ডিরেক্টরি ও হেলথ ম্যাট্রিক্স',
-  providerMatrixDesc: 'প্রতিটি AI প্রোভাইডারের লাইভ হেলথ এবং LLM গেটওয়ে লেটেন্সি দেখুন ও কী পরিচালনা করুন।',
+  providerMatrixDesc:
+    'প্রতিটি AI প্রোভাইডারের লাইভ হেলথ এবং LLM গেটওয়ে লেটেন্সি দেখুন ও কী পরিচালনা করুন।',
   refreshGatewayBtn: 'গেটওয়ে রিফ্রেশ',
   addProviderKeyBtn: 'প্রোভাইডার কী যোগ করুন',
   colAiProvider: 'AI প্রোভাইডার',
@@ -451,16 +466,20 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   workspaceExperienceLabel: 'ওয়ার্কস্পেস মোড',
   developerStudioLabel: 'ডেভেলপার স্টুডিও',
   standardWorkspaceLabel: 'স্ট্যান্ডার্ড ওয়ার্কস্পেস',
-  workspaceExpDevDesc: 'ডেভেলপার টুলস চালু আছে: API কী, নলেজ ও RAG, রিপোজিটরি, প্লাগইন এবং স্প্লিট ওয়ার্কস্পেস ডক।',
+  workspaceExpDevDesc:
+    'ডেভেলপার টুলস চালু আছে: API কী, নলেজ ও RAG, রিপোজিটরি, প্লাগইন এবং স্প্লিট ওয়ার্কস্পেস ডক।',
   workspaceExpStdDesc: 'লেখালেখি, গবেষণা ও সহজ চ্যাটের জন্য পরিচ্ছন্ন ওয়ার্কস্পেস চালু আছে।',
   hideDeveloperToolsBtn: 'ডেভেলপার টুলস লুকান',
   needDevAccessTitle: 'API কী, রিপোজিটরি বা কোড টুলস প্রয়োজন?',
-  needDevAccessDesc: 'আপনার অ্যাকাউন্ট এখন সহজ স্ট্যান্ডার্ড মোডে আছে। প্রয়োজন হলে যেকোনো সময় ডেভেলপার অ্যাক্সেস চালু করুন।',
+  needDevAccessDesc:
+    'আপনার অ্যাকাউন্ট এখন সহজ স্ট্যান্ডার্ড মোডে আছে। প্রয়োজন হলে যেকোনো সময় ডেভেলপার অ্যাক্সেস চালু করুন।',
   enableDeveloperAccessBtn: 'ডেভেলপার অ্যাক্সেস চালু করুন',
   activeWorkspaceLabel: 'সক্রিয় ওয়ার্কস্পেস',
   customerWorkspaceLabel: 'কাস্টমার ওয়ার্কস্পেস',
-  adminModeSummary: 'আপনি এখন অ্যাডমিন স্টুডিওতে আছেন — নীতিমালা, মডেল, গ্রাহক ও টেলিমেট্রি নিয়ন্ত্রণ করতে পারবেন।',
-  customerModeSummary: 'আপনি কাস্টমার মোডে আছেন — চ্যাট, বিলিং এবং ব্যক্তিগত ওয়ার্কস্পেস পছন্দসমূহ পরিচালনা করুন।',
+  adminModeSummary:
+    'আপনি এখন অ্যাডমিন স্টুডিওতে আছেন — নীতিমালা, মডেল, গ্রাহক ও টেলিমেট্রি নিয়ন্ত্রণ করতে পারবেন।',
+  customerModeSummary:
+    'আপনি কাস্টমার মোডে আছেন — চ্যাট, বিলিং এবং ব্যক্তিগত ওয়ার্কস্পেস পছন্দসমূহ পরিচালনা করুন।',
   switchToUserViewBtn: 'ইউজার ভিউতে যান',
   profileInfoTitle: 'প্রোফাইল তথ্য',
   monthlyTokenQuotaTitle: 'মাসিক টোকেন কোটা',
@@ -484,7 +503,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   autoPrReviewLabel: 'স্বয়ংক্রিয় পুল রিকোয়েস্ট রিভিউ',
   autoPrReviewDesc: 'নতুন ব্রাঞ্চ পুশ করলে স্বয়ংক্রিয়ভাবে AI কোড অডিট চালু হবে।',
   ragChatSettingLabel: 'চ্যাটে নলেজ বেস গ্রাউন্ডিং (RAG)',
-  ragChatSettingDesc: 'চ্যাট বারে ডকুমেন্ট গ্রাউন্ডিং অপশন দেখান এবং আপলোড করা নলেজ বেস ফাইল থেকে উত্তর পান।',
+  ragChatSettingDesc:
+    'চ্যাট বারে ডকুমেন্ট গ্রাউন্ডিং অপশন দেখান এবং আপলোড করা নলেজ বেস ফাইল থেকে উত্তর পান।',
   manageDocsBtn: 'ডকুমেন্ট দেখুন',
   workspaceTipsSettingLabel: 'ওয়ার্কস্পেস ডিসকভারি টিপস',
   workspaceTipsSettingDesc: 'শর্টকাট, রিসার্চ টুলস ও ডেভেলপার অপশন সম্পর্কে চ্যাটে সহায়ক টিপস দেখান।',
@@ -557,7 +577,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsActive: 'সক্রিয়',
   wsConsoleEmpty: 'এখনো কোনো কনসোল আউটপুট নেই। চালাতে "রান করুন" চাপুন।',
   wsDomEmpty: 'লাইভ আউটপুট দেখতে HTML, React TSX/JSX বা DOM JS কোড রান করুন।',
-  wsSandboxPlaceholder: 'এখানে JavaScript, TypeScript, React JSX/TSX, HTML বা JSON লিখুন (চালাতে Ctrl/Cmd + Enter)...',
+  wsSandboxPlaceholder:
+    'এখানে JavaScript, TypeScript, React JSX/TSX, HTML বা JSON লিখুন (চালাতে Ctrl/Cmd + Enter)...',
   wsDesktopViewport: 'ডেস্কটপ ভিউপোর্ট (১০০%)',
   wsTabletViewport: 'ট্যাবলেট ভিউপোর্ট (৭৬৮px)',
   wsMobileViewport: 'মোবাইল ভিউপোর্ট (৩৭৫px)',
@@ -607,8 +628,10 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsBrowserSavedPage: 'বুকমার্ক করা হয়েছে',
   wsBrowserBookmarkLabelPlaceholder: 'বুকমার্কের নাম (ঐচ্ছিক)',
   wsBrowserBookmarkUrlPlaceholder: 'ওয়েবসাইট URL (https://...)',
-  wsBrowserBookmarkEmpty: 'এখনো কোনো বুকমার্ক নেই — যেকোনো পেজ খুলে স্টার আইকনে বা + যোগ বাটনে ক্লিক করুন।',
-  wsBrowserStartSubtitle: 'উপরের বারে যেকোনো ওয়েবসাইটের ঠিকানা বা বিষয় লিখে খুঁজুন, অথবা আপনার বুকমার্ক থেকে খুলুন।',
+  wsBrowserBookmarkEmpty:
+    'এখনো কোনো বুকমার্ক নেই — যেকোনো পেজ খুলে স্টার আইকনে বা + যোগ বাটনে ক্লিক করুন।',
+  wsBrowserStartSubtitle:
+    'উপরের বারে যেকোনো ওয়েবসাইটের ঠিকানা বা বিষয় লিখে খুঁজুন, অথবা আপনার বুকমার্ক থেকে খুলুন।',
   wsBrowserBlockedNotice: 'এই ওয়েবসাইটটি প্রক্সি রিকোয়েস্ট ব্লক করেছে। সরাসরি নতুন ট্যাবে খুলুন।',
   wsGraphSearchPlaceholder: 'আর্কিটেকচার বা সার্ভিস নোড খুঁজুন...',
   wsGraphAllCategories: 'সব ক্যাটাগরি',
@@ -633,17 +656,21 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsSavedSnippets: 'সংরক্ষিত:',
   wsSnippetNamePrompt: 'স্নিপেটের নাম লিখুন',
   wsPreviewEmptyTitle: 'লাইভ প্রিভিউ ক্যানভাস',
-  wsPreviewEmptyHint: 'এখনো কোনো প্রিভিউ লোড করা নেই। চ্যাট থেকে কোড তৈরি করুন অথবা Code ট্যাবে নিজে লিখুন।',
+  wsPreviewEmptyHint:
+    'এখনো কোনো প্রিভিউ লোড করা নেই। চ্যাট থেকে কোড তৈরি করুন অথবা Code ট্যাবে নিজে লিখুন।',
   wsPreviewChatCardTitle: 'চ্যাট থেকে তৈরি করুন',
-  wsPreviewChatCardDesc: 'SupremeAI-কে HTML, React TSX, SVG বা Mermaid তৈরি করতে বলুন, তারপর কোড ব্লকে Preview চাপুন।',
+  wsPreviewChatCardDesc:
+    'SupremeAI-কে HTML, React TSX, SVG বা Mermaid তৈরি করতে বলুন, তারপর কোড ব্লকে Preview চাপুন।',
   wsPreviewChatCardAction: 'চ্যাটে লিখুন',
   wsPreviewCodeCardTitle: 'Code ট্যাবে লিখুন',
-  wsPreviewCodeCardDesc: 'বিল্ট-ইন কোড এডিটরে সরাসরি HTML, React JSX/TSX বা Mermaid কোড লিখে সাথে সাথে প্রিভিউ দেখুন।',
+  wsPreviewCodeCardDesc:
+    'বিল্ট-ইন কোড এডিটরে সরাসরি HTML, React JSX/TSX বা Mermaid কোড লিখে সাথে সাথে প্রিভিউ দেখুন।',
   wsPreviewSupportedFormats: 'সাপোর্টেড: HTML · React JSX/TSX · SVG · Mermaid',
   wsOpenCodeTab: 'Code ট্যাব খুলুন',
   wsPopoutPreview: 'নতুন ট্যাবে পূর্ণ স্ক্রিনে খুলুন',
   wsRuntimeErrorBanner: 'রানটাইম ত্রুটি:',
-  wsTerminalFallbackReady: 'লোকাল ডায়াগনস্টিক এজ শেল সক্রিয় (help, status, history, date, echo, ping, clear)।',
+  wsTerminalFallbackReady:
+    'লোকাল ডায়াগনস্টিক এজ শেল সক্রিয় (help, status, history, date, echo, ping, clear)।',
   wsCodeLanguageLabel: 'ল্যাঙ্গুয়েজ',
   wsNewFile: 'নতুন ফাইল',
   wsSaveLocalFile: 'স্ক্র্যাচপ্যাড সেভ',
@@ -667,11 +694,13 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsGraphEdgeSource: 'উৎস',
   wsGraphEdgeTarget: 'গন্তব্য',
   wsGraphEdgeLabelPlaceholder: 'এজ লেবেল (ঐচ্ছিক)',
-  wsGraphMermaidPlaceholder: 'Mermaid ফ্লোচার্ট পেস্ট করুন (যেমন: graph TD; A[Client]-->B[Gateway]; B-->C[LLM])',
+  wsGraphMermaidPlaceholder:
+    'Mermaid ফ্লোচার্ট পেস্ট করুন (যেমন: graph TD; A[Client]-->B[Gateway]; B-->C[LLM])',
   wsGraphEmptyCustom: 'খালি কাস্টম গ্রাফ — নিজের ডায়াগ্রাম তৈরি করতে + নোড অথবা Mermaid ইমপোর্ট চাপুন।',
   wsLiveArtifactSync: 'লাইভ সিঙ্ক',
   wsLiveArtifactSyncOption: 'লাইভ আর্টিফ্যাক্ট সিঙ্ক',
-  wsLiveArtifactSyncDesc: 'AI কোড লেখার সাথে সাথে স্বয়ংক্রিয়ভাবে Workspace Preview/Sandbox খুলবে ও লাইভ আপডেট হবে',
+  wsLiveArtifactSyncDesc:
+    'AI কোড লেখার সাথে সাথে স্বয়ংক্রিয়ভাবে Workspace Preview/Sandbox খুলবে ও লাইভ আপডেট হবে',
   wsLiveSyncStreaming: 'সিঙ্ক হচ্ছে',
   wsInspectElement: 'ইন্সপেক্ট UI',
   wsInspectElementActive: 'ইন্সপেক্টর চালু — AI-কে নির্দেশ দিতে প্রিভিউর যেকোনো এলিমেন্টে ক্লিক করুন',
@@ -710,7 +739,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   gitOpenCommitLink: 'কমিট দেখুন',
   gitOpenPrLink: 'PR / MR দেখুন',
   gitSettingsCardTitle: 'GitHub ও GitLab ইন্টিগ্রেশন',
-  gitSettingsCardDesc: 'সার্ভার ছাড়াই সরাসরি ওয়ার্কস্পেস কোড GitHub বা GitLab-এ পুশ করতে আপনার ব্রাউজারে টোকেন সংরক্ষণ করুন।',
+  gitSettingsCardDesc:
+    'সার্ভার ছাড়াই সরাসরি ওয়ার্কস্পেস কোড GitHub বা GitLab-এ পুশ করতে আপনার ব্রাউজারে টোকেন সংরক্ষণ করুন।',
   gitSaveTokensBtn: 'Git টোকেন সংরক্ষণ',
   gitTokensSavedMsg: 'Git ইন্টিগ্রেশন টোকেন লোকালে সংরক্ষিত হয়েছে।',
   wsVaultBtn: 'ভল্ট',
@@ -719,16 +749,20 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsVaultSessionTab: 'সেশন স্ন্যাপশট',
   wsVaultCredentialsTab: 'ক্রেডেনশিয়াল',
   wsVaultScheduleTab: 'শিডিউল টাস্ক',
-  wsVaultSessionDesc: '2FA/OTP লগইনের পর সেশন কুকি বা storageState সেভ রাখুন—তাহলে শিডিউলড AI পাসওয়ার্ড ছাড়াই অ্যাক্সেস পাবে।',
+  wsVaultSessionDesc:
+    '2FA/OTP লগইনের পর সেশন কুকি বা storageState সেভ রাখুন—তাহলে শিডিউলড AI পাসওয়ার্ড ছাড়াই অ্যাক্সেস পাবে।',
   wsVaultSessionInputLabel: 'সেশন Cookie অথবা Playwright storageState JSON',
-  wsVaultSessionInputPlaceholder: 'কুকি স্ট্রিং (session=abc; csrf=xyz) বা Playwright storageState JSON পেস্ট করুন...',
+  wsVaultSessionInputPlaceholder:
+    'কুকি স্ট্রিং (session=abc; csrf=xyz) বা Playwright storageState JSON পেস্ট করুন...',
   wsVaultCapturedHint: 'বর্তমান প্রক্সি রেসপন্স থেকে কুকি পাওয়া গেছে — সেভ করার জন্য প্রস্তুত।',
   wsVaultSaveSessionBtn: 'সেশন সংরক্ষণ করুন',
   wsVaultUsernameLabel: 'ইউজারনেম বা ইমেইল',
   wsVaultPasswordLabel: 'পাসওয়ার্ড (AES-256 এনক্রিপ্টেড)',
   wsVaultSaveCredsBtn: 'এনক্রিপ্টেড লগইন সংরক্ষণ',
-  wsVaultScheduleDesc: 'AI প্রম্পটে কোনো পাসওয়ার্ড বা কুকি ছাড়াই শুধুমাত্র ভল্ট রেফারেন্স দিয়ে শিডিউলড অটোমেশন টাস্ক পাঠান।',
-  wsVaultSchedulePromptPlaceholder: 'যেমন: প্রতিদিন সকাল ৮টায় এই ড্যাশবোর্ডে ঢুকে সেলস রিপোর্ট সামারি করে আমাকে দাও...',
+  wsVaultScheduleDesc:
+    'AI প্রম্পটে কোনো পাসওয়ার্ড বা কুকি ছাড়াই শুধুমাত্র ভল্ট রেফারেন্স দিয়ে শিডিউলড অটোমেশন টাস্ক পাঠান।',
+  wsVaultSchedulePromptPlaceholder:
+    'যেমন: প্রতিদিন সকাল ৮টায় এই ড্যাশবোর্ডে ঢুকে সেলস রিপোর্ট সামারি করে আমাকে দাও...',
   wsVaultSendScheduleBtn: 'চ্যাটে শিডিউল টাস্ক তৈরি করুন',
   wsVaultSavedEntriesTitle: 'এই ডোমেইনের সংরক্ষিত ভল্ট',
   wsVaultEmptyDomain: 'এই ডোমেইনের জন্য এখনো কোনো সেশন বা ক্রেডেনশিয়াল সেভ করা নেই।',
@@ -770,10 +804,12 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsBrowserSaveCookiesTooltip: '১-ক্লিকে বর্তমান ওয়েবসাইটের সেশন কুকি সেভ করুন',
   wsBrowserSavePasswordBtn: 'পাসওয়ার্ড সেভ',
   wsBrowserSavePasswordPromptTitle: 'পাসওয়ার্ড সেভ করবেন?',
-  wsBrowserNoCookiesYet: 'এই পেজে এখনো লগইন কুকি পাওয়া যায়নি। আগে লগইন করুন অথবা ভল্টের অ্যাডভান্সড অপশন দেখুন।',
+  wsBrowserNoCookiesYet:
+    'এই পেজে এখনো লগইন কুকি পাওয়া যায়নি। আগে লগইন করুন অথবা ভল্টের অ্যাডভান্সড অপশন দেখুন।',
   wsVaultSessionReadyTitle: '১-ক্লিক সেশন সেভ',
   wsVaultSessionAutoDetected: 'এই সাইটের সেশন কুকি পাওয়া গেছে — ১ ক্লিকে এনক্রিপ্ট করে সেভ করতে পারেন।',
-  wsVaultSessionNoneDetected: 'অটোমেটিক কুকি ধরতে ব্রাউজারে ওয়েবসাইট খুলে লগইন করুন, অথবা নিচের অ্যাডভান্সড অপশন ব্যবহার করুন।',
+  wsVaultSessionNoneDetected:
+    'অটোমেটিক কুকি ধরতে ব্রাউজারে ওয়েবসাইট খুলে লগইন করুন, অথবা নিচের অ্যাডভান্সড অপশন ব্যবহার করুন।',
   wsVaultAdvancedRawToggle: 'অ্যাডভান্সড: সরাসরি Cookie / storageState JSON ইমপোর্ট',
   wsBrowserSavePromptSave: 'সেভ করুন',
   wsBrowserSavePromptUpdate: 'পাসওয়ার্ড আপডেট করবেন?',
@@ -797,9 +833,11 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsBrowserChatAuthWallLabel: 'লগইন-সুরক্ষিত সাইট',
   wsBrowserFocusBtn: 'Virtual Browser দেখুন',
   wsBrowserOpenExternalBtn: 'বাহ্যিক ট্যাবে খুলুন',
-  wsBrowserStatusBlockedHint: 'লগইন বা অ্যান্টি-বট সুরক্ষায় প্রক্সি প্রিভিউ সীমিত হতে পারে; সম্পূর্ণ সাইটের জন্য বাহ্যিক ট্যাবে খুলুন।',
+  wsBrowserStatusBlockedHint:
+    'লগইন বা অ্যান্টি-বট সুরক্ষায় প্রক্সি প্রিভিউ সীমিত হতে পারে; সম্পূর্ণ সাইটের জন্য বাহ্যিক ট্যাবে খুলুন।',
   wsGmailConnectTitle: 'Gmail ব্যবহার করতে Google দিয়ে সাইন ইন করুন',
-  wsGmailConnectSubtitle: 'অ্যাকাউন্টের নিরাপত্তার জন্য Google ব্রাউজার ফ্রেমের ভেতর পাসওয়ার্ড লগইন ব্লক করে। সরাসরি এখানেই ইনবক্স দেখতে নিচের বাটনে ১-ক্লিক সাইন ইন করুন।',
+  wsGmailConnectSubtitle:
+    'অ্যাকাউন্টের নিরাপত্তার জন্য Google ব্রাউজার ফ্রেমের ভেতর পাসওয়ার্ড লগইন ব্লক করে। সরাসরি এখানেই ইনবক্স দেখতে নিচের বাটনে ১-ক্লিক সাইন ইন করুন।',
   wsGmailSignInBtn: 'Google দিয়ে সাইন ইন করুন',
   wsGmailSigningIn: 'সাইন ইন হচ্ছে...',
   wsGmailConnectedAs: 'সংযুক্ত অ্যাকাউন্ট',
@@ -850,7 +888,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   workspaceFallbackTitle: 'ওয়ার্কস্পেস',
   viewErrorSuffix: 'ভিউতে সমস্যা দেখা দিয়েছে',
   usageAnalyticsTitle: 'মেসেজ কার্যকলাপ ও ব্যবহারের বিশ্লেষণ',
-  usageAnalyticsSubtitle: 'গত ৭ দিনে SupremeAI মডেলগুলোতে রিয়েল-টাইম টোকেন টেলিমেট্রি ও কথোপকথনের পরিমাণ।',
+  usageAnalyticsSubtitle:
+    'গত ৭ দিনে SupremeAI মডেলগুলোতে রিয়েল-টাইম টোকেন টেলিমেট্রি ও কথোপকথনের পরিমাণ।',
   userVsAiBreakdownBtn: 'ইউজার বনাম AI বিশ্লেষণ',
   totalTrafficBtn: 'মোট ট্র্যাফিক',
   liveWalletBalanceLabel: 'লাইভ ওয়ালেট ব্যালেন্স',
@@ -897,7 +936,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   roleViewerDesc: 'ভিউয়ার (শুধু দেখার অনুমতি)',
   loadingLabel: 'লোডিং...',
   customerDirectoryTitle: 'গ্রাহক ও অ্যাকাউন্ট ডিরেক্টরি',
-  customerDirectorySubtitle: 'Free, Pro এবং Enterprise গ্রাহকদের রিয়েল-টাইম ব্যবস্থাপনা ও টোকেন কোটা টেলিমেট্রি।',
+  customerDirectorySubtitle:
+    'Free, Pro এবং Enterprise গ্রাহকদের রিয়েল-টাইম ব্যবস্থাপনা ও টোকেন কোটা টেলিমেট্রি।',
   downloadCsvBtn: 'CSV ডাউনলোড',
   addCustomerBtn: 'গ্রাহক যোগ করুন',
   totalCustomersLabel: 'মোট গ্রাহক',
@@ -932,7 +972,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   noCustomersYet: 'এখনো কোনো গ্রাহক রেকর্ড লোড হয়নি।',
   loginAsUserBtn: 'ইউজার হিসেবে ঢুকুন',
   modelMatrixTitle: 'SupremeAI ইন্টেলিজেন্স ম্যাট্রিক্স',
-  modelMatrixSubtitle: 'SupremeAI স্টুডিওতে যুক্ত ফাউন্ডেশন মডেলগুলোর স্পেসিফিকেশন, গভার্নেন্স, রিজনিং ক্ষমতা ও লেটেন্সি বেঞ্চমার্ক।',
+  modelMatrixSubtitle:
+    'SupremeAI স্টুডিওতে যুক্ত ফাউন্ডেশন মডেলগুলোর স্পেসিফিকেশন, গভার্নেন্স, রিজনিং ক্ষমতা ও লেটেন্সি বেঞ্চমার্ক।',
   contextWindowLabel: 'কনটেক্সট উইন্ডো',
   reasoningDepthLabel: 'রিজনিং গভীরতা',
   minPlanTierLabel: 'সর্বনিম্ন প্ল্যান',
@@ -950,18 +991,21 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   colInferenceProfile: 'ইনফারেন্স প্রোফাইল',
   colRecommendedRole: 'উপযুক্ত রোল',
   repoHubTitle: 'SupremeAI ইকোসিস্টেম রিপোজিটরি',
-  repoHubSubtitle: 'মূল SupremeAI ইঞ্জিন এবং লাইটওয়েট SupremeAI Studio ফ্রন্টএন্ড ইন্টারফেসের কাঠামো ও সংযোগ।',
+  repoHubSubtitle:
+    'মূল SupremeAI ইঞ্জিন এবং লাইটওয়েট SupremeAI Studio ফ্রন্টএন্ড ইন্টারফেসের কাঠামো ও সংযোগ।',
   coreEngineSubtitle: 'মূল AI ইঞ্জিন ও ব্যাকএন্ড সার্ভিস',
   coreEngineDesc: 'মূল মডেল অর্কেস্ট্রেশন, এজেন্ট এক্সিকিউশন লুপ এবং ব্যাকএন্ড পাইপলাইন ধারণকারী রিপোজিটরি।',
   primaryBranchLabel: 'প্রধান ব্রাঞ্চ',
   organizationLabel: 'সংস্থা',
   studioFrontendSubtitle: 'লাইটওয়েট ওয়েব স্টুডিও অ্যাপ্লিকেশন',
-  studioFrontendDesc: 'দ্রুতগতির React 19 + Tailwind v4 + Express স্টুডিও ফ্রন্টএন্ড, যেখানে রয়েছে লাইভ স্ট্রিমিং ও রোল পারসোনা।',
+  studioFrontendDesc:
+    'দ্রুতগতির React 19 + Tailwind v4 + Express স্টুডিও ফ্রন্টএন্ড, যেখানে রয়েছে লাইভ স্ট্রিমিং ও রোল পারসোনা।',
   stackLabel: 'প্রযুক্তি স্ট্যাক',
   aiIntegrationLabel: 'AI সংযোগ',
   repoArchitectureTitle: 'SupremeAI Studio আর্কিটেকচার',
   roleLabTitle: 'রোল ও সিস্টেম নির্দেশনা ল্যাব',
-  roleLabSubtitle: 'বিশেষায়িত AI সিস্টেম প্রম্পট পরীক্ষা ও কনফিগার করুন। রিজনিং, কোড ও আর্কিটেকচার রোলের মধ্যে অদলবদল করুন।',
+  roleLabSubtitle:
+    'বিশেষায়িত AI সিস্টেম প্রম্পট পরীক্ষা ও কনফিগার করুন। রিজনিং, কোড ও আর্কিটেকচার রোলের মধ্যে অদলবদল করুন।',
   promptSpecTitle: 'প্রম্পট স্পেসিফিকেশন',
   modelLabel: 'মডেল:',
   systemInstructionLabel: 'সিস্টেম নির্দেশনা',
@@ -970,18 +1014,21 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   runningLabel: 'চলছে...',
   runTestBtn: 'টেস্ট চালান',
   modelOutputPreviewTitle: 'মডেল আউটপুট প্রিভিউ',
-  roleLabEmptyOutput: 'নির্বাচিত SupremeAI মডেলে এই রোল কনফিগারেশন পরীক্ষা করতে "টেস্ট চালান" ক্লিক করুন।',
+  roleLabEmptyOutput:
+    'নির্বাচিত SupremeAI মডেলে এই রোল কনফিগারেশন পরীক্ষা করতে "টেস্ট চালান" ক্লিক করুন।',
   configurePersonaTitle: 'পারসোনা ও সিস্টেম নির্দেশনা সেটআপ',
   selectPresetRoleLabel: 'প্রিসেট রোল বেছে নিন',
   associatedModelLabel: 'সংশ্লিষ্ট মডেল',
   promptConfigLabel: 'সিস্টেম নির্দেশনা (প্রম্পট কনফিগারেশন)',
   resetToDefaultBtn: 'ডিফল্টে রিসেট করুন',
   personaPlaceholder: 'পারসোনা, টেকনিক্যাল নীতিমালা, রিজনিং কাঠামো বা ডোমেইন নিয়ম লিখুন...',
-  personaHint: 'সিস্টেম নির্দেশনা SupremeAI-এর সুর, রোলের সীমা, কোড মানদণ্ড ও উত্তরের গভীরতা নির্ধারণ করে।',
+  personaHint:
+    'সিস্টেম নির্দেশনা SupremeAI-এর সুর, রোলের সীমা, কোড মানদণ্ড ও উত্তরের গভীরতা নির্ধারণ করে।',
   applyRoleBtn: 'রোল প্রয়োগ করুন',
   llmGatewayTitle: 'LLM গেটওয়ে ও কস্ট গার্ড',
   llmGatewayBadge: 'বুদ্ধিমান মডেল রাউটার',
-  llmGatewaySubtitle: 'ডায়নামিক প্রোভাইডার রাউটিং, স্বয়ংক্রিয় 503 ফলব্যাক, টোকেন মার্জিন ও সার্কিট ব্রেকার।',
+  llmGatewaySubtitle:
+    'ডায়নামিক প্রোভাইডার রাউটিং, স্বয়ংক্রিয় 503 ফলব্যাক, টোকেন মার্জিন ও সার্কিট ব্রেকার।',
   currentGatewayTraffic: 'বর্তমান গেটওয়ে ট্র্যাফিক:',
   gatewayHealthScore: 'গেটওয়ে হেলথ স্কোর',
   avgGatewayLatency: 'গড় গেটওয়ে লেটেন্সি',
@@ -1033,7 +1080,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsCodeFilterFiles: 'ফাইল খুঁজুন...',
   wsCodeActiveBuffer: 'লাইভ সেশন বাফার',
   wsNonBrowserBadge: 'CLI / সার্ভার কোড',
-  wsNonBrowserHint: 'এটি ব্রাউজার DOM-এ সরাসরি চলে না। Code ট্যাবে এডিট করুন অথবা Terminal-এ কমান্ড চালান।',
+  wsNonBrowserHint:
+    'এটি ব্রাউজার DOM-এ সরাসরি চলে না। Code ট্যাবে এডিট করুন অথবা Terminal-এ কমান্ড চালান।',
   wsOpenInCodeBtn: 'কোডে খুলুন',
   wsOpenInTerminalBtn: 'টার্মিনাল খুলুন',
   wsScriptRunnerBtn: 'স্যান্ডবক্স VM',
@@ -1042,13 +1090,15 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   opsConsoleTitle: 'অপস ও অ্যাডমিন কনসোল',
   autoModelBadge: 'অটো',
   autoModelTitle: 'SupremeAI · অটো',
-  autoModelDesc: 'প্রতিটি কাজের ধরন অনুযায়ী সেরা মডেল, ডকুমেন্ট কনটেক্সট ও রিসার্চ স্বয়ংক্রিয়ভাবে বেছে নেয়।',
+  autoModelDesc:
+    'প্রতিটি কাজের ধরন অনুযায়ী সেরা মডেল, ডকুমেন্ট কনটেক্সট ও রিসার্চ স্বয়ংক্রিয়ভাবে বেছে নেয়।',
   manualModelToggle: 'অ্যাডভান্সড: ম্যানুয়ালি মডেল বেছে নিন',
   autoModelSettingLabel: 'স্মার্ট অটো মডেল রাউটিং',
   autoModelSettingDesc: 'কাজের জটিলতা অনুযায়ী স্বয়ংক্রিয়ভাবে সেরা SupremeAI মডেল নির্বাচন করুন।',
   quickStartersHeader: 'দ্রুত শুরু করুন',
   starterBuildAppTitle: 'ওয়েব অ্যাপ তৈরি',
-  starterBuildAppPrompt: 'আধুনিক ডিজাইন ও লাইভ প্রিভিউসহ একটি চমৎকার ইন্টারঅ্যাক্টিভ ওয়েব অ্যাপ তৈরি করো।',
+  starterBuildAppPrompt:
+    'আধুনিক ডিজাইন ও লাইভ প্রিভিউসহ একটি চমৎকার ইন্টারঅ্যাক্টিভ ওয়েব অ্যাপ তৈরি করো।',
   starterResearchTitle: 'ডিপ রিসার্চ রিপোর্ট',
   starterResearchPrompt: 'গুরুত্বপূর্ণ তথ্য ও সূত্রসহ একটি বিস্তারিত ডিপ রিসার্চ রিপোর্ট তৈরি করো: ',
   starterAnalyzeTitle: 'বিশ্লেষণ ও সমাধান',
@@ -1107,7 +1157,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   visionErrRetryIn: 'প্রায় {sec} সেকেন্ড পর আবার চেষ্টা করুন',
   visionOcrActionBtn: 'OCR দিয়ে লেখা পড়ুন (API কী ছাড়াই)',
   visionOcrRunning: 'ব্রাউজারে ছবির লেখা পড়া হচ্ছে ({pct}%)...',
-  visionOcrNoticeBanner: 'OCR দিয়ে কেবল ছবির লেখা পড়া হয়েছে; পুরো ছবির দৃশ্য বা লেআউট বিশ্লেষণ করা হয়নি।',
+  visionOcrNoticeBanner:
+    'OCR দিয়ে কেবল ছবির লেখা পড়া হয়েছে; পুরো ছবির দৃশ্য বা লেআউট বিশ্লেষণ করা হয়নি।',
   visionOcrNoTextFound: 'এই ছবিতে OCR দিয়ে পড়ার মতো স্পষ্ট কোনো লেখা পাওয়া যায়নি।',
   visionOcrSendToTextAi: 'পাওয়া লেখাটি Free Text AI-তে পাঠান',
   visionOcrPreviewLabel: 'OCR থেকে পাওয়া লেখা (পাঠানোর আগে যাচাই/এডিট করুন)',
@@ -1125,8 +1176,7 @@ export const BN_DICT: Record<TranslationKeys, string> = {
     'চ্যাট ইঞ্জিন, এআই মডেল ড্রপডাউন এবং কোর রানটাইম হেলথ — স্বাভাবিক ব্যবহারের জন্য এগুলো ১০০% লাইভ থাকা আবশ্যক।',
   syncTier1Sla: '১০০% লাইভ আবশ্যক',
   syncTier2Title: 'Tier 2: ইউজার এক্সপেরিয়েন্স ও গতি',
-  syncTier2Desc:
-    'চ্যাট হিস্ট্রি ব্যাকআপ, দ্রুততম এআই রাউটিং এবং প্রোভাইডার হেলথ মেশ — সর্বোচ্চ গতির জন্য।',
+  syncTier2Desc: 'চ্যাট হিস্ট্রি ব্যাকআপ, দ্রুততম এআই রাউটিং এবং প্রোভাইডার হেলথ মেশ — সর্বোচ্চ গতির জন্য।',
   syncTier2Sla: 'উচ্চ অগ্রাধিকার',
   syncTier3Title: 'Tier 3: এআই টুলস ও ক্ষমতা',
   syncTier3Desc:
@@ -1348,7 +1398,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   ovSchemaParity: 'ডেটাবেস স্কিমা প্যারিটি',
   ovDestructiveHint: 'ধ্বংসাত্মক অপারেশনে স্পষ্ট নিশ্চিতকরণ প্রয়োজন।',
   ovEmergencyLock: 'ইমার্জেন্সি মেইনটেন্যান্স লক',
-  ovModelGovernanceHint: 'SupremeAI মডেল চালু/বন্ধ করুন বা প্রতিটি মডেলের জন্য ন্যূনতম সাবস্ক্রিপশন টিয়ার নির্ধারণ করুন।',
+  ovModelGovernanceHint:
+    'SupremeAI মডেল চালু/বন্ধ করুন বা প্রতিটি মডেলের জন্য ন্যূনতম সাবস্ক্রিপশন টিয়ার নির্ধারণ করুন।',
   ovFlushDlq: 'DLQ ফ্লাশ',
   ovFreePlus: 'Free+',
   ovGatewayLoad: 'গেটওয়ে ও হোস্ট লোড',

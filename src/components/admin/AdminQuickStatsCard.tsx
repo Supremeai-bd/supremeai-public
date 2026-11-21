@@ -77,7 +77,9 @@ export function computeMcpQuickStats(params: {
   const sortedLatencies = services.map((s) => s.latencyMs || 0).sort((a, b) => a - b);
   const fallbackP95 =
     sortedLatencies.length > 0
-      ? sortedLatencies[Math.min(sortedLatencies.length - 1, Math.floor(sortedLatencies.length * 0.95))]
+      ? sortedLatencies[
+          Math.min(sortedLatencies.length - 1, Math.floor(sortedLatencies.length * 0.95))
+        ]
       : 0;
   const fallbackAvgCpu =
     fallbackTotal > 0
@@ -108,7 +110,8 @@ export function computeMcpQuickStats(params: {
   const rpm = Math.round(trafficSummary?.rpm ?? 0);
   const totalRequests = trafficSummary?.totalRequests ?? 0;
   const errorRatePercent = Number((trafficSummary?.errorRatePercent ?? 0).toFixed(2));
-  const activeAlerts = healthSnapshot?.summary.activeAlertCount ?? healthSnapshot?.alerts.length ?? fallbackIssues;
+  const activeAlerts =
+    healthSnapshot?.summary.activeAlertCount ?? healthSnapshot?.alerts.length ?? fallbackIssues;
 
   let overallStatus: 'healthy' | 'degraded' | 'critical' = 'healthy';
   if (critical > 0 || unreachable > 0 || errorRatePercent > 5) {
@@ -152,7 +155,11 @@ export function computeMcpQuickStats(params: {
 
   const rawTime = healthSnapshot?.collectedAt || healthSnapshot?.host?.sampledAt || '';
   const lastUpdatedLabel = rawTime
-    ? new Date(rawTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    ? new Date(rawTime).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
     : 'Live stream';
 
   return {
@@ -174,9 +181,7 @@ export function computeMcpQuickStats(params: {
     errorRatePercent,
     activeAlerts,
     sweepCompletions:
-      typeof healthSnapshot?.sweepCompletions === 'number'
-        ? healthSnapshot.sweepCompletions
-        : null,
+      typeof healthSnapshot?.sweepCompletions === 'number' ? healthSnapshot.sweepCompletions : null,
     uptimeLabel: formatUptime(healthSnapshot?.host?.uptimeSec),
     lastUpdatedLabel,
     topNodes,

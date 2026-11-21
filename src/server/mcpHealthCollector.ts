@@ -21,8 +21,7 @@ import {
 
 const MCP_AGENT_KEY = process.env.MCP_TOWER_AGENT_KEY?.trim() || DEFAULT_MCP_AGENT_KEY;
 
-const MCP_TOWER_ORIGIN =
-  process.env.SUPREMEAI_MCP_TOWER_ORIGIN?.trim() || DEFAULT_MCP_TOWER_ORIGIN;
+const MCP_TOWER_ORIGIN = process.env.SUPREMEAI_MCP_TOWER_ORIGIN?.trim() || DEFAULT_MCP_TOWER_ORIGIN;
 
 const MCP_TOWER_CANDIDATES = resolveMcpRpcCandidates(
   process.env.SUPREMEAI_MCP_TOWER_URL?.trim() || MCP_TOWER_ORIGIN,
@@ -34,8 +33,7 @@ const MCP_TOWER_URL = MCP_TOWER_CANDIDATES[0];
 const MCP_TOWER_HEALTH_URL =
   process.env.SUPREMEAI_MCP_HEALTH_URL?.trim() || `${MCP_TOWER_ORIGIN}/health`;
 
-const BACKEND_GATEWAY_URL =
-  process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
+const BACKEND_GATEWAY_URL = process.env.SUPREMEAI_BACKEND_URL?.trim() || DEFAULT_BACKEND_ORIGIN;
 
 const GITHUB_COMMITS_URL = 'https://api.github.com/repos/Supremeai-bd/supremeai/commits/main';
 
