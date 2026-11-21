@@ -86,7 +86,11 @@ const TARGET = 'server.ts';
 // 7174 → 6932 after extracting api(v1)/user/preferences (3 routes: GET/POST/PUT)
 //         into src/server/routes/preferences.ts — 242 lines removed (251 block
 //         −9 delegation). Owns userPreferencesVault + vault file.
-const BUDGET = 6932;
+// 6932 → 6765 after extracting api/billing/* + metrics/usage (6 routes: plans/
+//         wallet/summary|analytics/history/add-funds/metrics) into
+//         src/server/routes/billing.ts — 167 lines removed (181 block −14
+//         delegation). Owns wallet/invoice/usage stores.
+const BUDGET = 6765;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
