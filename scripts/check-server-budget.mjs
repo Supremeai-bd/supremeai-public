@@ -115,7 +115,11 @@ const TARGET = 'server.ts';
 // 4813 → 4106 after extracting stream/chat (2 routes: stream/chat + chat) into
 //         src/server/routes/stream.ts — 707 lines removed (733 block −26
 //         delegation). Owns SSE proxy + local Gemini + vision cascade.
-const BUDGET = 4106;
+// 4106 → 3180 after extracting gemini/vision helpers (16 functions + vision
+//         VisionCooldownRegistry) into src/server/geminiVision.ts — 926 lines
+//         removed (943 block −17 import). Owns thinking/model routing, Gemini
+//         part generation, OpenAI vision bridge, free-vision cascade.
+const BUDGET = 3180;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
