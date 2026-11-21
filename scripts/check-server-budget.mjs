@@ -96,7 +96,10 @@ const TARGET = 'server.ts';
 // 6394 → 5955 after extracting ai media/* (4 routes: transcribe/avatar/title/
 //         intent) into src/server/routes/media.ts — 439 lines removed (446
 //         block −7 delegation). Owns Gemini calls for transcribe/face/title/intent.
-const BUDGET = 5955;
+// 5955 → 5718 after extracting api/git/oauth/* (3 routes: status/url/callback)
+//         into src/server/routes/gitOauth.ts — 237 lines removed (241 block −4
+//         delegation). Owns OAuth state + base-url helper.
+const BUDGET = 5718;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
