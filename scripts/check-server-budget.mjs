@@ -32,8 +32,32 @@ const TARGET = 'server.ts';
 // Re-baselined to 11550 on merge with main (PR #24): main added 57 net lines
 // of validation/audit hardening to server.ts after this branch was cut
 // (spread across ~30 hunks of existing inline code, not a new route group).
-// The ratchet continues from the merged baseline; future extractions lower it.
-const BUDGET = 11550;
+// 11550 → 11184 after extracting api/admin customers+security+swarmQueue
+//         (src/server/routes/admin/{customers,security,swarmQueue}.ts) —
+//         15 routes moved, 440 lines removed (customers 4, security 4,
+//         swarm 3 + queue 3 + DLQ flush), shared stores now via ctx.
+// 11184 → 10960 after extracting api/admin platform
+//         (src/server/routes/admin/platform.ts) — 6 admin routes + 1 public
+//         platform/config, 224 lines removed, runtimeFeatureFlags via
+//         getter/setter.
+// 10960 → 10596 after extracting api/admin providers+infisical
+//         (src/server/routes/admin/providers.ts) — 9 routes (providers 7 +
+//         infisical 2), 364 lines removed, providerMesh/infisicalExtraVaultKeys
+//         via getter/setter, helpers via ctx.
+// 10596 → 10076 after extracting api/admin system (schema parity 2 +
+//         llm-gateway 3 + github 4) + its exclusive stores/helpers
+//         (src/server/routes/admin/system.ts) — 9 routes, 520 lines removed
+//         (3499 store defs + 1146 fetch helper + 12928 handlers −237 register).
+//         api/admin/* now 39/39 complete; server.ts 11550→10076 (−1474).
+// 10076 → 9617 after extracting workspace terminal dock (terminal + files +
+//         file + project-run) into src/server/routes/workspace/terminal.ts
+//         — 4 routes, 459 lines removed (469 block −10 delegation).
+// 9617 → 8819 after extracting workspace remaining (browser-proxy 1 +
+//         browser-vault 3 + gmail-session 3 + browser-schedules 5) into
+//         src/server/routes/workspace/{browserProxy,browserVault,gmailSession,browserSchedules}.ts
+//         — 12 routes, 798 lines removed (325+131+86+284 blocks −14+4 delegation + studioDataDir dedup).
+//         api/workspace/* now complete; server.ts 10076→8819 (−1257) total workspace.
+const BUDGET = 8819;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
