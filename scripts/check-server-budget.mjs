@@ -32,8 +32,11 @@ const TARGET = 'server.ts';
 // Re-baselined to 11550 on merge with main (PR #24): main added 57 net lines
 // of validation/audit hardening to server.ts after this branch was cut
 // (spread across ~30 hunks of existing inline code, not a new route group).
-// The ratchet continues from the merged baseline; future extractions lower it.
-const BUDGET = 11550;
+// 11550 → 11184 after extracting api/admin customers+security+swarmQueue
+//         (src/server/routes/admin/{customers,security,swarmQueue}.ts) —
+//         15 routes moved, 440 lines removed (customers 4, security 4,
+//         swarm 3 + queue 3 + DLQ flush), shared stores now via ctx.
+const BUDGET = 11184;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
