@@ -109,7 +109,10 @@ const TARGET = 'server.ts';
 //         (3 routes: health/models/client-error) into src/server/routes/
 //         telemetry.ts — 45 lines removed (52 block −7 delegation). Owns health
 //         model map + app version.
-const BUDGET = 5468;
+// 5468 → 4813 after extracting auth core (11 routes: refresh/login/signup/guest/me/logout + aliases) into
+//         src/server/routes/auth.ts — 655 lines removed (677 block −22 delegation).
+//         Owns 5 handlers + session helpers.
+const BUDGET = 4813;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
