@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
+use crate::secure_vault::sha256_hex_file;
+
 const MAX_BINARY_BYTES: u64 = 350 * 1024 * 1024;
 const MIN_BINARY_BYTES: u64 = 100 * 1024;
 const PENDING_UPDATE_FILE: &str = "pending_update.json";
@@ -29,6 +31,8 @@ pub struct PendingUpdateRecord {
     pub file_name: String,
     pub url: String,
     pub staged_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -40,6 +44,8 @@ pub struct StagedUpdateInfo {
     pub size_bytes: u64,
     pub already_cached: bool,
     pub pending_on_next_startup: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -106,6 +112,27 @@ pub fn has_valid_binary_header(file_name: &str, bytes: &[u8]) -> bool {
     } else {
         false
     }
+}
+
+pub fn normalize_sha256_hex(raw: Option<&str>) -> Result<Option<String>, String> {
+    let Some(val) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let lower = val.to_ascii_lowercase();
+    if lower.len() != 64 || !lower.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        return Err("Expected SHA-256 checksum must be a 64-character hex string.".to_string());
+    }
+    Ok(Some(lower))
+}
+
+pub fn verify_file_sha256(path: &Path, expected: Option<&str>) -> Result<String, String> {
+    let actual = sha256_hex_file(path)?;
+    if let Some(exp) = expected {
+        if actual != exp.to_ascii_lowercase() {
+            return Err("Downloaded installer failed SHA-256 integrity verification.".to_string());
+        }
+    }
+    Ok(actual)
 }
 
 pub fn is_path_inside_updates_dir(updates_dir: &Path, candidate: &Path) -> bool {
@@ -248,6 +275,13 @@ pub fn apply_pending_update_on_startup(app: &AppHandle) -> bool {
         return false;
     }
 
+    if let Some(expected_hash) = record.sha256.as_deref() {
+        if verify_file_sha256(&candidate, Some(expected_hash)).is_err() {
+            let _ = clear_pending_update_files(app, Some(&record.file_path));
+            return false;
+        }
+    }
+
     #[cfg(target_os = "windows")]
     {
         // Clear pending manifest before launching to guarantee no boot loop if interrupted
@@ -317,11 +351,13 @@ pub async fn stage_silent_update(
     file_name: String,
     version: Option<String>,
     tag: Option<String>,
+    expected_sha256: Option<String>,
 ) -> Result<StagedUpdateInfo, String> {
     if !is_allowed_release_url(&url) {
         return Err("Update URL is not in the allowlisted SupremeAI release origin.".to_string());
     }
     let clean_name = sanitize_file_name(&file_name)?;
+    let expected_hash = normalize_sha256_hex(expected_sha256.as_deref())?;
     let resolved_version = version
         .as_deref()
         .map(|v| v.trim().trim_start_matches(['v', 'V']).to_string())
@@ -343,26 +379,32 @@ pub async fn stage_silent_update(
                 let mut header = [0u8; 4];
                 if let Ok(n) = f.read(&mut header) {
                     if has_valid_binary_header(&clean_name, &header[..n]) {
-                        let path_str = final_path.to_string_lossy().to_string();
-                        persist_pending_record(
-                            &app,
-                            &PendingUpdateRecord {
-                                version: resolved_version.clone(),
-                                tag: resolved_tag,
-                                file_path: path_str.clone(),
-                                file_name: clean_name.clone(),
-                                url: url.trim().to_string(),
-                                staged_at: now_epoch_string(),
-                            },
-                        );
-                        return Ok(StagedUpdateInfo {
-                            file_path: path_str,
-                            file_name: clean_name,
-                            version: resolved_version,
-                            size_bytes: meta.len(),
-                            already_cached: true,
-                            pending_on_next_startup: true,
-                        });
+                        if let Ok(actual_sha256) =
+                            verify_file_sha256(&final_path, expected_hash.as_deref())
+                        {
+                            let path_str = final_path.to_string_lossy().to_string();
+                            persist_pending_record(
+                                &app,
+                                &PendingUpdateRecord {
+                                    version: resolved_version.clone(),
+                                    tag: resolved_tag,
+                                    file_path: path_str.clone(),
+                                    file_name: clean_name.clone(),
+                                    url: url.trim().to_string(),
+                                    staged_at: now_epoch_string(),
+                                    sha256: Some(actual_sha256.clone()),
+                                },
+                            );
+                            return Ok(StagedUpdateInfo {
+                                file_path: path_str,
+                                file_name: clean_name,
+                                version: resolved_version,
+                                size_bytes: meta.len(),
+                                already_cached: true,
+                                pending_on_next_startup: true,
+                                sha256: Some(actual_sha256),
+                            });
+                        }
                     }
                 }
             }
@@ -439,6 +481,14 @@ pub async fn stage_silent_update(
         return Err("Downloaded installer is unexpectedly small or incomplete.".to_string());
     }
 
+    let verified_sha256 = match verify_file_sha256(&part_path, expected_hash.as_deref()) {
+        Ok(digest) => digest,
+        Err(err) => {
+            let _ = fs::remove_file(&part_path);
+            return Err(err);
+        }
+    };
+
     if final_path.exists() {
         let _ = fs::remove_file(&final_path);
     }
@@ -455,6 +505,7 @@ pub async fn stage_silent_update(
             file_name: clean_name.clone(),
             url: url.trim().to_string(),
             staged_at: now_epoch_string(),
+            sha256: Some(verified_sha256.clone()),
         },
     );
 
@@ -465,6 +516,7 @@ pub async fn stage_silent_update(
         size_bytes: total_bytes,
         already_cached: false,
         pending_on_next_startup: true,
+        sha256: Some(verified_sha256),
     })
 }
 
@@ -477,6 +529,14 @@ pub async fn apply_staged_update(
     let candidate = PathBuf::from(file_path.trim());
     if !is_path_inside_updates_dir(&dir, &candidate) {
         return Err("Staged installer path is invalid or outside the updates cache.".to_string());
+    }
+    if let Some(record) = read_pending_record(&app) {
+        if let Some(expected_hash) = record.sha256.as_deref() {
+            if let Err(err) = verify_file_sha256(&candidate, Some(expected_hash)) {
+                let _ = clear_pending_update_files(&app, Some(&record.file_path));
+                return Err(err);
+            }
+        }
     }
 
     #[cfg(target_os = "windows")]
@@ -559,7 +619,10 @@ pub async fn apply_staged_update(
 
 #[cfg(test)]
 mod tests {
-    use super::{has_valid_binary_header, is_allowed_release_url, sanitize_file_name, semver_gt};
+    use super::{
+        has_valid_binary_header, is_allowed_release_url, normalize_sha256_hex, sanitize_file_name,
+        semver_gt,
+    };
 
     #[test]
     fn allowlists_only_supremeai_origins() {
@@ -596,5 +659,16 @@ mod tests {
         assert!(semver_gt("v2.6.0", "2.5.9"));
         assert!(!semver_gt("2.5.0", "2.5.0"));
         assert!(!semver_gt("2.4.9", "2.5.0"));
+    }
+
+    #[test]
+    fn validates_sha256_hex_format() {
+        let valid = "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD";
+        assert_eq!(
+            normalize_sha256_hex(Some(valid)).unwrap().as_deref(),
+            Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        );
+        assert_eq!(normalize_sha256_hex(None).unwrap(), None);
+        assert!(normalize_sha256_hex(Some("not-hex")).is_err());
     }
 }

@@ -2,16 +2,11 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
-// User sign-in (2026-11-01): the desktop app previously had NO user login -
-// the main chat ran as a hardcoded "Guest session" with local-only history.
-// This module adds Supabase-backed user sign-in with a persisted session
-// (same OS app-config pattern as the admin session fix) and registers the
-// secure_* keystore commands that src/bridge/platform.ts always expected
-// but were never registered in main.rs.
+use crate::secure_vault::{config_dir_file, read_encrypted_json_or_migrate, write_encrypted_json};
 
-const SUPABASE_AUTH_URL: &str = "https://xtvkltzmberxekoamala.supabase.co/auth/v1";
+const DEFAULT_SUPABASE_AUTH_URL: &str = "https://xtvkltzmberxekoamala.supabase.co/auth/v1";
 const USER_SESSION_FILE: &str = "user_session.json";
 const SECURE_STORE_FILE: &str = "secure_store.json";
 
@@ -43,6 +38,31 @@ fn client() -> Result<reqwest::Client, String> {
         .map_err(|_| "Could not initialize the secure user connection.".to_string())
 }
 
+fn supabase_auth_url() -> Result<String, String> {
+    let raw = std::env::var("SUPREMEAI_SUPABASE_URL")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            option_env!("SUPREMEAI_SUPABASE_URL")
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
+        .map(|base| {
+            let clean = base.trim_end_matches('/');
+            if clean.ends_with("/auth/v1") {
+                clean.to_string()
+            } else {
+                format!("{clean}/auth/v1")
+            }
+        })
+        .unwrap_or_else(|| DEFAULT_SUPABASE_AUTH_URL.to_string());
+    if !raw.starts_with("https://") {
+        return Err("Authentication service URL must use HTTPS.".to_string());
+    }
+    Ok(raw)
+}
+
 fn supabase_anon_key() -> Result<String, String> {
     if let Ok(value) = std::env::var("SUPREMEAI_SUPABASE_ANON_KEY") {
         let trimmed = value.trim();
@@ -62,44 +82,14 @@ fn supabase_anon_key() -> Result<String, String> {
     )
 }
 
-fn write_restricted_file(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?;
-        file.write_all(bytes)?;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-        Ok(())
-    }
-    #[cfg(not(unix))]
-    {
-        std::fs::write(path, bytes)
-    }
-}
-
-fn config_dir_file(app: &AppHandle, name: &str) -> Option<std::path::PathBuf> {
-    let dir = app.path().app_config_dir().ok()?;
-    std::fs::create_dir_all(&dir).ok()?;
-    Some(dir.join(name))
-}
-
-// Persisted user session so restarts keep the user signed in.
+// Persisted user session sealed via AES-256-GCM so restarts keep the user signed in
+// without exposing plaintext tokens on disk.
 // Kill switch: SUPREMEAI_DESKTOP_NO_PERSIST_SESSION=1 (shared with admin session).
 fn persist_user_session(app: &AppHandle, session: &UserSession) {
     if std::env::var("SUPREMEAI_DESKTOP_NO_PERSIST_SESSION").is_ok() {
         return;
     }
-    if let Some(path) = config_dir_file(app, USER_SESSION_FILE) {
-        if let Ok(bytes) = serde_json::to_vec(session) {
-            let _ = write_restricted_file(&path, &bytes);
-        }
-    }
+    let _ = write_encrypted_json(app, USER_SESSION_FILE, session);
 }
 
 pub fn seed_user_session(state: &UserSessionState, session: UserSession) {
@@ -121,9 +111,7 @@ pub fn current_access_token(state: &UserSessionState) -> Option<String> {
 }
 
 pub fn load_persisted_user_session(app: &AppHandle, state: &UserSessionState) {
-    let Some(path) = config_dir_file(app, USER_SESSION_FILE) else { return };
-    let Ok(bytes) = std::fs::read(&path) else { return };
-    if let Ok(session) = serde_json::from_slice::<UserSession>(&bytes) {
+    if let Some(session) = read_encrypted_json_or_migrate::<UserSession>(app, USER_SESSION_FILE) {
         seed_user_session(state, session);
     }
 }
@@ -146,9 +134,10 @@ pub async fn user_login(
     }
 
     let http = client()?;
+    let auth_url = supabase_auth_url()?;
     let key = supabase_anon_key()?;
     let response = http
-        .post(format!("{SUPABASE_AUTH_URL}/token?grant_type=password"))
+        .post(format!("{auth_url}/token?grant_type=password"))
         .header("apikey", &key)
         .json(&json!({ "email": email, "password": password }))
         .send()
@@ -203,7 +192,7 @@ pub async fn user_logout(app: AppHandle, state: State<'_, UserSessionState>) -> 
     if let Ok(mut current) = state.session.lock() {
         *current = None;
     }
-    let _ = config_dir_file(&app, USER_SESSION_FILE).map(|path| std::fs::remove_file(path));
+    let _ = config_dir_file(&app, USER_SESSION_FILE).map(std::fs::remove_file);
     Ok(())
 }
 
@@ -218,27 +207,16 @@ pub async fn user_session(state: State<'_, UserSessionState>) -> Result<Option<S
 }
 
 // ---------------------------------------------------------------------------
-// Secure keystore: src/bridge/platform.ts (createSecureStore) has always
-// invoked secure_get/secure_set/secure_remove on Tauri, but the commands were
-// never registered, so every call failed. They live here now: a small JSON
-// keystore in the OS app-config dir. Tokens never reach the WebView.
+// Encrypted AES-256-GCM keystore in the OS app-config directory.
 // ---------------------------------------------------------------------------
 fn read_keystore(app: &AppHandle) -> serde_json::Map<String, Value> {
-    config_dir_file(app, SECURE_STORE_FILE)
-        .and_then(|path| std::fs::read(path).ok())
-        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+    read_encrypted_json_or_migrate::<Value>(app, SECURE_STORE_FILE)
         .and_then(|value| value.as_object().cloned())
         .unwrap_or_default()
 }
 
 fn write_keystore(app: &AppHandle, store: serde_json::Map<String, Value>) -> Result<(), String> {
-    let Some(path) = config_dir_file(app, SECURE_STORE_FILE) else {
-        return Err("The secure store location could not be resolved.".to_string());
-    };
-    let bytes = serde_json::to_vec(&Value::Object(store))
-        .map_err(|_| "The secure store could not be encoded.".to_string())?;
-    write_restricted_file(&path, &bytes)
-        .map_err(|_| "The secure store could not be saved.".to_string())
+    write_encrypted_json(app, SECURE_STORE_FILE, &Value::Object(store))
 }
 
 #[tauri::command]

@@ -32,6 +32,7 @@ export interface PendingUpdateRecord {
   fileName: string;
   url: string;
   stagedAt: string;
+  sha256?: string;
 }
 
 export interface StagedUpdateInfo {
@@ -41,6 +42,7 @@ export interface StagedUpdateInfo {
   sizeBytes: number;
   alreadyCached: boolean;
   pendingOnNextStartup: boolean;
+  sha256?: string;
 }
 
 export interface ApplyUpdateResult {
@@ -342,6 +344,7 @@ export async function checkAndStageBackgroundUpdate(force = false): Promise<Auto
           fileName,
           version: resolvedVersion,
           tag: resolvedTag,
+          expectedSha256: manifest.checksums?.windowsExeSha256 || null,
         });
 
         return setState({
@@ -379,6 +382,7 @@ export async function checkAndStageBackgroundUpdate(force = false): Promise<Auto
             fileName,
             version: resolvedVersion,
             tag: resolvedTag,
+            expectedSha256: manifest.checksums?.androidApkSha256 || null,
           });
 
           return setState({

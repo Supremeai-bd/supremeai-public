@@ -8,8 +8,8 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import os from 'os';
 import dotenv from 'dotenv';
-import { GoogleGenAI, LiveServerMessage, Modality, ThinkingLevel, Type } from '@google/genai';
-import { WebSocketServer, WebSocket } from 'ws';
+import { attachWebSocketBridges } from './src/server/wsBridge';
+import { PersistentSessionMap } from './src/server/redisStore';
 import { registerControlPlaneRoutes } from './src/server/controlPlaneRouter';
 import { registerMcpTowerRoutes } from './src/server/routes/mcpTowerRoutes';
 import { registerAdminCustomerRoutes } from './src/server/routes/admin/customers';
@@ -40,23 +40,13 @@ import { registerTelemetryRoutes } from './src/server/routes/telemetry';
 import { registerGraphRoutes } from './src/server/routes/graph';
 import { registerTtsRoutes } from './src/server/routes/tts';
 import { registerPreferencesRoutes } from './src/server/routes/preferences';
+import { registerKnowledgeRoutes } from './src/server/routes/knowledge';
+import { registerLlmLatencyRoutes } from './src/server/routes/llmLatency';
 import {
   getLiveMcpTowerServices,
   getRealGatewayTrafficSummary,
   recordHttpRequestMetric,
 } from './src/server/mcpHealthCollector';
-import {
-  buildBanglaSpeechStylePrompt,
-  chunkSpeechSegment,
-  clampVoicePitch,
-  detectBengaliOrBanglish,
-  normalizeBanglaAccent,
-  resolveEdgeNeuralVoice,
-  splitByScriptSegments,
-  voicePitchToSsml,
-  type TtsAudioChunk,
-} from './src/utils/speechUtils';
-import type { LiveVoiceName } from './src/hooks/useLiveVoiceSession';
 import {
   DEFAULT_BACKEND_ORIGIN,
   DEFAULT_WEB_STUDIO_URL,
@@ -124,9 +114,9 @@ import {
   mapWorkflowRunToBuildStatus,
   parseGitHubRepoSlug,
 } from './src/utils/projectRepoUtils';
+import { detectBengaliOrBanglish } from './src/utils/speechUtils';
 
 dotenv.config();
-
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -659,41 +649,6 @@ async function startServer() {
     verifyAdminAuthorization: (req) => verifyAdminAuthorization(req),
   });
 
-  // GET /api/agent-swarm/stream - Live SSE for Agent Swarm worker heartbeats & terminal events
-  app.get('/api/agent-swarm/stream', (req: Request, res: Response) => {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders();
-
-    res.write(
-      `data: ${JSON.stringify({ type: 'swarm_connected', timestamp: Date.now(), status: 'active' })}\n\n`
-    );
-
-    const interval = setInterval(() => {
-      const traffic = getRealGatewayTrafficSummary();
-      const activeWorkersCount = devSwarmWorkers.filter((w) => w.status === 'active').length;
-      const swarmHeartbeat = {
-        type: 'swarm_pulse',
-        timestamp: Date.now(),
-        activeWorkers: activeWorkersCount,
-        throughputRps: traffic.rpm,
-        logEvent: {
-          id: `log-${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString(),
-          source: 'autonomous-swarm-orchestrator',
-          level: 'INFO',
-          message: `Swarm heartbeat verified (${activeWorkersCount} active daemons · gateway ${traffic.rpm} RPM · avg ${traffic.avgLatencyMs}ms).`,
-        },
-      };
-      res.write(`data: ${JSON.stringify(swarmHeartbeat)}\n\n`);
-    }, 5000);
-
-    req.on('close', () => {
-      clearInterval(interval);
-    });
-  });
-
   // --- Admin Platform Control Endpoints & Central Governance State ---
   let runtimeFeatureFlags: Record<string, boolean> = {
     enable_supreme_reason: true,
@@ -1017,7 +972,8 @@ async function startServer() {
   };
 
   const TOKEN_SIGNING_SECRET = getSessionSigningSecret();
-  const activeAdminSessions = new Map<string, number>();
+  const activeAdminSessions = new PersistentSessionMap<number>('supremeai:admin_sess:', 86_400, true);
+  void activeAdminSessions.hydrateFromRedis().catch(() => {});
   const upstreamTokenAdminCache = new Map<
     string,
     { email: string; isAdmin: boolean; tier: PlanTier; expiresAt: number }
@@ -1690,11 +1646,17 @@ async function startServer() {
         },
       ];
 
-  const activeAuthSessions = new Map<string, string>();
-  // Local (dev/preview) refresh-token registry. The production gateway issues
-  // and rotates refresh tokens itself; this keeps the local edge contract
-  // identical so the client's 401-recovery path can be exercised offline.
-  const activeRefreshTokens = new Map<string, { userId: string; expiresAt: number }>();
+  const activeAuthSessions = new PersistentSessionMap<string>('supremeai:auth_sess:', 86_400 * 7, true);
+  // Local (dev/preview) refresh-token registry backed by Redis when REDIS_URL is configured.
+  const activeRefreshTokens = new PersistentSessionMap<{ userId: string; expiresAt: number }>(
+    'supremeai:refresh_tok:',
+    86_400 * 30,
+    true
+  );
+  void Promise.all([
+    activeAuthSessions.hydrateFromRedis(),
+    activeRefreshTokens.hydrateFromRedis(),
+  ]).catch(() => {});
   const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
   const issueLocalRefreshToken = (userId: string): string => {
     const refreshToken = `rt_${crypto.randomBytes(32).toString('base64url')}`;
@@ -2157,225 +2119,20 @@ async function startServer() {
   });
   registerAdminSwarmQueueRoutes(app, {
     devSwarmWorkers,
+    getRealGatewayTrafficSummary: () => getRealGatewayTrafficSummary(),
     resolveAuditActor: (req, actor) => resolveAuditActor(req, actor as unknown),
     recordAudit: (actor, action, resource, details, req) => recordAudit(actor, action, resource, details, req),
   });
 
+  registerKnowledgeRoutes(app, {
+    isProduction,
+    resolveAuthenticatedEmail: (req) => resolveAuthenticatedEmail(req),
+  });
 
-
-  // --- Workspace User Knowledge Endpoints ---
-  let devKnowledgeDocs = [
-    {
-      id: 'doc_arch_01',
-      title: 'SupremeAI Core Architecture Spec v2.4.md',
-      type: 'markdown',
-      sizeBytes: 142000,
-      tokenCount: 28400,
-      chunkCount: 32,
-      status: 'indexed',
-      lastIndexed: '2 hours ago',
-      isGroundingActive: true,
-      contentPreview:
-        'Architecture specification for multi-agent swarm orchestration and real-time LLM router...',
-    },
-    {
-      id: 'doc_mcp_02',
-      title: 'Model Context Protocol Engineering Spec.pdf',
-      type: 'pdf',
-      sizeBytes: 310000,
-      tokenCount: 62000,
-      chunkCount: 68,
-      status: 'indexed',
-      lastIndexed: 'Yesterday',
-      isGroundingActive: true,
-      contentPreview:
-        'MCP specification compliance guidelines: JSON-RPC stdio and SSE transport protocols...',
-    },
-    {
-      id: 'doc_code_03',
-      title: 'Supremeai-bd/supremeai Service Handlers.ts',
-      type: 'code',
-      sizeBytes: 88400,
-      tokenCount: 19800,
-      chunkCount: 24,
-      status: 'indexed',
-      lastIndexed: '3 days ago',
-      isGroundingActive: false,
-      contentPreview:
-        'TypeScript microservice definitions for auth-token-prober, sse-stream-broker...',
-    },
-    {
-      id: 'doc_audit_04',
-      title: 'Security Hardening & RBAC Rules.md',
-      type: 'markdown',
-      sizeBytes: 54000,
-      tokenCount: 11200,
-      chunkCount: 14,
-      status: 'indexed',
-      lastIndexed: '4 days ago',
-      isGroundingActive: true,
-      contentPreview:
-        'Zero-trust principle enforcement, fail-closed auth guards, sanitization policies...',
-    },
-  ];
-
-  const devKnowledgeOwner = new Map<string, string>();
-
-  app.get(
-    ['/api/user/knowledge', '/api/v1/user/knowledge'],
-    async (req: Request, res: Response) => {
-      const owner = await resolveAuthenticatedEmail(req);
-      if (!owner) {
-        res.status(401).json({ error: 'Authentication is required.' });
-        return;
-      }
-      res.json({
-        documents: devKnowledgeDocs.filter((d) => (devKnowledgeOwner.get(d.id) || '') === owner),
-      });
-    }
-  );
-
-  app.post(
-    ['/api/user/knowledge', '/api/v1/user/knowledge'],
-    async (req: Request, res: Response) => {
-      const owner = await resolveAuthenticatedEmail(req);
-      if (!owner) {
-        res.status(401).json({ error: 'Authentication is required.' });
-        return;
-      }
-      const payload = req.body || {};
-      const newDoc = {
-        id: `doc_${Date.now()}`,
-        title: payload.title || 'Untitled Document',
-        type: payload.type || 'markdown',
-        sizeBytes: payload.sizeBytes || 1024,
-        tokenCount: payload.tokenCount || 250,
-        chunkCount: payload.chunkCount || 1,
-        status: payload.status || 'indexed',
-        lastIndexed: 'Just now',
-        isGroundingActive: payload.isGroundingActive ?? true,
-        contentPreview: payload.contentPreview || payload.title || 'New document content',
-      };
-      devKnowledgeDocs.unshift(newDoc);
-      devKnowledgeOwner.set(newDoc.id, owner);
-      res.json({
-        success: true,
-        document: newDoc,
-        documents: devKnowledgeDocs.filter((d) => (devKnowledgeOwner.get(d.id) || '') === owner),
-      });
-    }
-  );
-
-  app.patch(
-    ['/api/user/knowledge/:id', '/api/v1/user/knowledge/:id'],
-    async (req: Request, res: Response) => {
-      const owner = await resolveAuthenticatedEmail(req);
-      if (!owner) {
-        res.status(401).json({ error: 'Authentication is required.' });
-        return;
-      }
-      const { id } = req.params;
-      const doc = devKnowledgeDocs.find((d) => d.id === id);
-      if (!doc || (devKnowledgeOwner.get(id) || '') !== owner) {
-        res.status(404).json({ error: 'Knowledge document not found' });
-        return;
-      }
-      if (req.body?.isGroundingActive !== undefined) {
-        doc.isGroundingActive = Boolean(req.body.isGroundingActive);
-      }
-      if (req.body?.title) {
-        doc.title = req.body.title;
-      }
-      doc.lastIndexed = 'Just now';
-      res.json({ success: true, document: doc });
-    }
-  );
-
-  app.delete(
-    ['/api/user/knowledge/:id', '/api/v1/user/knowledge/:id'],
-    async (req: Request, res: Response) => {
-      const owner = await resolveAuthenticatedEmail(req);
-      if (!owner) {
-        res.status(401).json({ error: 'Authentication is required.' });
-        return;
-      }
-      const { id } = req.params;
-      if ((devKnowledgeOwner.get(id) || '') !== owner) {
-        res.status(404).json({ error: 'Knowledge document not found' });
-        return;
-      }
-      devKnowledgeOwner.delete(id);
-      devKnowledgeDocs = devKnowledgeDocs.filter((d) => d.id !== id);
-      res.json({
-        success: true,
-        documents: devKnowledgeDocs.filter((d) => (devKnowledgeOwner.get(d.id) || '') === owner),
-      });
-    }
-  );
-
-  // --- LLM Gateway Average Response Latency Endpoint (used by UserApiKeysView & Admin) ---
-  app.get(
-    ['/api/llm-gateway/latency', '/api/v1/llm-gateway/latency'],
-    (_req: Request, res: Response) => {
-      const updatedAt = new Date().toISOString();
-      const providerMap: Record<
-        string,
-        {
-          provider: string;
-          displayName: string;
-          avgLatencyMs: number;
-          p95LatencyMs: number;
-          successRate: number;
-          sampleCount: number;
-          status: 'healthy' | 'degraded' | 'unhealthy';
-          updatedAt: string;
-        }
-      > = {
-        supremeai: {
-          provider: 'supremeai',
-          displayName: 'SupremeAI Gateway Mesh',
-          avgLatencyMs: 19,
-          p95LatencyMs: 34,
-          successRate: 99.98,
-          sampleCount: 14820,
-          status: 'healthy',
-          updatedAt,
-        },
-      };
-
-      for (const p of providerMesh) {
-        const avg = p.avgLatencyMs ?? p.latencyMs;
-        const p95 = p.p95LatencyMs ?? Math.round(avg * 1.45);
-        const status: 'healthy' | 'degraded' | 'unhealthy' =
-          p.status === 'unhealthy'
-            ? 'unhealthy'
-            : p.status === 'degraded' || avg > 250
-              ? 'degraded'
-              : 'healthy';
-
-        if (!providerMap[p.provider]) {
-          providerMap[p.provider] = {
-            provider: p.provider,
-            displayName: PROVIDER_DISPLAY_NAMES[p.provider] || p.displayName,
-            avgLatencyMs: avg,
-            p95LatencyMs: p95,
-            successRate: status === 'healthy' ? 99.92 : status === 'degraded' ? 97.4 : 88.5,
-            sampleCount:
-              p.provider === 'google_ai_studio' ? 9420 : p.provider === 'openai' ? 4110 : 1850,
-            status,
-            updatedAt,
-          };
-        }
-      }
-
-      res.json({
-        gatewayStatus: 'healthy',
-        fetchedAt: updatedAt,
-        providers: providerMap,
-        list: Object.values(providerMap),
-      });
-    }
-  );
+  registerLlmLatencyRoutes(app, {
+    get providerMesh() { return providerMesh; },
+    PROVIDER_DISPLAY_NAMES,
+  });
 
   registerApiKeysRoutes(app, {
     get providerMesh() { return providerMesh; },
@@ -2750,391 +2507,13 @@ async function startServer() {
     });
   });
 
-  // Create HTTP server & mount /api/live WebSocket bridge for Gemini Live API (gemini-3.8-live)
+  // Create HTTP server & mount /api/live + /ws WebSocket bridges
   const server = http.createServer(app);
-  const liveWss = new WebSocketServer({ noServer: true });
-  const broadcasterWss = new WebSocketServer({ noServer: true });
-  const VALID_LIVE_VOICES = new Set(['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr']);
-
-  const MAX_CONCURRENT_LIVE_WS = 50;
-  const MAX_LIVE_WS_PER_IP = 6;
-  const activeLiveSocketsByIp = new Map<string, number>();
-  const liveWsRateBuckets = new Map<string, number[]>();
-  const broadcasterClientMeta = new WeakMap<WebSocket, { email: string; isAdmin: boolean }>();
-
-  const extractWsToken = (request: http.IncomingMessage, reqUrl: URL): string => {
-    const queryToken = String(reqUrl.searchParams.get('token') || '').trim();
-    if (queryToken) return queryToken;
-    const authHeader = String(request.headers.authorization || '').trim();
-    if (authHeader.startsWith('Bearer ')) return authHeader.slice(7).trim();
-    const cookies = parseCookieHeader(request.headers.cookie);
-    return (cookies['supremeai_admin_session'] || '').trim();
-  };
-
-  server.on('upgrade', async (request, socket, head) => {
-    try {
-      const reqUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
-      const wsToken = extractWsToken(request, reqUrl);
-
-      if (reqUrl.pathname === '/api/live') {
-        const clientIp = String(request.socket.remoteAddress || '127.0.0.1');
-        const now = Date.now();
-        const hits = (liveWsRateBuckets.get(clientIp) || []).filter((t) => now - t < 60_000);
-        if (hits.length >= 20) {
-          socket.write('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
-          socket.destroy();
-          return;
-        }
-        hits.push(now);
-        liveWsRateBuckets.set(clientIp, hits);
-
-        const activeForIp = activeLiveSocketsByIp.get(clientIp) || 0;
-        if (liveWss.clients.size >= MAX_CONCURRENT_LIVE_WS || activeForIp >= MAX_LIVE_WS_PER_IP) {
-          socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
-          socket.destroy();
-          return;
-        }
-
-        if (isProduction) {
-          const isGuest =
-            wsToken.startsWith('tok_guest_') || wsToken.startsWith('sk-supreme-guest');
-          const identity = wsToken && !isGuest ? await verifyBearerIdentity(wsToken) : null;
-          if (!identity && !isGuest) {
-            socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
-            socket.destroy();
-            return;
-          }
-        }
-
-        liveWss.handleUpgrade(request, socket, head, (ws) => {
-          liveWss.emit('connection', ws, request);
-        });
-      } else if (
-        reqUrl.pathname === '/ws' ||
-        reqUrl.pathname === '/ws/live' ||
-        reqUrl.pathname === '/api/ws'
-      ) {
-        const identity = wsToken ? await verifyBearerIdentity(wsToken) : null;
-        if (!identity) {
-          socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
-          socket.destroy();
-          return;
-        }
-        broadcasterWss.handleUpgrade(request, socket, head, (ws) => {
-          broadcasterClientMeta.set(ws, { email: identity.email, isAdmin: identity.isAdmin });
-          broadcasterWss.emit('connection', ws, request);
-        });
-      } else {
-        socket.destroy();
-      }
-    } catch {
-      socket.destroy();
-    }
-  });
-
-  const broadcasterClients = new Set<WebSocket>();
-
-  broadcasterWss.on('connection', (clientWs: WebSocket) => {
-    broadcasterClients.add(clientWs);
-    clientWs.send(
-      JSON.stringify({
-        type: 'connection_ack',
-        status: 'connected',
-        mode: 'authenticated_broadcaster',
-      })
-    );
-
-    clientWs.on('message', (raw) => {
-      try {
-        const msg = JSON.parse(raw.toString());
-        if (msg.type === 'ping' || msg.command === 'ping') {
-          clientWs.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
-        } else if (msg.type === 'customer_updated' || msg.type === 'mcp_service_updated') {
-          const senderMeta = broadcasterClientMeta.get(clientWs);
-          if (!senderMeta?.isAdmin) return;
-          const payload = JSON.stringify(msg);
-          broadcasterClients.forEach((otherWs) => {
-            const receiverMeta = broadcasterClientMeta.get(otherWs);
-            if (
-              otherWs !== clientWs &&
-              receiverMeta?.isAdmin &&
-              otherWs.readyState === WebSocket.OPEN
-            ) {
-              otherWs.send(payload);
-            }
-          });
-        }
-      } catch {}
-    });
-
-    clientWs.on('close', () => {
-      broadcasterClients.delete(clientWs);
-    });
-
-    clientWs.on('error', () => {
-      broadcasterClients.delete(clientWs);
-    });
-  });
-
-  liveWss.on('connection', (clientWs: WebSocket, req: http.IncomingMessage) => {
-    const clientIp = String(req.socket.remoteAddress || '127.0.0.1').trim();
-    activeLiveSocketsByIp.set(clientIp, (activeLiveSocketsByIp.get(clientIp) || 0) + 1);
-    const decrementIpCounter = () => {
-      const nextCount = (activeLiveSocketsByIp.get(clientIp) || 1) - 1;
-      if (nextCount <= 0) activeLiveSocketsByIp.delete(clientIp);
-      else activeLiveSocketsByIp.set(clientIp, nextCount);
-    };
-
-    if (blockedIps.some((entry) => entry.ip === clientIp)) {
-      decrementIpCounter();
-      clientWs.send(
-        JSON.stringify({ type: 'error', message: 'Access blocked by platform WAF firewall.' })
-      );
-      clientWs.close(1008, 'Blocked');
-      return;
-    }
-
-    if (platformConfig.maintenanceMode) {
-      decrementIpCounter();
-      clientWs.send(
-        JSON.stringify({
-          type: 'error',
-          message:
-            platformConfig.maintenanceMessage || 'Platform is currently in maintenance mode.',
-        })
-      );
-      clientWs.close(1013, 'Maintenance');
-      return;
-    }
-
-    const activeApiKey = process.env.GEMINI_API_KEY?.trim() || '';
-    if (!activeApiKey || activeApiKey === 'MY_GEMINI_API_KEY') {
-      decrementIpCounter();
-      clientWs.send(
-        JSON.stringify({
-          type: 'error',
-          message:
-            'API key is not configured. Please check the key in the Settings > Secrets panel.',
-        })
-      );
-      clientWs.close(1011, 'API key missing');
-      return;
-    }
-
-    let sessionPromise: Promise<Awaited<ReturnType<GoogleGenAI['live']['connect']>>> | null = null;
-    let isClientClosed = false;
-
-    const sendToClient = (payload: Record<string, unknown>) => {
-      if (!isClientClosed && clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(JSON.stringify(payload));
-      }
-    };
-
-    const startLiveSession = (
-      voiceRaw?: string,
-      systemInstructionRaw?: string,
-      languageRaw?: string,
-      pitchRaw?: unknown,
-      accentRaw?: unknown
-    ) => {
-      if (sessionPromise) return;
-
-      const voiceName = voiceRaw && VALID_LIVE_VOICES.has(voiceRaw) ? voiceRaw : 'Zephyr';
-      const preferredLang = languageRaw === 'bn' ? 'bn' : 'en';
-      const pitch = clampVoicePitch(
-        typeof pitchRaw === 'number' ? pitchRaw : Number.parseFloat(String(pitchRaw ?? '1'))
-      );
-      const accent = normalizeBanglaAccent(accentRaw);
-      const accentStyleDirective =
-        accent === 'bn-in'
-          ? 'When speaking Bengali (বাংলা), use natural standard Kolkata West Bengal Bengali pronunciation and cadence.'
-          : 'When speaking Bengali (বাংলা), use an authentic, natural Bangladeshi Standard Bengali (প্রমিত ঢাকা / বাংলাদেশি বাংলা) accent—crisp ড়/ঢ় retroflex sounds, natural nasal vowels, warm Bangladeshi sentence melody, and seamless pronunciation of inline English tech terms.';
-      const pitchDirective =
-        pitch <= 0.85
-          ? 'Keep your vocal tone noticeably deeper and warmer.'
-          : pitch >= 1.15
-            ? 'Keep your vocal tone bright and crisp.'
-            : '';
-      const langDirective =
-        preferredLang === 'bn'
-          ? `Default spoken language: Bengali (বাংলা). Speak warmly and clearly in natural Bengali unless the user speaks or asks in another language. ${accentStyleDirective} ${pitchDirective} When reading or mixing Bengali (বাংলা) and English terms, pronounce EVERY Bengali word and EVERY English word audibly—never skip, silence, or drop the Bengali portion.`
-          : `You are fluent in both English and Bengali (বাংলা). Default to English unless the user speaks or writes in Bengali or Romanized Bengali (Banglish), in which case respond in warm, natural Bengali (বাংলা). ${accentStyleDirective} ${pitchDirective} When speaking or reading mixed English and Bengali (বাংলা), pronounce BOTH English and Bengali portions clearly and audibly—never skip or drop Bengali words.`;
-      const baseInstruction = `You are SupremeAI Live, a real-time conversational voice engineering partner in SupremeAI Studio. Respond naturally, concisely, and clearly in spoken dialogue without markdown formatting symbols.\n\n${langDirective}`;
-      const effectiveSystemInstruction = systemInstructionRaw?.trim()
-        ? `${baseInstruction}\n\nActive Persona Context:\n${systemInstructionRaw.trim()}`
-        : baseInstruction;
-
-      const liveAi = new GoogleGenAI({
-        apiKey: activeApiKey,
-        httpOptions: {
-          apiVersion: 'v1beta',
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
-      });
-
-      sessionPromise = liveAi.live.connect({
-        model: 'gemini-3.8-live',
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName },
-            },
-          },
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          systemInstruction: effectiveSystemInstruction,
-        },
-        callbacks: {
-          onopen: () => {
-            sendToClient({
-              type: 'connected',
-              model: 'gemini-3.8-live',
-              voice: voiceName,
-            });
-          },
-          onmessage: (message: LiveServerMessage) => {
-            if (message.setupComplete) {
-              sendToClient({ type: 'setup_complete', model: 'gemini-3.8-live', voice: voiceName });
-            }
-
-            const serverContent = message.serverContent;
-            if (!serverContent) return;
-
-            if (serverContent.inputTranscription?.text) {
-              sendToClient({
-                type: 'input_transcript',
-                text: serverContent.inputTranscription.text,
-              });
-            }
-
-            if (serverContent.outputTranscription?.text) {
-              sendToClient({
-                type: 'output_transcript',
-                text: serverContent.outputTranscription.text,
-              });
-            }
-
-            for (const part of serverContent.modelTurn?.parts ?? []) {
-              if (part.inlineData?.data) {
-                sendToClient({
-                  type: 'audio',
-                  data: part.inlineData.data,
-                  mimeType: part.inlineData.mimeType || 'audio/pcm;rate=24000',
-                });
-              }
-            }
-
-            if (serverContent.interrupted) {
-              sendToClient({ type: 'interrupted' });
-            }
-
-            if (serverContent.turnComplete) {
-              sendToClient({ type: 'turn_complete' });
-            }
-          },
-          onerror: (event: any) => {
-            const msg = event?.message || event?.error?.message || 'Live API WebSocket error.';
-            sendToClient({ type: 'error', message: msg });
-          },
-          onclose: (event: any) => {
-            if (!isClientClosed) {
-              sendToClient({
-                type: 'closed',
-                reason: event?.reason || 'Live API session ended.',
-              });
-              if (clientWs.readyState === WebSocket.OPEN) {
-                clientWs.close();
-              }
-            }
-          },
-        },
-      });
-
-      sessionPromise.catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : 'Failed to connect to Gemini Live API.';
-        sendToClient({ type: 'error', message: msg });
-        if (clientWs.readyState === WebSocket.OPEN) {
-          clientWs.close(1011, 'Live API connection failed');
-        }
-      });
-    };
-
-    clientWs.on('message', (raw) => {
-      let parsed: any;
-      try {
-        parsed = JSON.parse(raw.toString());
-      } catch {
-        return;
-      }
-
-      if (parsed?.type === 'init') {
-        startLiveSession(
-          parsed.voiceName,
-          parsed.systemInstruction,
-          parsed.language,
-          parsed.pitch,
-          parsed.accent
-        );
-        return;
-      }
-
-      if (!sessionPromise) {
-        startLiveSession(
-          parsed?.voiceName,
-          parsed?.systemInstruction,
-          parsed?.language,
-          parsed?.pitch,
-          parsed?.accent
-        );
-      }
-
-      if (parsed?.type === 'audio' && typeof parsed.data === 'string' && parsed.data.length > 0) {
-        sessionPromise
-          ?.then((session) => {
-            if (!isClientClosed) {
-              session.sendRealtimeInput({
-                audio: { data: parsed.data, mimeType: 'audio/pcm;rate=16000' },
-              });
-            }
-          })
-          .catch(() => {});
-      } else if (parsed?.type === 'audio_end') {
-        sessionPromise
-          ?.then((session) => {
-            if (!isClientClosed) {
-              session.sendRealtimeInput({ audioStreamEnd: true });
-            }
-          })
-          .catch(() => {});
-      } else if (parsed?.type === 'text' && typeof parsed.text === 'string' && parsed.text.trim()) {
-        sessionPromise
-          ?.then((session) => {
-            if (!isClientClosed) {
-              session.sendRealtimeInput({ text: parsed.text.trim() });
-            }
-          })
-          .catch(() => {});
-      }
-    });
-
-    clientWs.on('close', () => {
-      if (!isClientClosed) {
-        isClientClosed = true;
-        decrementIpCounter();
-      }
-      sessionPromise
-        ?.then((session) => {
-          try {
-            session.close();
-          } catch {
-            // Ignore close errors
-          }
-        })
-        .catch(() => {});
-    });
+  attachWebSocketBridges(server, {
+    isProduction,
+    blockedIps,
+    platformConfig,
+    verifyBearerIdentity,
   });
 
   server.on('error', (err) => {

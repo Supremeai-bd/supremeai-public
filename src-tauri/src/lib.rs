@@ -8,6 +8,7 @@ use tauri::Manager;
 mod admin;
 mod auth;
 mod feedback;
+mod secure_vault;
 mod speech;
 mod updater;
 

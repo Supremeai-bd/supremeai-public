@@ -14,6 +14,8 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   {
     ignores: [
+      'admin/**',
+      'dev-dist/**',
       'dist/**',
       'node_modules/**',
       'src-tauri/target/**',

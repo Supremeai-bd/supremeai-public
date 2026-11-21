@@ -1,4 +1,7 @@
 import type { Express, Request, Response } from 'express';
+import { loadRedisJson, saveRedisJson } from '../../redisStore';
+
+const REDIS_QUEUE_KEY = 'supremeai:swarm:queue_jobs';
 
 /**
  * Admin Swarm & Queue — in-memory simulation of BullMQ/Redis workers
@@ -51,6 +54,7 @@ interface QueueJob {
 
 export interface AdminSwarmQueueContext {
   devSwarmWorkers: SwarmWorker[];
+  getRealGatewayTrafficSummary: () => { rpm: number; avgLatencyMs: number };
   resolveAuditActor: (req?: Request, explicitActor?: unknown) => string;
   recordAudit: (
     actor: string,
@@ -63,6 +67,40 @@ export interface AdminSwarmQueueContext {
 
 export function registerAdminSwarmQueueRoutes(app: Express, ctx: AdminSwarmQueueContext): void {
   const devSwarmWorkers = ctx.devSwarmWorkers;
+
+  app.get('/api/agent-swarm/stream', (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    res.write(
+      `data: ${JSON.stringify({ type: 'swarm_connected', timestamp: Date.now(), status: 'active' })}\n\n`
+    );
+
+    const interval = setInterval(() => {
+      const traffic = ctx.getRealGatewayTrafficSummary();
+      const activeWorkersCount = devSwarmWorkers.filter((w) => w.status === 'active').length;
+      const swarmHeartbeat = {
+        type: 'swarm_pulse',
+        timestamp: Date.now(),
+        activeWorkers: activeWorkersCount,
+        throughputRps: traffic.rpm,
+        logEvent: {
+          id: `log-${Date.now()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          source: 'autonomous-swarm-orchestrator',
+          level: 'INFO',
+          message: `Swarm heartbeat verified (${activeWorkersCount} active daemons · gateway ${traffic.rpm} RPM · avg ${traffic.avgLatencyMs}ms).`,
+        },
+      };
+      res.write(`data: ${JSON.stringify(swarmHeartbeat)}\n\n`);
+    }, 5000);
+
+    req.on('close', () => {
+      clearInterval(interval);
+    });
+  });
 
   let devQueueJobs: QueueJob[] = [
     {
@@ -135,12 +173,25 @@ export function registerAdminSwarmQueueRoutes(app: Express, ctx: AdminSwarmQueue
     },
   ];
 
+  void loadRedisJson<QueueJob[]>(REDIS_QUEUE_KEY)
+    .then((persisted) => {
+      if (Array.isArray(persisted) && persisted.length > 0) {
+        devQueueJobs = persisted;
+      }
+    })
+    .catch(() => {});
+
+  const syncQueueToRedis = () => {
+    void saveRedisJson(REDIS_QUEUE_KEY, devQueueJobs, 86_400 * 7).catch(() => {});
+  };
+
   // Dead-Letter Queue flush — moved here from the security block so it
   // shares ownership of devQueueJobs without a cross-module dependency.
   app.post('/api/admin/queue/flush-dlq', (req: Request, res: Response) => {
     devQueueJobs = devQueueJobs.map((job) =>
       job.status === 'dlq' ? { ...job, status: 'active', attempts: 1 } : job,
     );
+    syncQueueToRedis();
     ctx.recordAudit(
       ctx.resolveAuditActor(req, (req.body as Record<string, unknown>)?.actor),
       'DLQ_FLUSH',
@@ -158,8 +209,8 @@ export function registerAdminSwarmQueueRoutes(app: Express, ctx: AdminSwarmQueue
       simulated: !brokerConfigured,
       brokerConfigured,
       note: brokerConfigured
-        ? 'Redis configured.'
-        : 'In-memory simulation: set REDIS_URL and wire a real worker broker for distributed execution.',
+        ? 'Redis state persistence active.'
+        : 'In-memory mode: set REDIS_URL for durable cross-restart queue persistence.',
     });
   });
 
@@ -191,8 +242,8 @@ export function registerAdminSwarmQueueRoutes(app: Express, ctx: AdminSwarmQueue
       simulated: !brokerConfigured,
       brokerConfigured,
       note: brokerConfigured
-        ? 'Redis configured.'
-        : 'In-memory simulation: set REDIS_URL and wire BullMQ/Redis for a real durable queue.',
+        ? 'Redis state persistence active.'
+        : 'In-memory mode: set REDIS_URL for durable queue persistence.',
     });
   });
 
@@ -202,6 +253,7 @@ export function registerAdminSwarmQueueRoutes(app: Express, ctx: AdminSwarmQueue
       job.status = 'active';
       job.attempts = 1;
       delete (job as unknown as Record<string, unknown>).errorDetails;
+      syncQueueToRedis();
       res.json({ success: true, job });
       return;
     }
@@ -210,6 +262,7 @@ export function registerAdminSwarmQueueRoutes(app: Express, ctx: AdminSwarmQueue
 
   app.delete('/api/admin/queue/completed', (_req: Request, res: Response) => {
     devQueueJobs = devQueueJobs.filter((j) => j.status !== 'completed');
+    syncQueueToRedis();
     res.json({ success: true, jobs: devQueueJobs });
   });
 }

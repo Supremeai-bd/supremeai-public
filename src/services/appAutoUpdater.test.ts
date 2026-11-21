@@ -150,12 +150,76 @@ describe('appAutoUpdater & useAutoUpdater hook', () => {
       fileName: 'SupremeAI.Desktop_2.6.0_x64-setup.exe',
       version: '2.6.0',
       tag: 'v2.6.0',
+      expectedSha256: null,
     });
 
     const applied = await applyReadyUpdate();
     expect(applied?.launched).toBe(true);
     expect(applied?.silent).toBe(true);
     expect(getUpdateState().status).toBe('applying');
+  });
+
+  it('forwards manifest SHA-256 checksum to native stage_silent_update when present', async () => {
+    isTauriMock.mockReturnValue(true);
+    const mockSha = 'a'.repeat(64);
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'get_app_runtime_info') {
+        return {
+          version: '2.5.0',
+          os: 'windows',
+          arch: 'x86_64',
+          isWindows: true,
+          isAndroid: false,
+        };
+      }
+      if (command === 'stage_silent_update') {
+        return {
+          filePath: 'C:\\updates\\SupremeAI.Desktop_2.6.0_x64-setup.exe',
+          fileName: 'SupremeAI.Desktop_2.6.0_x64-setup.exe',
+          version: '2.6.0',
+          sizeBytes: 42_000_000,
+          alreadyCached: false,
+          pendingOnNextStartup: true,
+          sha256: mockSha,
+        };
+      }
+      return null;
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          version: '2.6.0',
+          tag: 'v2.6.0',
+          repo: 'Supremeai-bd/supremeai-public',
+          publishedAt: '2026-11-20T00:00:00Z',
+          releasePageUrl: 'https://github.com/Supremeai-bd/supremeai-public/releases/tag/v2.6.0',
+          webUrl: 'https://supremeai-studio.pages.dev',
+          windowsExeUrl:
+            'https://github.com/Supremeai-bd/supremeai-public/releases/download/latest/SupremeAI.Desktop_2.6.0_x64-setup.exe',
+          androidApkUrl:
+            'https://github.com/Supremeai-bd/supremeai-public/releases/download/latest/SupremeAI-Studio-app-universal-release.apk',
+          vscodeVsixUrl:
+            'https://github.com/Supremeai-bd/supremeai-public/releases/download/latest/supremeai-vscode-2.6.0.vsix',
+          checksums: {
+            windowsExeSha256: mockSha,
+          },
+          provenance: 'manifest',
+          assets: [],
+        }),
+        { status: 200 }
+      )
+    );
+
+    const state = await checkAndStageBackgroundUpdate(true);
+    expect(state.status).toBe('ready');
+    expect(invokeMock).toHaveBeenCalledWith('stage_silent_update', {
+      url: 'https://github.com/Supremeai-bd/supremeai-public/releases/download/latest/SupremeAI.Desktop_2.6.0_x64-setup.exe',
+      fileName: 'SupremeAI.Desktop_2.6.0_x64-setup.exe',
+      version: '2.6.0',
+      tag: 'v2.6.0',
+      expectedSha256: mockSha,
+    });
   });
 
   it('restores pending update on next startup when staged on device', async () => {

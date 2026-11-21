@@ -112,6 +112,55 @@ describe('cross-platform download & counterpart shortcuts', () => {
     );
   });
 
+  it('extracts SHA-256 checksums from downloads.checksums and platform metadata', () => {
+    const winHash = 'a'.repeat(64);
+    const apkHash = 'b'.repeat(64);
+    const vsixHash = 'c'.repeat(64);
+
+    const fromDownloads = normalizeRemoteReleaseManifest(
+      {
+        version: '2.5.1',
+        tag: 'v2.5.1',
+        downloads: {
+          checksums: {
+            windowsExeSha256: winHash,
+            androidApkSha256: apkHash,
+            vscodeVsixSha256: vsixHash,
+          },
+        },
+      },
+      GITHUB_PUBLIC_REPO_SLUG
+    );
+
+    expect(fromDownloads?.checksums?.windowsExeSha256).toBe(winHash);
+    expect(fromDownloads?.checksums?.androidApkSha256).toBe(apkHash);
+    expect(fromDownloads?.checksums?.vscodeVsixSha256).toBe(vsixHash);
+    expect(fromDownloads?.assets.find((a) => a.platform === 'windows-exe')?.sha256).toBe(winHash);
+    expect(fromDownloads?.assets.find((a) => a.platform === 'android-apk-arm64')?.sha256).toBe(
+      apkHash
+    );
+
+    const fromPlatforms = normalizeRemoteReleaseManifest(
+      {
+        version: '2.5.1',
+        platforms: {
+          'windows-x86_64': {
+            url: 'https://github.com/Supremeai-bd/supremeai-public/releases/download/v2.5.1/SupremeAI.Desktop_2.5.1_x64-setup.exe',
+            sha256: winHash,
+          },
+          'android-arm64': {
+            url: 'https://github.com/Supremeai-bd/supremeai-public/releases/download/v2.5.1/SupremeAI-Studio-app-universal-release.apk',
+            sha256: apkHash,
+          },
+        },
+      },
+      GITHUB_PUBLIC_REPO_SLUG
+    );
+
+    expect(fromPlatforms?.checksums?.windowsExeSha256).toBe(winHash);
+    expect(fromPlatforms?.checksums?.androidApkSha256).toBe(apkHash);
+  });
+
   it('compares semver strings accurately across v-prefix and multi-digit patches', () => {
     expect(compareSemver('2.5.1', '2.5.0')).toBeGreaterThan(0);
     expect(compareSemver('v2.6.0', '2.5.9')).toBeGreaterThan(0);

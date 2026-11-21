@@ -116,10 +116,15 @@ const TARGET = 'server.ts';
 //         src/server/routes/stream.ts — 707 lines removed (733 block −26
 //         delegation). Owns SSE proxy + local Gemini + vision cascade.
 // 4106 → 3180 after extracting gemini/vision helpers (16 functions + vision
-//         VisionCooldownRegistry) into src/server/geminiVision.ts — 926 lines
-//         removed (943 block −17 import). Owns thinking/model routing, Gemini
-//         part generation, OpenAI vision bridge, free-vision cascade.
-const BUDGET = 3180;
+//         cascade + Gemini proxy helpers) into src/server/geminiMediaHelpers.ts
+//         — 926 lines removed.
+// 3180 → 2797 after extracting WebSocket live/sync bridges into
+//         src/server/wsBridge.ts (−390 lines) and adding durable
+//         PersistentSessionMap in src/server/redisStore.ts.
+// 2797 → 2559 after extracting knowledge CRUD (4 routes), llm-gateway latency
+//         (2 routes), and agent-swarm SSE stream into src/server/routes/{knowledge,llmLatency}.ts
+//         and admin/swarmQueue.ts (−238 lines; zero inline feature routes left).
+const BUDGET = 2559;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

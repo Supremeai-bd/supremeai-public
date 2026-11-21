@@ -17,6 +17,7 @@ export interface ReleaseAssetEntry {
   fileName: string;
   url: string;
   sizeBytes?: number;
+  sha256?: string;
 }
 
 export interface ReleaseManifest {
@@ -31,6 +32,13 @@ export interface ReleaseManifest {
   androidApkUrl: string;
   androidArmv7ApkUrl?: string;
   vscodeVsixUrl?: string;
+  checksums?: {
+    windowsExeSha256?: string;
+    windowsMsiSha256?: string;
+    androidApkSha256?: string;
+    androidArmv7ApkSha256?: string;
+    vscodeVsixSha256?: string;
+  };
   provenance: 'live-github' | 'manifest' | 'fallback';
   assets: ReleaseAssetEntry[];
 }
@@ -179,6 +187,41 @@ export function normalizeRemoteReleaseManifest(
       ? rawReleasePageUrl
       : rollingUrls.releasePageUrl;
 
+  const checksums = {
+    windowsExeSha256:
+      (typeof downloads.checksums?.windowsExeSha256 === 'string' &&
+        downloads.checksums.windowsExeSha256) ||
+      (typeof platforms['windows-x86_64']?.sha256 === 'string'
+        ? platforms['windows-x86_64'].sha256
+        : undefined),
+    windowsMsiSha256:
+      (typeof downloads.checksums?.windowsMsiSha256 === 'string' &&
+        downloads.checksums.windowsMsiSha256) ||
+      (typeof platforms['windows-msi']?.sha256 === 'string'
+        ? platforms['windows-msi'].sha256
+        : undefined),
+    androidApkSha256:
+      (typeof downloads.checksums?.androidApkSha256 === 'string' &&
+        downloads.checksums.androidApkSha256) ||
+      (typeof platforms['android-arm64']?.sha256 === 'string'
+        ? platforms['android-arm64'].sha256
+        : typeof platforms['android-apk']?.sha256 === 'string'
+          ? platforms['android-apk'].sha256
+          : undefined),
+    androidArmv7ApkSha256:
+      (typeof downloads.checksums?.androidArmv7ApkSha256 === 'string' &&
+        downloads.checksums.androidArmv7ApkSha256) ||
+      (typeof platforms['android-armv7']?.sha256 === 'string'
+        ? platforms['android-armv7'].sha256
+        : undefined),
+    vscodeVsixSha256:
+      (typeof downloads.checksums?.vscodeVsixSha256 === 'string' &&
+        downloads.checksums.vscodeVsixSha256) ||
+      (typeof platforms['vscode-vsix']?.sha256 === 'string'
+        ? platforms['vscode-vsix'].sha256
+        : undefined),
+  };
+
   return {
     version,
     tag,
@@ -191,6 +234,7 @@ export function normalizeRemoteReleaseManifest(
     androidApkUrl,
     ...(androidArmv7ApkUrl ? { androidArmv7ApkUrl } : {}),
     vscodeVsixUrl,
+    checksums,
     provenance: 'manifest',
     assets: [
       {
@@ -198,24 +242,28 @@ export function normalizeRemoteReleaseManifest(
         label: 'Android APK (Universal)',
         fileName: androidApkUrl.split('/').pop() || 'SupremeAI-Studio-app-universal-release.apk',
         url: androidApkUrl,
+        ...(checksums.androidApkSha256 ? { sha256: checksums.androidApkSha256 } : {}),
       },
       {
         platform: 'windows-exe',
         label: 'Windows Installer (.exe)',
         fileName: windowsExeUrl.split('/').pop() || `SupremeAI.Desktop_${version}_x64-setup.exe`,
         url: windowsExeUrl,
+        ...(checksums.windowsExeSha256 ? { sha256: checksums.windowsExeSha256 } : {}),
       },
       {
         platform: 'windows-msi',
         label: 'Windows MSI (.msi)',
         fileName: windowsMsiUrl.split('/').pop() || `SupremeAI.Desktop_${version}_x64_en-US.msi`,
         url: windowsMsiUrl,
+        ...(checksums.windowsMsiSha256 ? { sha256: checksums.windowsMsiSha256 } : {}),
       },
       {
         platform: 'vscode-vsix',
         label: 'VS Code Extension (.vsix)',
         fileName: vscodeVsixUrl.split('/').pop() || `supremeai-vscode-${version}.vsix`,
         url: vscodeVsixUrl,
+        ...(checksums.vscodeVsixSha256 ? { sha256: checksums.vscodeVsixSha256 } : {}),
       },
     ],
   };

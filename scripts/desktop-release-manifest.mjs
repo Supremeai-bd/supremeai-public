@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
@@ -12,10 +13,12 @@ if (!GITHUB_REPOSITORY || !['latest', `v${version}`].includes(RELEASE_TAG)) {
 const normalizeAndRename = (dir, relativePath) => {
   const full = join(dir, relativePath);
   const cleanName = basename(full).replace(/[^a-zA-Z0-9_@+.-]/g, '.');
+  const target = join(dirname(full), cleanName);
   if (basename(full) !== cleanName) {
-    renameSync(full, join(dirname(full), cleanName));
+    renameSync(full, target);
   }
-  return cleanName;
+  const sha256 = createHash('sha256').update(readFileSync(target)).digest('hex');
+  return { cleanName, sha256 };
 };
 
 const downloadUrlFor = (assetName) =>
@@ -32,12 +35,12 @@ if (installers.length !== 1) {
     `Expected exactly one NSIS x64 installer for ${version}; found ${installers.length}.`
   );
 }
-const exeAsset = normalizeAndRename(desktopDir, installers[0]);
-const windowsExeUrl = downloadUrlFor(exeAsset);
+const exeMeta = normalizeAndRename(desktopDir, installers[0]);
+const windowsExeUrl = downloadUrlFor(exeMeta.cleanName);
 
 const msiFiles = desktopFiles.filter((file) => file.endsWith('.msi'));
-const msiAsset = msiFiles.length > 0 ? normalizeAndRename(desktopDir, msiFiles[0]) : null;
-const windowsMsiUrl = msiAsset ? downloadUrlFor(msiAsset) : undefined;
+const msiMeta = msiFiles.length > 0 ? normalizeAndRename(desktopDir, msiFiles[0]) : null;
+const windowsMsiUrl = msiMeta ? downloadUrlFor(msiMeta.cleanName) : undefined;
 
 const androidDir = 'release-artifacts/release-android-apk';
 const androidFiles = existsSync(androidDir)
@@ -47,12 +50,14 @@ const androidFiles = existsSync(androidDir)
   : [];
 
 const normalizedApks = androidFiles.map((file) => normalizeAndRename(androidDir, file));
-const arm64Apk =
-  normalizedApks.find((name) => /universal|arm64|aarch64/i.test(name)) || normalizedApks[0] || null;
-const armv7Apk = normalizedApks.find((name) => /armv7|armeabi/i.test(name)) || null;
+const arm64Meta =
+  normalizedApks.find((item) => /universal|arm64|aarch64/i.test(item.cleanName)) ||
+  normalizedApks[0] ||
+  null;
+const armv7Meta = normalizedApks.find((item) => /armv7|armeabi/i.test(item.cleanName)) || null;
 
-const androidApkUrl = arm64Apk ? downloadUrlFor(arm64Apk) : undefined;
-const androidArmv7ApkUrl = armv7Apk ? downloadUrlFor(armv7Apk) : undefined;
+const androidApkUrl = arm64Meta ? downloadUrlFor(arm64Meta.cleanName) : undefined;
+const androidArmv7ApkUrl = armv7Meta ? downloadUrlFor(armv7Meta.cleanName) : undefined;
 
 const vsixDir = 'release-artifacts/release-vscode-vsix';
 const vsixFiles = existsSync(vsixDir)
@@ -60,8 +65,8 @@ const vsixFiles = existsSync(vsixDir)
       .map(String)
       .filter((file) => file.endsWith('.vsix'))
   : [];
-const vsixAsset = vsixFiles.length > 0 ? normalizeAndRename(vsixDir, vsixFiles[0]) : null;
-const vscodeVsixUrl = vsixAsset ? downloadUrlFor(vsixAsset) : undefined;
+const vsixMeta = vsixFiles.length > 0 ? normalizeAndRename(vsixDir, vsixFiles[0]) : null;
+const vscodeVsixUrl = vsixMeta ? downloadUrlFor(vsixMeta.cleanName) : undefined;
 
 const webUrl = (WEB_STUDIO_URL || 'https://supremeai-studio.pages.dev').replace(/\/+$/, '');
 const releasePageUrl =
@@ -69,19 +74,34 @@ const releasePageUrl =
     ? `https://github.com/${GITHUB_REPOSITORY}/releases/tag/latest`
     : `https://github.com/${GITHUB_REPOSITORY}/releases/tag/${encodeURIComponent(RELEASE_TAG)}`;
 
+const checksums = {
+  windowsExeSha256: exeMeta.sha256,
+  ...(msiMeta ? { windowsMsiSha256: msiMeta.sha256 } : {}),
+  ...(arm64Meta ? { androidApkSha256: arm64Meta.sha256 } : {}),
+  ...(armv7Meta ? { androidArmv7ApkSha256: armv7Meta.sha256 } : {}),
+  ...(vsixMeta ? { vscodeVsixSha256: vsixMeta.sha256 } : {}),
+};
+
 const platforms = {
   'windows-x86_64': {
     url: windowsExeUrl,
+    sha256: exeMeta.sha256,
   },
-  ...(windowsMsiUrl ? { 'windows-msi': { url: windowsMsiUrl } } : {}),
-  ...(androidApkUrl
+  ...(windowsMsiUrl && msiMeta
+    ? { 'windows-msi': { url: windowsMsiUrl, sha256: msiMeta.sha256 } }
+    : {}),
+  ...(androidApkUrl && arm64Meta
     ? {
-        'android-arm64': { url: androidApkUrl },
-        'android-apk': { url: androidApkUrl },
+        'android-arm64': { url: androidApkUrl, sha256: arm64Meta.sha256 },
+        'android-apk': { url: androidApkUrl, sha256: arm64Meta.sha256 },
       }
     : {}),
-  ...(androidArmv7ApkUrl ? { 'android-armv7': { url: androidArmv7ApkUrl } } : {}),
-  ...(vscodeVsixUrl ? { 'vscode-vsix': { url: vscodeVsixUrl } } : {}),
+  ...(androidArmv7ApkUrl && armv7Meta
+    ? { 'android-armv7': { url: androidArmv7ApkUrl, sha256: armv7Meta.sha256 } }
+    : {}),
+  ...(vscodeVsixUrl && vsixMeta
+    ? { 'vscode-vsix': { url: vscodeVsixUrl, sha256: vsixMeta.sha256 } }
+    : {}),
 };
 
 const manifest = {
@@ -98,6 +118,7 @@ const manifest = {
     ...(androidApkUrl ? { androidApkUrl } : {}),
     ...(androidArmv7ApkUrl ? { androidArmv7ApkUrl } : {}),
     ...(vscodeVsixUrl ? { vscodeVsixUrl } : {}),
+    checksums,
   },
   platforms,
 };

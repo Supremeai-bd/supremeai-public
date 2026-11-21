@@ -1,0 +1,56 @@
+name: "Deploy Admin Dashboard to Cloudflare Pages"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "admin/**"
+      - ".github/workflows/deploy-admin.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-admin-cloudflare-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-admin:
+    name: "Build & Deploy Admin Dashboard"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: admin/package.json
+
+      - name: Install Dependencies
+        shell: bash
+        working-directory: admin
+        run: |
+          npm install --no-audit --no-fund
+
+      - name: Build Next.js Static Export
+        shell: bash
+        working-directory: admin
+        run: |
+          export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
+          npx next build
+
+      - name: Deploy to Cloudflare Pages (supremeai-admin)
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        shell: bash
+        working-directory: admin
+        run: |
+          npx wrangler pages deploy dist --project-name=supremeai-admin --branch=main --commit-dirty=true

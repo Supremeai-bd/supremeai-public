@@ -2,11 +2,33 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
-const GATEWAY_API: &str = "https://supremeai-api-ulw0.onrender.com";
-const CORE_API: &str = "https://supremeai-primary-node.onrender.com";
+use crate::secure_vault::{config_dir_file, read_encrypted_json_or_migrate, write_encrypted_json};
+
+const DEFAULT_GATEWAY_API: &str = "https://supremeai-api-ulw0.onrender.com";
+const DEFAULT_CORE_API: &str = "https://supremeai-primary-node.onrender.com";
 const MAX_ADMIN_RESPONSE_BYTES: u64 = 1_000_000;
+
+fn resolve_https_endpoint(env_key: &str, default_url: &str) -> Result<String, String> {
+    let resolved = std::env::var(env_key)
+        .ok()
+        .map(|s| s.trim().trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| default_url.to_string());
+    if !resolved.starts_with("https://") {
+        return Err("Admin endpoint must use HTTPS.".to_string());
+    }
+    Ok(resolved)
+}
+
+fn gateway_api() -> Result<String, String> {
+    resolve_https_endpoint("SUPREMEAI_API_URL", DEFAULT_GATEWAY_API)
+}
+
+fn core_api() -> Result<String, String> {
+    resolve_https_endpoint("SUPREMEAI_CORE_URL", DEFAULT_CORE_API)
+}
 
 fn admin_login_path(mode: &str) -> Result<&'static str, String> {
     match mode {
@@ -22,8 +44,8 @@ pub struct AdminSession {
     pub email: String,
 }
 
-/// Tokens are kept in process memory and optionally persisted with 0600 permissions;
-/// they are never returned to the WebView or written to localStorage.
+/// Tokens are kept in process memory and optionally persisted in an AES-256-GCM
+/// sealed vault file; they are never returned to the WebView or written to localStorage.
 #[derive(Default)]
 pub struct AdminSessionState {
     session: Mutex<Option<AdminSession>>,
@@ -31,27 +53,6 @@ pub struct AdminSessionState {
 }
 
 const ADMIN_SESSION_FILE: &str = "admin_session.json";
-
-fn write_restricted_file(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::io::Write;
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?;
-        file.write_all(bytes)?;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
-        Ok(())
-    }
-    #[cfg(not(unix))]
-    {
-        std::fs::write(path, bytes)
-    }
-}
 
 fn extract_set_cookies(headers: &reqwest::header::HeaderMap) -> Vec<String> {
     headers
@@ -64,25 +65,13 @@ fn extract_set_cookies(headers: &reqwest::header::HeaderMap) -> Vec<String> {
         .collect()
 }
 
-fn admin_session_file(app: &AppHandle) -> Option<std::path::PathBuf> {
-    let dir = app.path().app_config_dir().ok()?;
-    std::fs::create_dir_all(&dir).ok()?;
-    Some(dir.join(ADMIN_SESSION_FILE))
-}
-
-// ROOT-CAUSE FIX (2026-11-01): the admin session used to live only in process
-// memory, so every app restart force-logged the owner out. It is now persisted
-// in the OS app-config directory and restored on launch. Kill switch:
-// SUPREMEAI_DESKTOP_NO_PERSIST_SESSION=1 restores the old in-memory behavior.
+// Persisted admin session sealed via AES-256-GCM.
+// Kill switch: SUPREMEAI_DESKTOP_NO_PERSIST_SESSION=1 restores in-memory-only behavior.
 fn persist_session(app: &AppHandle, session: &AdminSession) {
     if std::env::var("SUPREMEAI_DESKTOP_NO_PERSIST_SESSION").is_ok() {
         return;
     }
-    if let Some(path) = admin_session_file(app) {
-        if let Ok(bytes) = serde_json::to_vec(session) {
-            let _ = write_restricted_file(&path, &bytes);
-        }
-    }
+    let _ = write_encrypted_json(app, ADMIN_SESSION_FILE, session);
 }
 
 pub fn seed_session(state: &AdminSessionState, session: AdminSession) {
@@ -92,9 +81,7 @@ pub fn seed_session(state: &AdminSessionState, session: AdminSession) {
 }
 
 pub fn load_persisted_session(app: &AppHandle, state: &AdminSessionState) {
-    let Some(path) = admin_session_file(app) else { return };
-    let Ok(bytes) = std::fs::read(&path) else { return };
-    if let Ok(session) = serde_json::from_slice::<AdminSession>(&bytes) {
+    if let Some(session) = read_encrypted_json_or_migrate::<AdminSession>(app, ADMIN_SESSION_FILE) {
         seed_session(state, session);
     }
 }
@@ -199,7 +186,8 @@ pub async fn admin_login(
         return Err("Enter a valid email and password.".to_string());
     }
 
-    let endpoint = format!("{GATEWAY_API}{}", admin_login_path(&mode)?);
+    let gateway = gateway_api()?;
+    let endpoint = format!("{gateway}{}", admin_login_path(&mode)?);
     let http = client()?;
     let response = http
         .post(endpoint)
@@ -281,8 +269,9 @@ pub async fn admin_verify_totp(
         .ok()
         .filter(|cookies| !cookies.is_empty())
         .map(|cookies| cookies.join("; "));
+    let gateway = gateway_api()?;
     let mut request = http
-        .post(format!("{GATEWAY_API}/api/admin/totp-verify"))
+        .post(format!("{gateway}/api/admin/totp-verify"))
         .json(&json!({ "otp": otp, "remember_browser": true }));
     if let Some(cookie_header) = pending_cookie_header {
         request = request.header(reqwest::header::COOKIE, cookie_header);
@@ -324,10 +313,12 @@ pub async fn admin_dashboard(state: State<'_, AdminSessionState>) -> Result<Valu
     if session.role != "admin" {
         return Err("This account is not authorized to view the admin workspace.".to_string());
     }
+    let gateway = gateway_api()?;
+    let core = core_api()?;
     let http = client()?;
 
     let tenant_response = http
-        .get(format!("{GATEWAY_API}/api/admin/tenant-overview"))
+        .get(format!("{gateway}/api/admin/tenant-overview"))
         .bearer_auth(&session.token)
         .send()
         .await
@@ -335,7 +326,7 @@ pub async fn admin_dashboard(state: State<'_, AdminSessionState>) -> Result<Valu
     let tenant_overview = parse_json_response(tenant_response, "dashboard").await?;
 
     let health_response = http
-        .get(format!("{CORE_API}/admin-api/health-map"))
+        .get(format!("{core}/admin-api/health-map"))
         .bearer_auth(&session.token)
         .send()
         .await
@@ -361,11 +352,11 @@ pub async fn admin_logout(app: AppHandle, state: State<'_, AdminSessionState>) -
         pending.clear();
     }
     // Explicit sign-out also clears the persisted session file.
-    let _ = admin_session_file(&app).map(|path| std::fs::remove_file(path));
+    let _ = config_dir_file(&app, ADMIN_SESSION_FILE).map(std::fs::remove_file);
     if let Some(session) = session {
-        if let Ok(http) = client() {
+        if let (Ok(gateway), Ok(http)) = (gateway_api(), client()) {
             let _ = http
-                .post(format!("{GATEWAY_API}/api/admin/logout"))
+                .post(format!("{gateway}/api/admin/logout"))
                 .bearer_auth(session.token)
                 .send()
                 .await;

@@ -1,14 +1,11 @@
 # Splitting `server.ts` — group map, method and current status
 
 `server.ts` is the Express + Vite bootstrap for the web app, the desktop shell
-and the Android WebView bridge. It is also, historically, the place where every
-route was written. As of this change it is **8,819 lines** with **≈92 inline
-route registrations inside a single function scope** (down from 11,550 / 143 —
-`wc -l` and `grep -n app.(get|post|…)` counts differ slightly, see the ratchet
-script for the exact figure it enforces). `api/admin/*` is now **fully
-extracted (39/39)** into `src/server/routes/admin/` and `api/workspace/*`
-is now **fully extracted (16/16)** into `src/server/routes/workspace/` —
-both biggest groups done, −2,731 lines gross.
+and the Android WebView bridge. Previously **11,782 lines** with **149 inline
+route registrations**, it has now been refactored down to **2,559 lines**
+(78.3% reduction) with **all feature route groups extracted** into
+`src/server/routes/**`, WebSocket bridges in `src/server/wsBridge.ts`, and
+durable session/queue state in `src/server/redisStore.ts`.
 
 A big-bang rewrite is not reviewable, not testable, and not worth the risk. The
 method here is **one cohesive group at a time, proven by the type checker and
