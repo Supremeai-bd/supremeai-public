@@ -27,6 +27,7 @@ import { registerConversationsRoutes } from './src/server/routes/conversations';
 import { registerProjectsRoutes } from './src/server/routes/projects';
 import { registerApiKeysRoutes } from './src/server/routes/apiKeys';
 import { registerTeamRoutes } from './src/server/routes/team';
+import { registerWebhooksRoutes } from './src/server/routes/webhooks';
 import {
   getLiveMcpTowerServices,
   getRealGatewayTrafficSummary,
@@ -4668,17 +4669,6 @@ async function startServer() {
     }
   >();
 
-  let userWebhooksStore: Array<{
-    id: string;
-    name: string;
-    url: string;
-    events: string[];
-    secret: string;
-    active: boolean;
-    lastTriggered: string;
-    failureCount: number;
-  }> = [];
-
   // Dynamic Billing & Usage endpoints
   app.get('/api/billing/plans', async (_req: Request, res: Response) => {
     const remote = await fetchGatewayJson('/api/v1/billing/plans');
@@ -4814,130 +4804,9 @@ async function startServer() {
     res.json({ items, total: items.length });
   });
 
-  // User Webhooks CRUD + Dispatch Test
-  const userWebhookOwner = new Map<string, string>();
-
-  app.get('/api/user/webhooks', async (req: Request, res: Response) => {
-    const owner = await resolveAuthenticatedEmail(req);
-    if (!owner) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
-    }
-    res.json({
-      webhooks: userWebhooksStore.filter((w) => (userWebhookOwner.get(w.id) || '') === owner),
-    });
-  });
-
-  app.post('/api/user/webhooks', async (req: Request, res: Response) => {
-    const owner = await resolveAuthenticatedEmail(req);
-    if (!owner) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
-    }
-    const body = req.body || {};
-    const rawUrl = String(body.url || '').trim();
-    if (!rawUrl) {
-      res.status(400).json({ error: 'Webhook URL is required.' });
-      return;
-    }
-    try {
-      const parsed = new URL(rawUrl);
-      const targetCheck = isRestrictedProxyTarget(parsed, false);
-      if (targetCheck.restricted) {
-        res.status(400).json({ error: targetCheck.reason || 'Restricted webhook destination.' });
-        return;
-      }
-    } catch {
-      res.status(400).json({ error: 'Invalid webhook URL.' });
-      return;
-    }
-    const created = {
-      id: `wh_${Date.now()}`,
-      name: String(body.name || rawUrl).trim(),
-      url: rawUrl,
-      events:
-        Array.isArray(body.events) && body.events.length > 0 ? body.events : ['chat.completed'],
-      secret: String(body.secret || `whsec_${crypto.randomBytes(12).toString('hex')}`),
-      active: body.active ?? true,
-      lastTriggered: 'Never',
-      failureCount: 0,
-    };
-    userWebhooksStore.unshift(created);
-    userWebhookOwner.set(created.id, owner);
-    res.status(201).json({
-      success: true,
-      webhook: created,
-      webhooks: userWebhooksStore.filter((w) => (userWebhookOwner.get(w.id) || '') === owner),
-    });
-  });
-
-  app.delete('/api/user/webhooks/:id', async (req: Request, res: Response) => {
-    const owner = await resolveAuthenticatedEmail(req);
-    if (!owner) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
-    }
-    if ((userWebhookOwner.get(req.params.id) || '') !== owner) {
-      res.status(404).json({ error: 'Webhook not found' });
-      return;
-    }
-    userWebhookOwner.delete(req.params.id);
-    userWebhooksStore = userWebhooksStore.filter((w) => w.id !== req.params.id);
-    res.json({
-      success: true,
-      webhooks: userWebhooksStore.filter((w) => (userWebhookOwner.get(w.id) || '') === owner),
-    });
-  });
-
-  app.post('/api/user/webhooks/:id/test', async (req: Request, res: Response) => {
-    const owner = await resolveAuthenticatedEmail(req);
-    if (!owner) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
-    }
-    const target = userWebhooksStore.find((w) => w.id === req.params.id);
-    if (!target || (userWebhookOwner.get(req.params.id) || '') !== owner) {
-      res.status(404).json({ error: 'Webhook not found' });
-      return;
-    }
-    let parsedWebhookUrl: URL;
-    try {
-      parsedWebhookUrl = new URL(target.url);
-      const targetCheck = await resolveAndCheckProxyTarget(parsedWebhookUrl, false);
-      if (targetCheck.restricted) {
-        res.status(400).json({ error: targetCheck.reason || 'Restricted webhook destination.' });
-        return;
-      }
-    } catch {
-      res.status(400).json({ error: 'Invalid webhook URL.' });
-      return;
-    }
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const hookRes = await safeFetchWithRedirectCheck(
-        parsedWebhookUrl,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-SupremeAI-Signature': target.secret },
-          body: JSON.stringify({ event: 'webhook.test', timestamp: new Date().toISOString() }),
-          signal: controller.signal,
-        },
-        false
-      );
-      clearTimeout(timeout);
-      target.lastTriggered = `${new Date().toLocaleTimeString()} (HTTP ${hookRes.status})`;
-      if (!hookRes.ok) target.failureCount += 1;
-      res.json({ success: hookRes.ok, status_code: hookRes.status });
-    } catch (err: unknown) {
-      target.lastTriggered = `${new Date().toLocaleTimeString()} (Failed)`;
-      target.failureCount += 1;
-      res.json({
-        success: false,
-        status_code: 0,
-        error: err instanceof Error ? err.message : 'Delivery failed',
-      });
-    }
+  registerWebhooksRoutes(app, {
+    resolveAuthenticatedEmail: (req) => resolveAuthenticatedEmail(req),
+    safeFetchWithRedirectCheck: (...args) => safeFetchWithRedirectCheck(...args),
   });
 
   registerProjectsRoutes(app, {
@@ -4951,7 +4820,7 @@ async function startServer() {
     resolveAuthenticatedEmail: (req) => resolveAuthenticatedEmail(req),
   });
 
-  // Cross-Device User Preferences Vault  // Cross-Device User Preferences Vault (mirrors SupremeAI Gateway /api/v1/user/preferences)
+  // Cross-Device User Preferences Vault (mirrors SupremeAI Gateway /api/v1/user/preferences)
   interface UserPreferencesVaultEntry {
     user_id: string;
     preferences: Record<string, unknown>;
