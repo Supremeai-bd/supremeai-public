@@ -99,7 +99,10 @@ const TARGET = 'server.ts';
 // 5955 → 5718 after extracting api/git/oauth/* (3 routes: status/url/callback)
 //         into src/server/routes/gitOauth.ts — 237 lines removed (241 block −4
 //         delegation). Owns OAuth state + base-url helper.
-const BUDGET = 5718;
+// 5718 → 5551 after extracting api/releases/latest (1 route: rolling manifest)
+//         into src/server/routes/releases.ts — 167 lines removed (171 block −4
+//         delegation). Owns release cache + GitHub fallback.
+const BUDGET = 5551;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
