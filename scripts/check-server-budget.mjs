@@ -52,7 +52,12 @@ const TARGET = 'server.ts';
 // 10076 → 9617 after extracting workspace terminal dock (terminal + files +
 //         file + project-run) into src/server/routes/workspace/terminal.ts
 //         — 4 routes, 459 lines removed (469 block −10 delegation).
-const BUDGET = 9617;
+// 9617 → 8819 after extracting workspace remaining (browser-proxy 1 +
+//         browser-vault 3 + gmail-session 3 + browser-schedules 5) into
+//         src/server/routes/workspace/{browserProxy,browserVault,gmailSession,browserSchedules}.ts
+//         — 12 routes, 798 lines removed (325+131+86+284 blocks −14+4 delegation + studioDataDir dedup).
+//         api/workspace/* now complete; server.ts 10076→8819 (−1257) total workspace.
+const BUDGET = 8819;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

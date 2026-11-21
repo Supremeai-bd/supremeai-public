@@ -2,12 +2,13 @@
 
 `server.ts` is the Express + Vite bootstrap for the web app, the desktop shell
 and the Android WebView bridge. It is also, historically, the place where every
-route was written. As of this change it is **10,076 lines** with **≈104 inline
+route was written. As of this change it is **8,819 lines** with **≈92 inline
 route registrations inside a single function scope** (down from 11,550 / 143 —
 `wc -l` and `grep -n app.(get|post|…)` counts differ slightly, see the ratchet
 script for the exact figure it enforces). `api/admin/*` is now **fully
-extracted (39/39)** into `src/server/routes/admin/` — the biggest group is
-done, −1,474 lines gross.
+extracted (39/39)** into `src/server/routes/admin/` and `api/workspace/*`
+is now **fully extracted (16/16)** into `src/server/routes/workspace/` —
+both biggest groups done, −2,731 lines gross.
 
 A big-bang rewrite is not reviewable, not testable, and not worth the risk. The
 method here is **one cohesive group at a time, proven by the type checker and
@@ -47,7 +48,7 @@ by hitting the live routes**, with a ratchet so the file can never grow back.
 | `api/admin/*` | 39 (up from 35 after PR #24) | 4234–7256 (two islands: 4242–5801 + 6941–7256) | high | **DONE** — split into `admin/{customers,security,swarmQueue,platform,providers,system}.ts` (39/39) → `server.ts` 11550→10076 (−1,474) |
 | `api/admin` remaining | 0 | — | — | all 39 handlers now in `src/server/routes/admin/` (customers 4, security 4, swarm 3 + queue 3 + DLQ 1, platform 6+1 public, providers 7 + infisical 2, schemaParity 2 + llmGateway 3 + github 4) |
 | `api/v1/*` (projects, conversations, preferences, graph) | 23 | 3379–10844 | medium | conversations block is self-contained; projects block touches GitHub |
-| `api/workspace/*` | 12 | 8017–9170 | medium | terminal/files/browser-vault/gmail-session; each is its own module candidate |
+| `api/workspace/*` | 12 | 6583–7440 (current, was 8017–9170) | medium | **DONE** — split into `workspace/{terminal,browserProxy,browserVault,gmailSession,browserSchedules}.ts` (terminal 4 + proxy 1 + vault 3 + gmail 3 + schedules 5) → `server.ts` 10076→8819 (−1,257) |
 | `api/auth/*` | 8 | 3378–3957 | low | handlers already exist (`handleLoginRequest`, …) — mostly wiring |
 | `api/user/*` | 8 | 6129–6619 | low | webhooks + team |
 | `api/billing/*` | 5 | 5992–6046 | medium | Stripe wallet logic |
@@ -66,6 +67,8 @@ by hitting the live routes**, with a ratchet so the file can never grow back.
 | `api/admin/platform` (auth verify + platform config + overview + feature-flags + model policy) | moved to `src/server/routes/admin/platform.ts` (324 lines, `runtimeFeatureFlags` via getter/setter, `SUPPORTED_MODELS`/`activeAdminSessions` via ctx) | `tsc` clean; `customerDirectory`/`blockedIps`/`auditRecords` read-only, `platformConfig` by reference |
 | `api/admin/providers` + `infisical` (provider mesh 7 + vault 2) | moved to `src/server/routes/admin/providers.ts` (472 lines, `providerMesh`/`infisicalExtraVaultKeys` via getter/setter) | `tsc` clean; `maskServerSecret`/`PROVIDER_KEY_ENV`/`probeProviderUpstream`/`buildInfisicalVaultKeys` via ctx |
 | `api/admin/system` (schema parity 2 + llm-gateway 3 + github 4) | moved to `src/server/routes/admin/system.ts` (498 lines, owns `schemaParityTables`/`llmGatewayRoutes`/`fetchSupabaseLiveSchema`/`isSupabaseConfigured`/`getGithubAuthHeaders`) | `tsc` clean; 9 handlers + 2 stores + 3 helpers owned, only audit + `getRealGatewayTrafficSummary` via ctx |
+| `api/workspace/terminal` (terminal + files + file + project-run) | moved to `src/server/routes/workspace/terminal.ts` (408 lines, `mcpClusterServices`/`PORT`/`apiKey` via ctx) | `tsc` clean; 4 routes, 459 lines removed (469−10) |
+| `api/workspace remaining` (browser-proxy 1 + vault 3 + gmail 3 + schedules 5) | moved to `src/server/routes/workspace/{browserProxy,browserVault,gmailSession,browserSchedules}.ts` (386+132+78+258 lines, stores `expressVaultStore`/`expressSchedule*` owned, cron timer owned) | `tsc` clean; 12 routes, 798 lines removed (325+131+86+284 −16 delegation + `studioDataDir` dedup); `server.ts` 9617→8819 (−798) |
 
 The MCP Tower closure was 5 names (`app`, `mcpClusterServices`, `resolveAuditActor`,
 `recordAudit`, `verifyAdminAuthorization`). Admin customers closed over 4 shared
