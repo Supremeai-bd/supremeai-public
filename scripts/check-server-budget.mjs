@@ -71,7 +71,10 @@ const TARGET = 'server.ts';
 // 8152 → 7952 after extracting api/api-keys/* (6 routes: list/create/patch/
 //         revoke/probe/delete) into src/server/routes/apiKeys.ts — 200 lines
 //         removed (208 block −8 delegation). Owns userApiKeysStore + probe.
-const BUDGET = 7952;
+// 7952 → 7817 after extracting api/user/team (4 routes: list/create/patch/delete)
+//         into src/server/routes/team.ts — 135 lines removed (132 block + 11 store
+//         def −8 delegation). Owns userTeamStore/userTeamOwner.
+const BUDGET = 7817;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

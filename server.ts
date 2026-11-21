@@ -26,6 +26,7 @@ import { registerWorkspaceBrowserSchedulesRoutes } from './src/server/routes/wor
 import { registerConversationsRoutes } from './src/server/routes/conversations';
 import { registerProjectsRoutes } from './src/server/routes/projects';
 import { registerApiKeysRoutes } from './src/server/routes/apiKeys';
+import { registerTeamRoutes } from './src/server/routes/team';
 import {
   getLiveMcpTowerServices,
   getRealGatewayTrafficSummary,
@@ -4678,17 +4679,6 @@ async function startServer() {
     failureCount: number;
   }> = [];
 
-  let userTeamStore: Array<{
-    id: string;
-    name: string;
-    email: string;
-    avatar: string;
-    role: 'Owner' | 'Developer' | 'Reviewer' | 'Viewer';
-    joinedDate: string;
-    twoFactorEnabled: boolean;
-    status: 'active' | 'invited';
-  }> = [];
-
   // Dynamic Billing & Usage endpoints
   app.get('/api/billing/plans', async (_req: Request, res: Response) => {
     const remote = await fetchGatewayJson('/api/v1/billing/plans');
@@ -4955,138 +4945,13 @@ async function startServer() {
     resolveAuthenticatedEmail: (req) => resolveAuthenticatedEmail(req),
   });
 
-  // User Team Management CRUD (bounded by PlanSpec maxSeats)  // User Team Management CRUD (bounded by PlanSpec maxSeats)
-  const userTeamOwner = new Map<string, string>();
-
-  app.get('/api/user/team', async (req: Request, res: Response) => {
-    const email = await resolveAuthenticatedEmail(req);
-    if (!email) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
-    }
-    const customer = customerDirectory.find((c) => c.email.toLowerCase() === email);
-    const matchedUser = usersDb.find((u) => u.email.toLowerCase() === email);
-    const tier: PlanTier = customer?.tier || matchedUser?.plan || 'Free';
-    const maxSeats = getPlanSpec(tier).maxSeats;
-
-    // Seed the caller's owner row if this org has no members yet.
-    let members = userTeamStore.filter((m) => (userTeamOwner.get(m.id) || '') === email);
-    if (members.length === 0) {
-      const displayName = matchedUser?.name || customer?.name || email.split('@')[0];
-      const ownerId = `member_owner_${email}`;
-      userTeamStore.push({
-        id: ownerId,
-        name: displayName,
-        email,
-        avatar: displayName.charAt(0).toUpperCase(),
-        role: 'Owner',
-        joinedDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-        twoFactorEnabled: Boolean(matchedUser?.isAdminEligible),
-        status: 'active',
-      });
-      userTeamOwner.set(ownerId, email);
-      members = userTeamStore.filter((m) => (userTeamOwner.get(m.id) || '') === email);
-    }
-    res.json({ members, maxSeats, tier });
+  registerTeamRoutes(app, {
+    get customerDirectory() { return customerDirectory; },
+    get usersDb() { return usersDb; },
+    resolveAuthenticatedEmail: (req) => resolveAuthenticatedEmail(req),
   });
 
-  app.post('/api/user/team', async (req: Request, res: Response) => {
-    const reqEmail = await resolveAuthenticatedEmail(req);
-    if (!reqEmail) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
-    }
-    const customer = customerDirectory.find((c) => c.email.toLowerCase() === reqEmail);
-    const matchedUser = usersDb.find((u) => u.email.toLowerCase() === reqEmail);
-    const tier: PlanTier = customer?.tier || matchedUser?.plan || 'Pro';
-    const maxSeats = getPlanSpec(tier).maxSeats;
-
-    const orgMembers = userTeamStore.filter((m) => (userTeamOwner.get(m.id) || '') === reqEmail);
-    if (orgMembers.length >= maxSeats) {
-      res.status(403).json({ error: `Team seat limit (${maxSeats}) reached for ${tier} tier.` });
-      return;
-    }
-
-    const email = String(req.body?.email || '')
-      .trim()
-      .toLowerCase();
-    const role = (req.body?.role || 'Developer') as 'Developer' | 'Reviewer' | 'Viewer';
-    if (!email || !email.includes('@')) {
-      res.status(400).json({ error: 'Valid invite email is required.' });
-      return;
-    }
-    if (orgMembers.some((m) => m.email.toLowerCase() === email)) {
-      res.status(409).json({ error: 'Member already exists in workspace team.' });
-      return;
-    }
-    const namePart = email.split('@')[0];
-    const displayName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
-    const member = {
-      id: `member_${Date.now()}`,
-      name: displayName,
-      email,
-      avatar: displayName.charAt(0).toUpperCase(),
-      role,
-      joinedDate: 'Just invited',
-      twoFactorEnabled: false,
-      status: 'invited' as const,
-    };
-    userTeamStore.push(member);
-    userTeamOwner.set(member.id, reqEmail);
-    res.status(201).json({
-      success: true,
-      member,
-      members: userTeamStore.filter((m) => (userTeamOwner.get(m.id) || '') === reqEmail),
-      maxSeats,
-    });
-  });
-
-  app.patch('/api/user/team/:id', async (req: Request, res: Response) => {
-    const owner = await resolveAuthenticatedEmail(req);
-    if (!owner) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
-    }
-    const member = userTeamStore.find((m) => m.id === req.params.id);
-    if (!member || (userTeamOwner.get(member.id) || '') !== owner) {
-      res.status(404).json({ error: 'Team member not found' });
-      return;
-    }
-    const role = req.body?.role;
-    if (role === 'Owner' || role === 'Developer' || role === 'Reviewer' || role === 'Viewer') {
-      member.role = role;
-    }
-    res.json({
-      success: true,
-      member,
-      members: userTeamStore.filter((m) => (userTeamOwner.get(m.id) || '') === owner),
-    });
-  });
-
-  app.delete('/api/user/team/:id', async (req: Request, res: Response) => {
-    const owner = await resolveAuthenticatedEmail(req);
-    if (!owner) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
-    }
-    const target = userTeamStore.find((m) => m.id === req.params.id);
-    if (!target || (userTeamOwner.get(target.id) || '') !== owner) {
-      res.status(404).json({ error: 'Team member not found' });
-      return;
-    }
-    if (target.role === 'Owner') {
-      res.status(400).json({ error: 'Cannot remove workspace owner.' });
-      return;
-    }
-    userTeamOwner.delete(target.id);
-    userTeamStore = userTeamStore.filter((m) => m.id !== req.params.id);
-    res.json({
-      success: true,
-      members: userTeamStore.filter((m) => (userTeamOwner.get(m.id) || '') === owner),
-    });
-  });
-
-  // Cross-Device User Preferences Vault (mirrors SupremeAI Gateway /api/v1/user/preferences)
+  // Cross-Device User Preferences Vault  // Cross-Device User Preferences Vault (mirrors SupremeAI Gateway /api/v1/user/preferences)
   interface UserPreferencesVaultEntry {
     user_id: string;
     preferences: Record<string, unknown>;
