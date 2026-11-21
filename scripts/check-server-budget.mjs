@@ -105,7 +105,11 @@ const TARGET = 'server.ts';
 // 5551 → 5513 after extracting api/feedback (2 routes: list/submit) into
 //         src/server/routes/feedback.ts — 38 lines removed (46 block −8
 //         delegation). Owns feedbackSubmissions store.
-const BUDGET = 5513;
+// 5513 → 5468 after extracting api/health + api/models + telemetry/client-error
+//         (3 routes: health/models/client-error) into src/server/routes/
+//         telemetry.ts — 45 lines removed (52 block −7 delegation). Owns health
+//         model map + app version.
+const BUDGET = 5468;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

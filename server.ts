@@ -34,6 +34,7 @@ import { registerGitOauthRoutes } from './src/server/routes/gitOauth';
 import { registerMediaRoutes } from './src/server/routes/media';
 import { registerFeedbackRoutes } from './src/server/routes/feedback';
 import { registerReleasesRoutes } from './src/server/routes/releases';
+import { registerTelemetryRoutes } from './src/server/routes/telemetry';
 import { registerGraphRoutes } from './src/server/routes/graph';
 import { registerTtsRoutes } from './src/server/routes/tts';
 import { registerPreferencesRoutes } from './src/server/routes/preferences';
@@ -1343,38 +1344,11 @@ async function startServer() {
     }
   };
 
-  // Health and metadata endpoint
-  app.get('/api/health', (_req: Request, res: Response) => {
-    res.json({
-      status: 'healthy',
-      app: 'SupremeAI Studio',
-      organization: 'Supremeai-bd',
-      version: `v${APP_VERSION}`,
-      modelsCount: Object.keys(SUPPORTED_MODELS).length,
-      plans: PLAN_CATALOG,
-      repositories: {
-        primary: 'https://github.com/Supremeai-bd/supremeai',
-        studio: 'https://github.com/Supremeai-bd/supremeai-studio',
-      },
-      hasApiKey: Boolean(apiKey),
-    });
+  registerTelemetryRoutes(app, {
+    fetchGatewayJson: (p, t) => fetchGatewayJson(p, t),
   });
 
-  // Models endpoint
-  app.get('/api/models', async (_req: Request, res: Response) => {
-    const remote = await fetchGatewayJson('/api/v1/models');
-    const remoteModels = remote?.models;
-    const useRemote =
-      remoteModels && typeof remoteModels === 'object' && !Array.isArray(remoteModels);
-    res.json({
-      models: useRemote ? remoteModels : SUPPORTED_MODELS,
-      defaultModel:
-        (useRemote && (remote?.defaultModel || remote?.default_model)) || 'supreme-spark',
-      source: useRemote ? 'gateway' : 'local',
-    });
-  });
-
-  // --- MCP Tower Services & Health Orchestration Endpoints ---
+  // --- MCP Tower Services & Health Orchestration Endpoints ---  // --- MCP Tower Services & Health Orchestration Endpoints ---
   const mcpClusterServices = [
     {
       id: 'supreme-gateway-service',
@@ -3463,25 +3437,6 @@ async function startServer() {
   });
 
   registerReleasesRoutes(app);
-
-  // Client error sink (mirrors functions/api/telemetry/client-error.ts).  // Client error sink (mirrors functions/api/telemetry/client-error.ts).
-  // The browser reporter is fire-and-forget; never fail it noisily.
-  app.post('/api/telemetry/client-error', (req: Request, res: Response) => {
-    const body =
-      req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
-    const summary = {
-      message: String(body.message ?? 'unknown').slice(0, 300),
-      source: String(body.source ?? 'app').slice(0, 40),
-      route: body.route ? String(body.route).slice(0, 120) : undefined,
-      at: body.at ? String(body.at).slice(0, 40) : new Date().toISOString(),
-      contextKeys:
-        body.context && typeof body.context === 'object'
-          ? Object.keys(body.context as Record<string, unknown>).slice(0, 10)
-          : [],
-    };
-    console.warn('[client-error]', JSON.stringify(summary));
-    res.status(204).end();
-  });
 
   registerFeedbackRoutes(app, {
     verifyAdminAuthorization: (req) => verifyAdminAuthorization(req),
