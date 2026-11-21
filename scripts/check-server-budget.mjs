@@ -68,7 +68,10 @@ const TARGET = 'server.ts';
 // 8422 → 8152 after extracting api/v1/projects (5 routes: list/github-status/
 //         create/fork/delete) into src/server/routes/projects.ts — 270 lines
 //         removed (260 block + 16 store def −6 delegation). Owns userProjectsStore.
-const BUDGET = 8152;
+// 8152 → 7952 after extracting api/api-keys/* (6 routes: list/create/patch/
+//         revoke/probe/delete) into src/server/routes/apiKeys.ts — 200 lines
+//         removed (208 block −8 delegation). Owns userApiKeysStore + probe.
+const BUDGET = 7952;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
