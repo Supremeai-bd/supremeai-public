@@ -65,7 +65,10 @@ const TARGET = 'server.ts';
 //         list-messages/post-message/patch/delete) into src/server/routes/
 //         conversations.ts — 374 lines removed (380 block −6 delegation).
 //         api/v1/* now 23→17 remaining; conversations own store + Supabase dual.
-const BUDGET = 8422;
+// 8422 → 8152 after extracting api/v1/projects (5 routes: list/github-status/
+//         create/fork/delete) into src/server/routes/projects.ts — 270 lines
+//         removed (260 block + 16 store def −6 delegation). Owns userProjectsStore.
+const BUDGET = 8152;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
