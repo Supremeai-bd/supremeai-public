@@ -80,7 +80,10 @@ const TARGET = 'server.ts';
 // 7686 → 7531 after extracting api/v1/graph/* (2 routes: skills/path) into
 //         src/server/routes/graph.ts — 155 lines removed (161 block −6
 //         delegation). Owns buildStudioTopologyGraph.
-const BUDGET = 7531;
+// 7531 → 7174 after extracting api/tts + api/tts/edge (2 routes: cloud/edge)
+//         into src/server/routes/tts.ts — 357 lines removed (363 block −6
+//         delegation). Owns Gemini + Edge/TTS fallback logic.
+const BUDGET = 7174;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
