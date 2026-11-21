@@ -2,10 +2,12 @@
 
 `server.ts` is the Express + Vite bootstrap for the web app, the desktop shell
 and the Android WebView bridge. It is also, historically, the place where every
-route was written. As of this change it is **11,184 lines** with **≈128 inline
+route was written. As of this change it is **10,076 lines** with **≈104 inline
 route registrations inside a single function scope** (down from 11,550 / 143 —
 `wc -l` and `grep -n app.(get|post|…)` counts differ slightly, see the ratchet
-script for the exact figure it enforces).
+script for the exact figure it enforces). `api/admin/*` is now **fully
+extracted (39/39)** into `src/server/routes/admin/` — the biggest group is
+done, −1,474 lines gross.
 
 A big-bang rewrite is not reviewable, not testable, and not worth the risk. The
 method here is **one cohesive group at a time, proven by the type checker and
@@ -42,8 +44,8 @@ by hitting the live routes**, with a ratchet so the file can never grow back.
 
 | Group | Routes | Line span | Difficulty | Notes |
 |---|---|---|---|---|
-| `api/admin/*` | 39 (up from 35 after PR #24) | 4234–7256 (two islands: 4242–5801 + 6941–7256) | high | depends on admin auth middleware, audit, provider store; split into `admin/{auth,providers,security,customers,queue,platform,llmGateway,github,schemaParity}.ts` — **15/39 done** (customers 4, security 4, swarm 3 + queue 3 + DLQ 1) → `server.ts` 11550→11184 (−366 net, −440 gross, +74 devSwarm re-add) |
-| `api/admin` remaining | 24 | 4242–4306 auth/verify, 4306–4558 platform (config/overview/feature-flags/models), 5050–5420 providers/infisical, 5660–5900 schemaParity/llmGateway/github | high | `providerMesh` shared with `/api/llm-gateway/latency` (read via ctx), `schemaParityTables`/`llmGatewayRoutes`/`getGithubAuthHeaders` can be owned in new modules; next candidate: `platform` (6 routes, ~250 lines, 6 closure) |
+| `api/admin/*` | 39 (up from 35 after PR #24) | 4234–7256 (two islands: 4242–5801 + 6941–7256) | high | **DONE** — split into `admin/{customers,security,swarmQueue,platform,providers,system}.ts` (39/39) → `server.ts` 11550→10076 (−1,474) |
+| `api/admin` remaining | 0 | — | — | all 39 handlers now in `src/server/routes/admin/` (customers 4, security 4, swarm 3 + queue 3 + DLQ 1, platform 6+1 public, providers 7 + infisical 2, schemaParity 2 + llmGateway 3 + github 4) |
 | `api/v1/*` (projects, conversations, preferences, graph) | 23 | 3379–10844 | medium | conversations block is self-contained; projects block touches GitHub |
 | `api/workspace/*` | 12 | 8017–9170 | medium | terminal/files/browser-vault/gmail-session; each is its own module candidate |
 | `api/auth/*` | 8 | 3378–3957 | low | handlers already exist (`handleLoginRequest`, …) — mostly wiring |
@@ -58,9 +60,12 @@ by hitting the live routes**, with a ratchet so the file can never grow back.
 | Group | Result | Verification |
 |---|---|---|
 | `api/mcp-tower/*` (health, services, reboot, probe, SSE stream) | moved to `src/server/routes/mcpTowerRoutes.ts` (287 lines) | `tsc` clean; all five endpoints curl-verified (200 + identical JSON); 262/262 vitest; `server.ts` −287 lines |
-| `api/admin/customers` (GET/POST/PATCH/DELETE) | moved to `src/server/routes/admin/customers.ts` (208 lines, owns `fetchSupabaseLiveUsers`) | `tsc` clean; 294/294 vitest; `server.ts` −160 lines; `customerDirectory`/`usersDb` via ctx getter/setter so `filter`/`map` reassignments stay coherent |
-| `api/admin/security` + `audit` (WAF blacklist + audit log) | moved to `src/server/routes/admin/security.ts` (146 lines, owns `securityEventsStore`) | `tsc` clean; `blockedIps` via live array reference (in-place splice for delete), `auditRecords` read-only |
-| `api/admin/swarm` + `queue` + `DLQ flush` (Agent Swarm workers + BullMQ simulation) | moved to `src/server/routes/admin/swarmQueue.ts` (286 lines, owns `devQueueJobs`) | `tsc` clean; `devSwarmWorkers` stays in `server.ts` (shared with `/api/agent-swarm/stream`) and is passed via ctx; `devQueueJobs` owned here |
+| `api/admin/customers` (GET/POST/PATCH/DELETE) | moved to `src/server/routes/admin/customers.ts` (208 lines, owns `fetchSupabaseLiveUsers`) | `tsc` clean; 294/294 vitest; `server.ts` −160 lines; `customerDirectory`/`usersDb` via ctx getter/setter |
+| `api/admin/security` + `audit` (WAF blacklist + audit log) | moved to `src/server/routes/admin/security.ts` (146 lines, owns `securityEventsStore`) | `tsc` clean; `blockedIps` via live array reference (in-place splice), `auditRecords` read-only |
+| `api/admin/swarm` + `queue` + `DLQ flush` (Agent Swarm workers + BullMQ) | moved to `src/server/routes/admin/swarmQueue.ts` (286 lines, owns `devQueueJobs`) | `tsc` clean; `devSwarmWorkers` stays in `server.ts` (shared with `/api/agent-swarm/stream`) |
+| `api/admin/platform` (auth verify + platform config + overview + feature-flags + model policy) | moved to `src/server/routes/admin/platform.ts` (324 lines, `runtimeFeatureFlags` via getter/setter, `SUPPORTED_MODELS`/`activeAdminSessions` via ctx) | `tsc` clean; `customerDirectory`/`blockedIps`/`auditRecords` read-only, `platformConfig` by reference |
+| `api/admin/providers` + `infisical` (provider mesh 7 + vault 2) | moved to `src/server/routes/admin/providers.ts` (472 lines, `providerMesh`/`infisicalExtraVaultKeys` via getter/setter) | `tsc` clean; `maskServerSecret`/`PROVIDER_KEY_ENV`/`probeProviderUpstream`/`buildInfisicalVaultKeys` via ctx |
+| `api/admin/system` (schema parity 2 + llm-gateway 3 + github 4) | moved to `src/server/routes/admin/system.ts` (498 lines, owns `schemaParityTables`/`llmGatewayRoutes`/`fetchSupabaseLiveSchema`/`isSupabaseConfigured`/`getGithubAuthHeaders`) | `tsc` clean; 9 handlers + 2 stores + 3 helpers owned, only audit + `getRealGatewayTrafficSummary` via ctx |
 
 The MCP Tower closure was 5 names (`app`, `mcpClusterServices`, `resolveAuditActor`,
 `recordAudit`, `verifyAdminAuthorization`). Admin customers closed over 4 shared

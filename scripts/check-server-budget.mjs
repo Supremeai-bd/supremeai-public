@@ -36,7 +36,20 @@ const TARGET = 'server.ts';
 //         (src/server/routes/admin/{customers,security,swarmQueue}.ts) —
 //         15 routes moved, 440 lines removed (customers 4, security 4,
 //         swarm 3 + queue 3 + DLQ flush), shared stores now via ctx.
-const BUDGET = 11184;
+// 11184 → 10960 after extracting api/admin platform
+//         (src/server/routes/admin/platform.ts) — 6 admin routes + 1 public
+//         platform/config, 224 lines removed, runtimeFeatureFlags via
+//         getter/setter.
+// 10960 → 10596 after extracting api/admin providers+infisical
+//         (src/server/routes/admin/providers.ts) — 9 routes (providers 7 +
+//         infisical 2), 364 lines removed, providerMesh/infisicalExtraVaultKeys
+//         via getter/setter, helpers via ctx.
+// 10596 → 10076 after extracting api/admin system (schema parity 2 +
+//         llm-gateway 3 + github 4) + its exclusive stores/helpers
+//         (src/server/routes/admin/system.ts) — 9 routes, 520 lines removed
+//         (3499 store defs + 1146 fetch helper + 12928 handlers −237 register).
+//         api/admin/* now 39/39 complete; server.ts 11550→10076 (−1474).
+const BUDGET = 10076;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
