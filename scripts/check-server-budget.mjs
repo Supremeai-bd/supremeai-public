@@ -112,7 +112,10 @@ const TARGET = 'server.ts';
 // 5468 → 4813 after extracting auth core (11 routes: refresh/login/signup/guest/me/logout + aliases) into
 //         src/server/routes/auth.ts — 655 lines removed (677 block −22 delegation).
 //         Owns 5 handlers + session helpers.
-const BUDGET = 4813;
+// 4813 → 4106 after extracting stream/chat (2 routes: stream/chat + chat) into
+//         src/server/routes/stream.ts — 707 lines removed (733 block −26
+//         delegation). Owns SSE proxy + local Gemini + vision cascade.
+const BUDGET = 4106;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
