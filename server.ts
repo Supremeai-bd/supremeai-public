@@ -32,6 +32,7 @@ import { registerAuthTotpRoutes } from './src/server/routes/authTotp';
 import { registerBillingRoutes } from './src/server/routes/billing';
 import { registerGitOauthRoutes } from './src/server/routes/gitOauth';
 import { registerMediaRoutes } from './src/server/routes/media';
+import { registerFeedbackRoutes } from './src/server/routes/feedback';
 import { registerReleasesRoutes } from './src/server/routes/releases';
 import { registerGraphRoutes } from './src/server/routes/graph';
 import { registerTtsRoutes } from './src/server/routes/tts';
@@ -3482,49 +3483,10 @@ async function startServer() {
     res.status(204).end();
   });
 
-  // Product Micro-Survey & User Feedback store
-  const feedbackSubmissions: Array<{
-    id: string;
-    rating: 'great' | 'good' | 'okay' | 'needs_work';
-    suggestion: string;
-    userEmail: string;
-    developerMode: boolean;
-    createdAt: string;
-  }> = [];
-
-  app.get('/api/feedback', async (req: Request, res: Response) => {
-    const adminAuth = await verifyAdminAuthorization(req);
-    if (!adminAuth.ok) {
-      res.status(adminAuth.status).json({ error: adminAuth.error });
-      return;
-    }
-    res.json({ feedback: feedbackSubmissions });
-  });
-
-  app.post('/api/feedback', async (req: Request, res: Response) => {
-    const callerEmail = await resolveAuthenticatedEmail(req);
-    const body = req.body || {};
-    const validRatings = new Set(['great', 'good', 'okay', 'needs_work']);
-    const rating = validRatings.has(body.rating) ? body.rating : 'good';
-    const entry = {
-      id: `fb_${Date.now()}`,
-      rating,
-      suggestion: String(body.suggestion || '')
-        .trim()
-        .slice(0, 1000),
-      userEmail: callerEmail || String(body.userEmail || 'anonymous@user.local').trim(),
-      developerMode: Boolean(body.developerMode),
-      createdAt: new Date().toISOString(),
-    };
-    feedbackSubmissions.unshift(entry);
-    recordAudit(
-      entry.userEmail,
-      'PRODUCT_FEEDBACK',
-      `Survey (${rating})`,
-      entry.suggestion || 'Quick pulse rating submitted',
-      req
-    );
-    res.json({ success: true, entry });
+  registerFeedbackRoutes(app, {
+    verifyAdminAuthorization: (req) => verifyAdminAuthorization(req),
+    resolveAuthenticatedEmail: (req) => resolveAuthenticatedEmail(req),
+    recordAudit: (a, b, c, d, r) => recordAudit(a, b, c, d, r),
   });
 
   registerAuthTotpRoutes(app, {

@@ -102,7 +102,10 @@ const TARGET = 'server.ts';
 // 5718 → 5551 after extracting api/releases/latest (1 route: rolling manifest)
 //         into src/server/routes/releases.ts — 167 lines removed (171 block −4
 //         delegation). Owns release cache + GitHub fallback.
-const BUDGET = 5551;
+// 5551 → 5513 after extracting api/feedback (2 routes: list/submit) into
+//         src/server/routes/feedback.ts — 38 lines removed (46 block −8
+//         delegation). Owns feedbackSubmissions store.
+const BUDGET = 5513;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
