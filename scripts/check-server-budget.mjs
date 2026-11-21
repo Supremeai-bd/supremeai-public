@@ -90,7 +90,10 @@ const TARGET = 'server.ts';
 //         wallet/summary|analytics/history/add-funds/metrics) into
 //         src/server/routes/billing.ts — 167 lines removed (181 block −14
 //         delegation). Owns wallet/invoice/usage stores.
-const BUDGET = 6765;
+// 6765 → 6394 after extracting api/auth/totp/* + verify-2fa (4 routes: status/
+//         setup/confirm/verify-2fa) into src/server/routes/authTotp.ts — 371
+//         lines removed (383 block −12 delegation). Owns TOTP vault + pending.
+const BUDGET = 6394;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
