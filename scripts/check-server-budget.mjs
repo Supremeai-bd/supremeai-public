@@ -83,7 +83,10 @@ const TARGET = 'server.ts';
 // 7531 → 7174 after extracting api/tts + api/tts/edge (2 routes: cloud/edge)
 //         into src/server/routes/tts.ts — 357 lines removed (363 block −6
 //         delegation). Owns Gemini + Edge/TTS fallback logic.
-const BUDGET = 7174;
+// 7174 → 6932 after extracting api(v1)/user/preferences (3 routes: GET/POST/PUT)
+//         into src/server/routes/preferences.ts — 242 lines removed (251 block
+//         −9 delegation). Owns userPreferencesVault + vault file.
+const BUDGET = 6932;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
