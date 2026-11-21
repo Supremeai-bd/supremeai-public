@@ -93,7 +93,10 @@ const TARGET = 'server.ts';
 // 6765 → 6394 after extracting api/auth/totp/* + verify-2fa (4 routes: status/
 //         setup/confirm/verify-2fa) into src/server/routes/authTotp.ts — 371
 //         lines removed (383 block −12 delegation). Owns TOTP vault + pending.
-const BUDGET = 6394;
+// 6394 → 5955 after extracting ai media/* (4 routes: transcribe/avatar/title/
+//         intent) into src/server/routes/media.ts — 439 lines removed (446
+//         block −7 delegation). Owns Gemini calls for transcribe/face/title/intent.
+const BUDGET = 5955;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
