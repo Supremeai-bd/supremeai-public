@@ -77,7 +77,10 @@ const TARGET = 'server.ts';
 // 7817 → 7686 after extracting api/user/webhooks (4 routes: list/create/delete/test)
 //         into src/server/routes/webhooks.ts — 131 lines removed (127 block + 11
 //         store def −7 delegation). Owns userWebhooksStore/userWebhookOwner.
-const BUDGET = 7686;
+// 7686 → 7531 after extracting api/v1/graph/* (2 routes: skills/path) into
+//         src/server/routes/graph.ts — 155 lines removed (161 block −6
+//         delegation). Owns buildStudioTopologyGraph.
+const BUDGET = 7531;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
