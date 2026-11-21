@@ -1445,6 +1445,17 @@ export const EN_DICT = {
   ovPausedHint: 'When paused, registration is blocked server-side and invite-only.',
   ovAnnouncementPlaceholder: 'Announcement message...',
   ovMaintenancePlaceholder: 'Maintenance notice displayed to customers...',
+  chatBreadcrumbLabel: 'Conversation path',
+  recentPathHint: 'Recent session paths',
+  switchSessionHint: 'Switch recent thread',
+  untitledThread: 'New conversation',
+  generatingTitleLabel: 'Naming thread...',
+  messagesShortSuffix: 'msgs',
+  taskApprovalKicker: 'Action confirmation required',
+  taskApprovalApproveBtn: 'Approve & Execute',
+  taskApprovalSkipBtn: 'Skip Actions',
+  taskApprovalStepsLabel: 'Executed steps',
+  taskApprovalFallbackBtn: 'Run in standard chat',
 };
 
 export type TranslationKeys = keyof typeof EN_DICT;

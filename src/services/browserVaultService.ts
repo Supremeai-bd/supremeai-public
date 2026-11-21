@@ -705,6 +705,7 @@ export interface BrowserScheduledTask {
   lastRunAt: string | null;
   lastRunStatus: 'idle' | 'ok' | 'error';
   lastRunSummary?: string;
+  lastRunAiReport?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -764,8 +765,45 @@ function scheduledTaskHeaders(): Record<string, string> {
     typeof localStorage !== 'undefined' ? localStorage.getItem('supremeai_access_token') : null;
   return {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(token ? { Authorization: `Bearer ${token}`, 'X-SupremeAI-Key': token } : {}),
   };
+}
+
+function getAuthenticatedScheduleToken(): string | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const token = localStorage.getItem('supremeai_access_token');
+    if (!token || token.startsWith('tok_guest_') || token.startsWith('sk-supreme-guest')) {
+      return null;
+    }
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+function updateLocalScheduledTaskRun(
+  id: string,
+  status: 'ok' | 'error',
+  summary?: string,
+  aiReport?: string,
+  timestampIso?: string
+): BrowserScheduledTask[] {
+  const now = timestampIso || new Date().toISOString();
+  const next = loadScheduledTasks().map((task) =>
+    task.id === id
+      ? {
+          ...task,
+          lastRunAt: now,
+          lastRunStatus: status,
+          ...(summary ? { lastRunSummary: summary.slice(0, 240) } : {}),
+          ...(aiReport ? { lastRunAiReport: aiReport.slice(0, 1400) } : {}),
+          updatedAt: now,
+        }
+      : task
+  );
+  persistScheduledTasks(next);
+  return next;
 }
 
 export async function saveScheduledTask(params: {
@@ -850,21 +888,11 @@ export async function toggleScheduledTask(id: string): Promise<BrowserScheduledT
 export async function markScheduledTaskRun(
   id: string,
   status: 'ok' | 'error',
-  summary?: string
+  summary?: string,
+  aiReport?: string
 ): Promise<BrowserScheduledTask[]> {
   const now = new Date().toISOString();
-  const next = loadScheduledTasks().map((task) =>
-    task.id === id
-      ? {
-          ...task,
-          lastRunAt: now,
-          lastRunStatus: status,
-          ...(summary ? { lastRunSummary: summary.slice(0, 240) } : {}),
-          updatedAt: now,
-        }
-      : task
-  );
-  persistScheduledTasks(next);
+  const next = updateLocalScheduledTaskRun(id, status, summary, aiReport, now);
 
   if (typeof fetch !== 'undefined') {
     try {
@@ -876,6 +904,7 @@ export async function markScheduledTaskRun(
           lastRunAt: now,
           lastRunStatus: status,
           ...(summary ? { lastRunSummary: summary.slice(0, 240) } : {}),
+          ...(aiReport ? { lastRunAiReport: aiReport.slice(0, 1400) } : {}),
         }),
       });
     } catch {
@@ -905,28 +934,85 @@ export async function deleteScheduledTask(id: string): Promise<BrowserScheduledT
 export async function executeScheduledTaskOnce(task: BrowserScheduledTask): Promise<{
   ok: boolean;
   summary: string;
+  aiReport?: string;
   tasks: BrowserScheduledTask[];
 }> {
   try {
+    const authToken = getAuthenticatedScheduleToken();
+    if (authToken && typeof fetch !== 'undefined') {
+      try {
+        const runRes = await fetch('/api/workspace/browser-schedules', {
+          method: 'POST',
+          headers: scheduledTaskHeaders(),
+          body: JSON.stringify({
+            action: 'run',
+            id: task.id,
+            targetUrl: task.targetUrl,
+          }),
+        });
+        if (runRes.ok) {
+          const runData = (await runRes.json().catch(() => ({}))) as {
+            success?: boolean;
+            status?: 'ok' | 'error';
+            summary?: string;
+            aiReport?: string;
+            schedule?: {
+              lastRunStatus?: 'ok' | 'error';
+              lastRunSummary?: string;
+              lastRunAiReport?: string;
+              lastRunAt?: string | null;
+            };
+          };
+          const ok =
+            runData.status === 'ok' ||
+            runData.schedule?.lastRunStatus === 'ok' ||
+            Boolean(runData.success);
+          const summary =
+            runData.summary ||
+            runData.schedule?.lastRunSummary ||
+            (ok ? `Completed · ${task.domain}` : 'Execution failed');
+          const aiReport = runData.aiReport || runData.schedule?.lastRunAiReport;
+          const tasks = updateLocalScheduledTaskRun(
+            task.id,
+            ok ? 'ok' : 'error',
+            summary,
+            aiReport,
+            runData.schedule?.lastRunAt || undefined
+          );
+          return { ok, summary, ...(aiReport ? { aiReport } : {}), tasks };
+        }
+      } catch {
+        // Fall through to browser-proxy fallback cleanly
+      }
+    }
+
     const vaultCookie =
       task.vaultMode === 'session' && task.vaultEntryId !== 'public'
         ? await resolveDomainSessionCookieHeader(task.targetUrl, task.vaultEntryId)
         : null;
+    const proxyHeaders = scheduledTaskHeaders();
+    delete proxyHeaders['Content-Type'];
+    if (vaultCookie) {
+      proxyHeaders['X-Vault-Cookie'] = vaultCookie;
+    }
+
     const res = await fetch(
       `/api/workspace/browser-proxy?url=${encodeURIComponent(task.targetUrl)}`,
       {
-        headers: vaultCookie ? { 'X-Vault-Cookie': vaultCookie } : undefined,
+        headers: Object.keys(proxyHeaders).length > 0 ? proxyHeaders : undefined,
       }
     );
     const data = (await res.json().catch(() => ({}))) as {
       statusCode?: number;
       title?: string;
+      textPreview?: string;
       error?: string;
     };
     if (res.ok) {
       const summary = `HTTP ${data.statusCode ?? res.status} · ${data.title || task.domain}`;
-      const tasks = await markScheduledTaskRun(task.id, 'ok', summary);
-      return { ok: true, summary, tasks };
+      const preview = typeof data.textPreview === 'string' ? data.textPreview.trim().slice(0, 600) : undefined;
+      const tasks = await markScheduledTaskRun(task.id, 'ok', summary, preview);
+      return { ok: true, summary, ...(preview ? { aiReport: preview } : {}), tasks };
     }
     const errText = data.error || `HTTP ${res.status}`;
     const tasks = await markScheduledTaskRun(task.id, 'error', errText);

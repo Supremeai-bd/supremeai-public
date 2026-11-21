@@ -1,5 +1,6 @@
 import { AgentExecutionStep } from '../types';
 import { ExtractedVirtualProject } from './artifactStreamParser';
+import { getWorkspaceAuthHeaders } from './workspaceAuth';
 
 export interface SandboxVerificationOutcome {
   verified: boolean;
@@ -20,6 +21,33 @@ export function shouldVerifyProjectInAgentLoop(
   return project.runtime === 'python' || project.runtime === 'node';
 }
 
+function checkNodeSyntaxFallback(project: ExtractedVirtualProject): {
+  checked: boolean;
+  syntaxError: string | null;
+} {
+  if (project.runtime !== 'node') return { checked: false, syntaxError: null };
+  const entry =
+    project.files.find((f) => f.path === project.entryFile) ||
+    project.files.find((f) => /\.(?:js|cjs|mjs)$/i.test(f.path));
+  if (!entry || !/\.(?:js|cjs)$/i.test(entry.path)) {
+    return { checked: false, syntaxError: null };
+  }
+  // Skip ES module syntax that `new Function` cannot parse natively without transform
+  if (/^\s*(?:import|export)\s/m.test(entry.content)) {
+    return { checked: false, syntaxError: null };
+  }
+  try {
+    // Parse syntax without executing code on the main thread
+    new Function(entry.content);
+    return { checked: true, syntaxError: null };
+  } catch (err: unknown) {
+    return {
+      checked: true,
+      syntaxError: err instanceof Error ? err.message : 'JavaScript syntax error',
+    };
+  }
+}
+
 export async function runSandboxVerificationStep(
   project: ExtractedVirtualProject
 ): Promise<SandboxVerificationOutcome> {
@@ -27,7 +55,7 @@ export async function runSandboxVerificationStep(
   try {
     const res = await fetch('/api/workspace/project-run', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getWorkspaceAuthHeaders({ 'Content-Type': 'application/json' }),
       signal: AbortSignal.timeout(7500),
       body: JSON.stringify({
         runtime: project.runtime,
@@ -48,21 +76,50 @@ export async function runSandboxVerificationStep(
     const durationMs =
       typeof data.durationMs === 'number' ? data.durationMs : Date.now() - startedAt;
 
-    if (data.supported === false) {
+    if (data.supported === false || res.status === 403) {
+      const jsFallback = checkNodeSyntaxFallback(project);
+      if (jsFallback.checked && jsFallback.syntaxError) {
+        return {
+          verified: false,
+          needsRepair: true,
+          supported: true,
+          exitCode: 1,
+          stdout: '',
+          stderr: `SyntaxError: ${jsFallback.syntaxError}`,
+          durationMs,
+          step: {
+            id: `step_verify_${Date.now()}`,
+            label: `Syntax error in ${project.entryFile} (client check)`,
+            tool: 'sandbox_verify',
+            status: 'error',
+            detail: jsFallback.syntaxError.slice(0, 140),
+            durationMs,
+          },
+        };
+      }
+
       return {
-        verified: false,
+        verified: jsFallback.checked,
         needsRepair: false,
         supported: false,
         exitCode: null,
         stdout: data.stdout || '',
-        stderr: data.stderr || '',
+        stderr: data.stderr || data.error || '',
         durationMs,
         step: {
           id: `step_verify_${Date.now()}`,
-          label: `Sandbox check skipped on Edge (${project.runtime})`,
+          label: jsFallback.checked
+            ? `Syntax verified ${project.entryFile} (Edge check)`
+            : res.status === 403
+              ? `Host sandbox restricted (${project.runtime})`
+              : `Sandbox check skipped on Edge (${project.runtime})`,
           tool: 'sandbox_verify',
           status: 'done',
-          detail: 'Run locally with Node server for subprocess verification',
+          detail: jsFallback.checked
+            ? 'Client JS parser passed'
+            : res.status === 403
+              ? 'Server subprocess requires admin + isolated runner'
+              : 'Run locally with Node server for subprocess verification',
           durationMs,
         },
       };

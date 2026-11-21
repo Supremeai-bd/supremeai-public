@@ -1,5 +1,6 @@
 import {
   PagesContext,
+  extractLlmCompletionText,
   handleCorsPreflight,
   isRestrictedEdgeHost,
   jsonEdgeResponse,
@@ -7,16 +8,23 @@ import {
   fetchWithTimeout,
   safeEdgeFetch,
 } from '../../_lib/edgeHelpers';
+import {
+  buildScheduleEvaluationPrompt,
+  extractHtmlTitle,
+  extractReadablePageSnippet,
+} from '../../../src/shared/scheduleExecution';
 
 interface StoredSchedule {
   id: string;
   title?: string;
   domain?: string;
   targetUrl?: string;
+  instruction?: string;
   enabled?: boolean;
   lastRunAt?: string | null;
   lastRunStatus?: string;
   lastRunSummary?: string;
+  lastRunAiReport?: string;
   updatedAt?: string;
   [key: string]: unknown;
 }
@@ -49,6 +57,111 @@ function validateScheduleTargetUrl(rawUrl: string): boolean {
     return !isRestrictedEdgeHost(parsed.hostname);
   } catch {
     return false;
+  }
+}
+
+async function evaluateEdgeScheduleWithAi(params: {
+  env?: Record<string, string | undefined>;
+  upstreamOrigin: string;
+  authHeader: string;
+  target: StoredSchedule;
+  targetUrl: string;
+  statusCode: number;
+  pageTitle: string;
+  rawBody: string;
+}): Promise<{ headline?: string; report?: string } | null> {
+  const pageText = extractReadablePageSnippet(params.rawBody, 3500);
+  const instruction = String(params.target.instruction || '').trim();
+  if (!pageText && !instruction) return null;
+
+  const evalPrompt = buildScheduleEvaluationPrompt({
+    title: String(params.target.title || params.target.domain || 'Web Check'),
+    targetUrl: params.targetUrl,
+    instruction,
+    pageTitle: params.pageTitle,
+    statusCode: params.statusCode,
+    pageText,
+  });
+
+  const parseJson = (raw: string): { headline?: string; report?: string } | null => {
+    const clean = raw
+      .trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+    if (!clean) return null;
+    try {
+      const parsed = JSON.parse(clean) as { headline?: string; report?: string };
+      return {
+        headline: parsed.headline?.trim(),
+        report: parsed.report?.trim(),
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const geminiKey = params.env?.GEMINI_API_KEY?.trim();
+  if (geminiKey && geminiKey !== 'MY_GEMINI_API_KEY') {
+    try {
+      const geminiRes = await fetchWithTimeout(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-4-hydrogen:generateContent?key=${encodeURIComponent(
+          geminiKey
+        )}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'aistudio-build',
+          },
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: evalPrompt }] }],
+            generationConfig: {
+              thinkingConfig: { thinkingLevel: 'LOW' },
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'OBJECT',
+                properties: {
+                  headline: { type: 'STRING' },
+                  report: { type: 'STRING' },
+                },
+                required: ['headline', 'report'],
+              },
+            },
+          }),
+        },
+        6500
+      );
+      if (geminiRes.ok) {
+        const gJson = (await geminiRes.json().catch(() => null)) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        } | null;
+        const parsed = parseJson(gJson?.candidates?.[0]?.content?.parts?.[0]?.text || '');
+        if (parsed) return parsed;
+      }
+    } catch {
+      // Fall through to upstream
+    }
+  }
+
+  try {
+    const text = await extractLlmCompletionText(
+      params.upstreamOrigin,
+      {
+        Authorization: params.authHeader,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      {
+        model: 'supreme-spark',
+        messages: [{ role: 'user', content: evalPrompt }],
+      },
+      7000
+    );
+    return parseJson(text);
+  } catch {
+    return null;
   }
 }
 
@@ -104,13 +217,36 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       const now = new Date().toISOString();
       let runStatus: 'ok' | 'error' = 'error';
       let runSummary = 'Restricted or invalid target URL';
+      let runAiReport: string | undefined;
 
       if (targetUrl && validateScheduleTargetUrl(targetUrl)) {
         const started = Date.now();
         try {
           const probe = await safeEdgeFetch(targetUrl, { method: 'GET' }, 7000);
+          const latencyMs = Date.now() - started;
+          const rawBody = await probe.text().catch(() => '');
+          const pageTitle = extractHtmlTitle(rawBody, String(target?.domain || 'web'));
           runStatus = probe.ok ? 'ok' : 'error';
-          runSummary = `HTTP ${probe.status} · ${Date.now() - started}ms`;
+          runSummary = `HTTP ${probe.status} · ${pageTitle} · ${latencyMs}ms`;
+
+          if (probe.ok) {
+            const evaluated = await evaluateEdgeScheduleWithAi({
+              env,
+              upstreamOrigin,
+              authHeader,
+              target,
+              targetUrl,
+              statusCode: probe.status,
+              pageTitle,
+              rawBody,
+            });
+            if (evaluated?.headline) {
+              runSummary = `${evaluated.headline} (${latencyMs}ms)`;
+            }
+            if (evaluated?.report) {
+              runAiReport = evaluated.report.slice(0, 1400);
+            }
+          }
         } catch (err: unknown) {
           runStatus = 'error';
           runSummary = err instanceof Error ? err.message : 'Fetch failed';
@@ -122,6 +258,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         lastRunAt: now,
         lastRunStatus: runStatus,
         lastRunSummary: runSummary.slice(0, 240),
+        ...(runAiReport ? { lastRunAiReport: runAiReport } : {}),
         updatedAt: now,
       };
 
@@ -156,6 +293,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
           persisted: true,
           status: runStatus,
           summary: runSummary,
+          ...(runAiReport ? { aiReport: runAiReport } : {}),
           schedule: schedules[idx],
           schedules,
         },

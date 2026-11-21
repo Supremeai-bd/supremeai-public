@@ -459,6 +459,15 @@ export const WorkspaceScheduleTab: React.FC = () => {
                       </span>
                     )}
                   </div>
+
+                  {task.lastRunAiReport && (
+                    <div
+                      data-testid="schedule-ai-report"
+                      className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 px-2.5 py-2 text-[11px] leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-wrap max-h-40 overflow-y-auto"
+                    >
+                      {task.lastRunAiReport}
+                    </div>
+                  )}
                 </div>
               );
             })}

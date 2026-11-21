@@ -16,6 +16,7 @@ import {
   type VirtualProjectFile,
 } from '../utils/artifactStreamParser';
 import type { ServerProjectRunResult } from '../utils/projectBundler';
+import { getWorkspaceAuthHeaders } from '../utils/workspaceAuth';
 
 export type WorkspaceTab =
   'sandbox' | 'preview' | 'terminal' | 'browser' | 'schedule' | 'code' | 'graph';
@@ -733,7 +734,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     try {
       const res = await fetch('/api/workspace/project-run', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getWorkspaceAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           runtime: projectRuntime,
           entryFile: projectEntryFile,
@@ -1052,10 +1053,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const liveCookies = getDomainLiveCookies(formattedUrl);
       const mergedOutboundCookies = mergeCookieHeaders(vaultCookieHeader, liveCookies);
 
+      const proxyHeaders = getWorkspaceAuthHeaders(
+        mergedOutboundCookies ? { 'X-Vault-Cookie': mergedOutboundCookies } : undefined
+      );
       const res = await fetch(
         `/api/workspace/browser-proxy?url=${encodeURIComponent(formattedUrl)}`,
         {
-          headers: mergedOutboundCookies ? { 'X-Vault-Cookie': mergedOutboundCookies } : undefined,
+          headers: Object.keys(proxyHeaders).length > 0 ? proxyHeaders : undefined,
         }
       );
       const rawResponseText = await res.text();
@@ -1225,7 +1229,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
       const res = await fetch('/api/workspace/browser-proxy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getWorkspaceAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           url: formattedUrl,
           method: method || 'POST',
@@ -1352,7 +1356,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     const res = await fetch('/api/workspace/browser-proxy', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getWorkspaceAuthHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         url: formattedUrl,
         method: (method || 'GET').toUpperCase(),

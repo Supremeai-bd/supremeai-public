@@ -93,4 +93,32 @@ describe('chatAgentLoop', () => {
     expect(prompt).toContain('NameError: name x is not defined');
     expect(prompt).toContain('file="main.py"');
   });
+
+  it('forwards stored access token headers and runs JS syntax fallback when host runner returns 403', async () => {
+    localStorage.setItem('supremeai_access_token', 'tok_user_test_123');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'Restricted' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
+    const brokenNodeProject: ExtractedVirtualProject = {
+      title: 'Broken Node',
+      runtime: 'node',
+      entryFile: 'index.js',
+      isStreaming: false,
+      files: [{ path: 'index.js', lang: 'javascript', content: 'function broken( {' , isEntry: true }],
+    };
+
+    const outcome = await runSandboxVerificationStep(brokenNodeProject);
+    const callInit = fetchSpy.mock.calls[0]?.[1];
+    const headers = callInit?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer tok_user_test_123');
+    expect(headers['X-SupremeAI-Key']).toBe('tok_user_test_123');
+    expect(outcome.needsRepair).toBe(true);
+    expect(outcome.stderr).toContain('SyntaxError:');
+
+    localStorage.removeItem('supremeai_access_token');
+  });
 });

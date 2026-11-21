@@ -2302,12 +2302,11 @@ async function startServer() {
   registerGraphRoutes(app, {
     get mcpClusterServices() { return mcpClusterServices; },
   });
-
   registerMediaRoutes(app, {
     isIpBlocked: (req) => isIpBlocked(req),
     get platformConfig() { return platformConfig; },
+    safeFetchWithRedirectCheck: (...args) => safeFetchWithRedirectCheck(...args),
   });
-
   registerTtsRoutes(app, {
     isIpBlocked: (req) => isIpBlocked(req),
   });

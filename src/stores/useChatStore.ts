@@ -27,7 +27,12 @@ import {
   isDefaultSessionTitle,
   requestAutoChatTitle,
 } from '../utils/chatTitleGenerator';
-import { extractStreamingArtifact, extractVirtualProject } from '../utils/artifactStreamParser';
+import {
+  extractStreamingArtifact,
+  extractVirtualProject,
+  inferLangFromProjectPath,
+  pickProjectEntryFile,
+} from '../utils/artifactStreamParser';
 import { useWorkspaceStore } from './useWorkspaceStore';
 import {
   hasSchedulingIntent,
@@ -62,6 +67,12 @@ import {
   pruneSessionsForStorage,
 } from '../utils/imageAttachmentUtils';
 import { logger } from '../utils/logger';
+import { executeAutonomousTask } from '../services/agentExecutionService';
+import {
+  shouldRouteToAutonomousAgent,
+  type AgentToolAction,
+  type PendingTaskApproval,
+} from '../shared/agentTypes';
 
 const STORAGE_KEY = 'supremeai_studio_sessions_v1';
 const RUN_SETTINGS_STORAGE_KEY = 'supremeai_workbench_run_settings_v1';
@@ -118,6 +129,7 @@ interface ChatState {
   streamingTokenUsage: TokenUsageSummary | null;
   streamingRouteMeta: ChatRouteMeta | null;
   lastPlanSummary: string | null;
+  pendingTaskApproval: PendingTaskApproval | null;
   inferenceError: string | null;
   inferenceErrorMeta: ClassifiedVisionError | null;
   generatingTitleIds: string[];
@@ -163,6 +175,9 @@ interface ChatState {
   appendVoiceTurn: (userText: string, assistantText: string, voiceName?: string) => void;
   stopStreaming: () => void;
   clearInferenceError: () => void;
+  approvePendingTask: () => Promise<void>;
+  dismissPendingTask: () => void;
+  clearPendingTaskApproval: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => {
@@ -221,6 +236,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     streamingTokenUsage: null,
     streamingRouteMeta: null,
     lastPlanSummary: null,
+    pendingTaskApproval: null,
     inferenceError: null,
     inferenceErrorMeta: null,
     generatingTitleIds: [],
@@ -467,6 +483,124 @@ export const useChatStore = create<ChatState>((set, get) => {
     setIsPromptModalOpen: (open: boolean) => set({ isPromptModalOpen: open }),
     setIsRoleModalOpen: (open: boolean) => set({ isRoleModalOpen: open }),
     clearInferenceError: () => set({ inferenceError: null, inferenceErrorMeta: null }),
+    clearPendingTaskApproval: () => set({ pendingTaskApproval: null }),
+
+    dismissPendingTask: () => {
+      const pending = get().pendingTaskApproval;
+      if (!pending) return;
+      set({ pendingTaskApproval: null });
+      if (!pending.draftAnswer.trim()) return;
+      const targetId = pending.sessionId || get().activeSessionId;
+      const { activeModel, activeRole } = get();
+      const assistantMsg: ChatMessage = {
+        id: `msg_${Date.now()}`,
+        role: 'assistant',
+        content: `${pending.draftAnswer}\n\n_(Pending actions skipped by user.)_`,
+        timestamp: Date.now(),
+        model: activeModel.id,
+        roleName: activeRole.name,
+        ...(pending.groundingSources?.length ? { groundingSources: pending.groundingSources } : {}),
+        ...(pending.steps.length ? { agentSteps: pending.steps } : {}),
+      };
+      const updated = get().sessions.map((s) =>
+        s.id === targetId
+          ? { ...s, messages: [...s.messages, assistantMsg], updatedAt: Date.now() }
+          : s
+      );
+      persistSessionsSafely(updated);
+      set({ sessions: updated });
+    },
+
+    approvePendingTask: async () => {
+      const pending = get().pendingTaskApproval;
+      if (!pending) return;
+      set({ pendingTaskApproval: null });
+
+      const wsState = useWorkspaceStore.getState();
+      const executedSteps: AgentExecutionStep[] = [...pending.steps];
+
+      for (const action of pending.actions) {
+        if (action.type === 'create_schedule') {
+          const { created } = await saveScheduledTask({
+            title: action.payload.title,
+            targetUrl: action.payload.targetUrl,
+            cadence: action.payload.cadence,
+            cronExpression: action.payload.cronExpression,
+            instruction: action.payload.instruction,
+          });
+          wsState.setActiveDockTab('schedule');
+          wsState.setDockOpen(true);
+          toast.success('Schedule Added', `${created.title} (${created.cronExpression})`);
+          executedSteps.push({
+            id: `approved_${action.id}`,
+            label: `Activated schedule: ${created.title}`,
+            tool: 'create_schedule',
+            status: 'done',
+            detail: created.cronExpression,
+          });
+        } else if (action.type === 'open_browser') {
+          wsState.setActiveDockTab('browser');
+          wsState.setDockOpen(true);
+          void wsState.navigateBrowser(action.payload.url);
+        } else if (action.type === 'dashboard_action' && typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('supremeai-dashboard-action', {
+              detail: { action: action.payload.action, language: pending.language },
+            })
+          );
+        } else if (action.type === 'update_project' && action.payload.files.length > 0) {
+          const vFiles = action.payload.files.map((f) => ({
+            path: f.path,
+            lang: f.lang || inferLangFromProjectPath(f.path),
+            content: f.content,
+          }));
+          const runtime = action.payload.runtime || 'web';
+          wsState.syncVirtualProject(
+            {
+              title: action.payload.title || 'Agent Workspace Project',
+              runtime,
+              entryFile: action.payload.entryFile || pickProjectEntryFile(vFiles, runtime),
+              files: vFiles,
+            },
+            { autoOpenDock: true, isFinal: true, captureDiffBaseline: true }
+          );
+        }
+      }
+
+      const targetId = pending.sessionId || get().activeSessionId;
+      const { activeModel, activeRole } = get();
+      const assistantMsg: ChatMessage = {
+        id: `msg_${Date.now()}`,
+        role: 'assistant',
+        content: pending.draftAnswer || 'Approved actions have been executed.',
+        timestamp: Date.now(),
+        model: activeModel.id,
+        roleName: activeRole.name,
+        ...(pending.groundingSources?.length ? { groundingSources: pending.groundingSources } : {}),
+        ...(executedSteps.length ? { agentSteps: executedSteps } : {}),
+        routeMeta: {
+          servedModel: activeModel.id,
+          poolType: 'api-pool',
+          engine: 'Autonomous Agent',
+        },
+      };
+      const updated = get().sessions.map((s) =>
+        s.id === targetId
+          ? { ...s, messages: [...s.messages, assistantMsg], updatedAt: Date.now() }
+          : s
+      );
+      persistSessionsSafely(updated);
+      set({ sessions: updated });
+
+      const targetSession = updated.find((s) => s.id === targetId);
+      conversationService
+        .createConversation(targetSession?.title || 'SupremeAI Chat', targetId, activeModel.id)
+        .then(() => {
+          conversationService.syncMessage(targetId, 'user', pending.originalPrompt);
+          conversationService.syncMessage(targetId, 'assistant', assistantMsg.content);
+        })
+        .catch(() => {});
+    },
 
     sendMessage: async (
       text: string,
@@ -489,6 +623,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       set({
         inferenceError: null,
         inferenceErrorMeta: null,
+        pendingTaskApproval: null,
         lastPlanSummary: precomputedIntent?.planSummary || null,
       });
 
@@ -825,6 +960,186 @@ export const useChatStore = create<ChatState>((set, get) => {
           status: 'done',
           detail: isDevOrAdmin && savedRunSettings.searchMode === 'manual' ? 'Manual' : 'Auto',
         });
+      }
+
+      // Autonomous Multi-Step Task Executor (tool-calling loop + Human-in-the-Loop approval)
+      const wsFilesSnapshot = useWorkspaceStore.getState().projectFiles;
+      if (
+        effectiveRunSettings.agentLoopEnabled &&
+        shouldRouteToAutonomousAgent({
+          promptText: text,
+          intent: precomputedIntent,
+          hasAttachments: allAttachments.length > 0,
+          deepResearch: effectiveDeepResearch,
+          workspaceFileCount: wsFilesSnapshot.length,
+        })
+      ) {
+        const plannerStepId = 'step_agent_planner';
+        pushAgentStep({
+          id: plannerStepId,
+          label:
+            preferredLanguage === 'bn'
+              ? 'অটোনমাস টাস্ক এক্সিকিউটর চলছে'
+              : 'Autonomous Task Executor',
+          tool: 'agent_planner',
+          status: 'running',
+        });
+
+        const agentRes = await executeAutonomousTask({
+          prompt: text,
+          language: precomputedIntent?.inferredLanguage || preferredLanguage,
+          workspaceFiles: wsFilesSnapshot.slice(0, 12).map((f) => ({
+            path: f.path,
+            lang: f.lang,
+            content: f.content.slice(0, 6000),
+          })),
+          recentTurns: current.messages.slice(-4).map((m) => ({
+            role: m.role,
+            content: m.content.slice(0, 240),
+          })),
+          signal: controller.signal,
+        });
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        if (agentRes.status === 'completed' || agentRes.status === 'needs_approval') {
+          pushAgentStep({
+            id: plannerStepId,
+            label:
+              preferredLanguage === 'bn'
+                ? 'অটোনমাস টাস্ক প্ল্যান সম্পন্ন'
+                : 'Autonomous Task Plan Ready',
+            tool: 'agent_planner',
+            status: 'done',
+            detail: agentRes.summary,
+          });
+          for (const st of agentRes.steps || []) {
+            pushAgentStep(st);
+          }
+
+          const actions = agentRes.actions || [];
+          const applyImmediateActions = (list: AgentToolAction[]) => {
+            const ws = useWorkspaceStore.getState();
+            for (const action of list) {
+              if (action.requiresApproval) continue;
+              if (action.type === 'open_browser') {
+                ws.setActiveDockTab('browser');
+                ws.setDockOpen(true);
+                void ws.navigateBrowser(action.payload.url);
+              } else if (action.type === 'dashboard_action' && typeof window !== 'undefined') {
+                window.dispatchEvent(
+                  new CustomEvent('supremeai-dashboard-action', {
+                    detail: {
+                      action: action.payload.action,
+                      language: precomputedIntent?.inferredLanguage || preferredLanguage,
+                    },
+                  })
+                );
+              } else if (action.type === 'update_project' && action.payload.files.length > 0) {
+                const vFiles = action.payload.files.map((f) => ({
+                  path: f.path,
+                  lang: f.lang || inferLangFromProjectPath(f.path),
+                  content: f.content,
+                }));
+                const runtime = action.payload.runtime || 'web';
+                ws.syncVirtualProject(
+                  {
+                    title: action.payload.title || 'Agent Workspace Project',
+                    runtime,
+                    entryFile: action.payload.entryFile || pickProjectEntryFile(vFiles, runtime),
+                    files: vFiles,
+                  },
+                  { autoOpenDock: true, isFinal: true, captureDiffBaseline: true }
+                );
+              }
+            }
+          };
+
+          applyImmediateActions(actions);
+
+          if (agentRes.status === 'needs_approval') {
+            set({
+              isStreaming: false,
+              streamingContent: '',
+              streamingAgentSteps: [],
+              streamingGroundingSources: [],
+              streamingTokenUsage: null,
+              streamingRouteMeta: null,
+              pendingTaskApproval: {
+                id: `approval_${Date.now()}`,
+                sessionId: current.id,
+                originalPrompt: text,
+                summary: agentRes.summary || 'Confirm pending actions',
+                language:
+                  precomputedIntent?.inferredLanguage ||
+                  (preferredLanguage === 'bn' ? 'bn' : 'en'),
+                steps: [...recordedAgentSteps],
+                actions,
+                draftAnswer: agentRes.answer || '',
+                ...(agentRes.groundingSources?.length
+                  ? { groundingSources: agentRes.groundingSources }
+                  : {}),
+              },
+            });
+            abortController = null;
+            return;
+          }
+
+          const finalAgentAnswer =
+            (agentRes.answer || '').trim() || 'Completed requested autonomous task actions.';
+          const assistantMsg: ChatMessage = {
+            id: `msg_${Date.now()}`,
+            role: 'assistant',
+            content: finalAgentAnswer,
+            timestamp: Date.now(),
+            model: effectiveModel.id,
+            roleName: activeRole.name,
+            ...(agentRes.groundingSources?.length
+              ? { groundingSources: agentRes.groundingSources }
+              : {}),
+            ...(recordedAgentSteps.length > 0 ? { agentSteps: recordedAgentSteps } : {}),
+            routeMeta: {
+              servedModel: effectiveModel.id,
+              thinkingLevel: effectiveThinkingLevel,
+              poolType: 'api-pool',
+              engine: 'Autonomous Agent',
+            },
+          };
+
+          const finalSessions = get().sessions.map((s) =>
+            s.id === current.id
+              ? {
+                  ...s,
+                  messages: [...s.messages, assistantMsg],
+                  updatedAt: Date.now(),
+                }
+              : s
+          );
+          persistSessionsSafely(finalSessions);
+          set({
+            sessions: finalSessions,
+            isStreaming: false,
+            streamingContent: '',
+            streamingAgentSteps: [],
+            streamingGroundingSources: [],
+            streamingTokenUsage: null,
+            streamingRouteMeta: null,
+          });
+          abortController = null;
+
+          const latestTitle =
+            get().sessions.find((s) => s.id === current.id)?.title || sessionTitle;
+          conversationService
+            .createConversation(latestTitle, current.id, effectiveModel.id)
+            .then(() => {
+              conversationService.syncMessage(current.id, 'user', text);
+              conversationService.syncMessage(current.id, 'assistant', finalAgentAnswer);
+            })
+            .catch(() => {});
+          return;
+        }
       }
 
       if (browserIntent) {

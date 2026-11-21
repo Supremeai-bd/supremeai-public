@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from 'express';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+import { registerAgentExecuteRoutes } from './agentExecute';
 
 /**
  * AI Media & Intent — `POST /api/transcribe` + `POST /api/avatar/analyze-face` +
@@ -21,6 +22,12 @@ import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 export interface MediaContext {
   isIpBlocked: (req: Request) => boolean;
   get platformConfig(): { maintenanceMode: boolean; maintenanceMessage?: string };
+  safeFetchWithRedirectCheck?: (
+    initialUrl: string | URL,
+    init?: RequestInit,
+    isLocalRelative?: boolean,
+    maxRedirects?: number
+  ) => Promise<globalThis.Response>;
 }
 
 export function registerMediaRoutes(app: Express, ctx: MediaContext): void {
@@ -466,5 +473,10 @@ Rules:
       console.warn('Semantic intent analyze fallback:', err instanceof Error ? err.message : err);
       res.json({ source: 'heuristic' });
     }
+  });
+
+  registerAgentExecuteRoutes(app, {
+    isIpBlocked: ctx.isIpBlocked,
+    safeFetchWithRedirectCheck: ctx.safeFetchWithRedirectCheck,
   });
 }

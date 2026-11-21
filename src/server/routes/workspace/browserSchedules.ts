@@ -1,8 +1,14 @@
 import type { Express, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import { isRestrictedProxyTarget } from '../../../shared/serverSecurity';
 import { getCronMinuteKey, matchesCronAtDate } from '../../../shared/cronMatcher';
+import {
+  buildScheduleEvaluationPrompt,
+  extractHtmlTitle,
+  extractReadablePageSnippet,
+} from '../../../shared/scheduleExecution';
 
 /**
  * Workspace Browser Schedules — zero-secret vault-bound automation tasks
@@ -43,6 +49,7 @@ interface StoredScheduleRecord {
   lastRunAt?: string | null;
   lastRunStatus?: 'idle' | 'ok' | 'error';
   lastRunSummary?: string;
+  lastRunAiReport?: string;
   ownerEmail?: string;
   createdAt: string;
   updatedAt: string;
@@ -109,12 +116,69 @@ export function registerWorkspaceBrowserSchedulesRoutes(
     return (record.ownerEmail || expressScheduleOwner.get(record.id) || '').toLowerCase();
   };
 
+  const evaluateFetchedScheduleWithAi = async (params: {
+    record: StoredScheduleRecord;
+    statusCode: number;
+    pageTitle: string;
+    rawBody: string;
+  }): Promise<{ headline?: string; report?: string } | null> => {
+    const activeApiKey = process.env.GEMINI_API_KEY?.trim() || '';
+    if (!activeApiKey || activeApiKey === 'MY_GEMINI_API_KEY') return null;
+
+    const pageText = extractReadablePageSnippet(params.rawBody, 3500);
+    if (!pageText && !params.record.instruction.trim()) return null;
+
+    try {
+      const ai = new GoogleGenAI({
+        apiKey: activeApiKey,
+        httpOptions: {
+          apiVersion: 'v1beta',
+          headers: { 'User-Agent': 'aistudio-build' },
+        },
+      });
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: buildScheduleEvaluationPrompt({
+          title: params.record.title,
+          targetUrl: params.record.targetUrl,
+          instruction: params.record.instruction,
+          pageTitle: params.pageTitle,
+          statusCode: params.statusCode,
+          pageText,
+        }),
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              headline: { type: Type.STRING },
+              report: { type: Type.STRING },
+            },
+            required: ['headline', 'report'],
+          },
+        },
+      });
+      const parsed = JSON.parse((response.text || '{}').trim()) as {
+        headline?: string;
+        report?: string;
+      };
+      return {
+        headline: parsed.headline?.trim(),
+        report: parsed.report?.trim(),
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const executeServerScheduleRecord = async (
     record: StoredScheduleRecord
   ): Promise<StoredScheduleRecord> => {
     const nowIso = new Date().toISOString();
     let status: 'ok' | 'error' = 'error';
     let summary = 'Skipped invalid target URL';
+    let aiReport: string | undefined;
 
     try {
       const parsedTarget = new URL(record.targetUrl);
@@ -132,11 +196,25 @@ export function registerWorkspaceBrowserSchedulesRoutes(
         false
       );
       const latencyMs = Date.now() - started;
-      const snippet = await resp.text().catch(() => '');
-      const titleMatch = snippet.match(/<title[^>]*>([^<]{1,120})<\/title>/i);
-      const pageTitle = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : record.domain;
+      const rawBody = await resp.text().catch(() => '');
+      const pageTitle = extractHtmlTitle(rawBody, record.domain);
       status = resp.ok ? 'ok' : 'error';
       summary = `HTTP ${resp.status} · ${pageTitle} · ${latencyMs}ms`;
+
+      if (resp.ok) {
+        const evaluated = await evaluateFetchedScheduleWithAi({
+          record,
+          statusCode: resp.status,
+          pageTitle,
+          rawBody,
+        });
+        if (evaluated?.headline) {
+          summary = `${evaluated.headline} (${latencyMs}ms)`;
+        }
+        if (evaluated?.report) {
+          aiReport = evaluated.report.slice(0, 1400);
+        }
+      }
     } catch (err: unknown) {
       status = 'error';
       summary = err instanceof Error ? err.message : 'Request failed';
@@ -147,6 +225,7 @@ export function registerWorkspaceBrowserSchedulesRoutes(
       lastRunAt: nowIso,
       lastRunStatus: status,
       lastRunSummary: summary.slice(0, 240),
+      ...(aiReport ? { lastRunAiReport: aiReport } : {}),
       updatedAt: nowIso,
     };
     expressScheduleStore.set(record.id, updated);
@@ -298,6 +377,9 @@ export function registerWorkspaceBrowserSchedulesRoutes(
         ...(body.lastRunStatus ? { lastRunStatus: body.lastRunStatus } : {}),
         ...(typeof body.lastRunSummary === 'string'
           ? { lastRunSummary: body.lastRunSummary.slice(0, 500) }
+          : {}),
+        ...(typeof body.lastRunAiReport === 'string'
+          ? { lastRunAiReport: body.lastRunAiReport.slice(0, 1400) }
           : {}),
         updatedAt: new Date().toISOString(),
       };

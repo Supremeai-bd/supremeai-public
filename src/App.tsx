@@ -26,6 +26,7 @@ import { decodeArtifactSharePayload } from './utils/previewShare';
 import { Sidebar } from './components/Sidebar';
 import { ChatThread } from './components/ChatThread';
 import { ChatEmptyState } from './components/chat/ChatEmptyState';
+import { ChatBreadcrumb } from './components/chat/ChatBreadcrumb';
 import { ChatInput } from './components/ChatInput';
 import { useLiveVoiceSession } from './hooks/useLiveVoiceSession';
 import { isAuthorizedAdminEmail } from './services/authService';
@@ -48,6 +49,7 @@ import { toast } from './stores/useToastStore';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { RealtimeSyncClient, loadSyncEnabled, type SyncThemePayload } from './sync/realtimeSync';
 import { IntentClarificationCard } from './components/chat/IntentClarificationCard';
+import { TaskApprovalCard } from './components/chat/TaskApprovalCard';
 import {
   orchestrateUserIntent,
   type DashboardActionType,
@@ -353,6 +355,10 @@ export default function App() {
     sendMessage,
     appendVoiceTurn,
     stopStreaming,
+    pendingTaskApproval,
+    approvePendingTask,
+    dismissPendingTask,
+    clearPendingTaskApproval,
   } = useChatStore();
 
   const [pendingClarification, setPendingClarification] = useState<PendingClarification | null>(
@@ -853,6 +859,19 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ action?: DashboardActionType; language?: 'en' | 'bn' | 'banglish' }>)
+        ?.detail;
+      if (detail?.action) {
+        executeDashboardAction(detail.action, detail.language || 'en');
+      }
+    };
+    window.addEventListener('supremeai-dashboard-action', handler);
+    return () => window.removeEventListener('supremeai-dashboard-action', handler);
+  });
+
   const handleSendMessageWrapper = async (
     text: string,
     attachment?: ChatAttachment,
@@ -1128,13 +1147,24 @@ export default function App() {
           {activeTab === 'chat' && (
             <div className="flex-1 min-h-0 min-w-0 flex overflow-hidden relative">
               <main className="@container/chat flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden relative bg-transparent">
-                {/* Streamlined Top-Right Chat Controls */}
+                {/* Streamlined Top Chat Controls + Breadcrumb Navigation */}
                 <div
-                  className={`relative z-20 px-3 sm:px-4 pt-3 flex items-center justify-end gap-1.5 flex-wrap pointer-events-none shrink-0 ${
+                  className={`relative z-20 px-3 sm:px-4 pt-3 flex items-center justify-between gap-2 flex-wrap pointer-events-none shrink-0 ${
                     !sidebarOpen ? 'pl-14' : ''
                   }`}
                 >
-                  <div className="pointer-events-auto flex items-center gap-1.5 flex-wrap justify-end">
+                  <div className="min-w-0 max-w-full flex items-center">
+                    <ChatBreadcrumb
+                      sessions={sessions}
+                      currentSession={currentSession}
+                      projects={userProjects}
+                      generatingTitleIds={generatingTitleIds}
+                      onSelectSession={selectSession}
+                      onOpenHistory={() => handleSelectTab('chat-history')}
+                      onNewSession={createNewSession}
+                    />
+                  </div>
+                  <div className="pointer-events-auto flex items-center gap-1.5 flex-wrap justify-end shrink-0 ml-auto">
                     <PWAInstallButton />
                     <SyncStatusPill onOpen={() => setActiveTab('live-sync')} compact />
                     {isGuest && (
@@ -1395,6 +1425,16 @@ export default function App() {
                           />
                         </div>
                       )}
+                      {pendingTaskApproval && (
+                        <div className="w-full px-2 mb-3">
+                          <TaskApprovalCard
+                            approval={pendingTaskApproval}
+                            onApprove={() => void approvePendingTask()}
+                            onSkip={dismissPendingTask}
+                            onCancel={clearPendingTaskApproval}
+                          />
+                        </div>
+                      )}
                       <div className="workspace-input-container mt-2">
                         <ChatInput
                           onSendMessage={handleSendMessageWrapper}
@@ -1462,6 +1502,16 @@ export default function App() {
                           onSelectOption={handleSelectClarificationOption}
                           onSkip={handleSkipClarification}
                           onCancel={() => setPendingClarification(null)}
+                        />
+                      </div>
+                    )}
+                    {pendingTaskApproval && (
+                      <div className="px-3 pb-2">
+                        <TaskApprovalCard
+                          approval={pendingTaskApproval}
+                          onApprove={() => void approvePendingTask()}
+                          onSkip={dismissPendingTask}
+                          onCancel={clearPendingTaskApproval}
                         />
                       </div>
                     )}
