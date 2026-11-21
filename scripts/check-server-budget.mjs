@@ -49,7 +49,10 @@ const TARGET = 'server.ts';
 //         (src/server/routes/admin/system.ts) — 9 routes, 520 lines removed
 //         (3499 store defs + 1146 fetch helper + 12928 handlers −237 register).
 //         api/admin/* now 39/39 complete; server.ts 11550→10076 (−1474).
-const BUDGET = 10076;
+// 10076 → 9617 after extracting workspace terminal dock (terminal + files +
+//         file + project-run) into src/server/routes/workspace/terminal.ts
+//         — 4 routes, 459 lines removed (469 block −10 delegation).
+const BUDGET = 9617;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
