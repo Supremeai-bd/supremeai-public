@@ -1,0 +1,524 @@
+diff --git a/.github/workflows/container-security.yml b/.github/workflows/container-security.yml
+new file mode 100644
+index 0000000..e5b12b5
+--- /dev/null
++++ b/.github/workflows/container-security.yml
+@@ -0,0 +1,97 @@
++name: Dependency Security (lockfiles)
++
++# `scripts/ci/security_gate.py` shipped a documented-but-unwired contract: its
++# own docstring described a Trivy step no workflow ever ran, so HIGH/CRITICAL
++# CVEs in the pinned lockfiles had no gate at all. Same story as CodeQL before
++# `codeql.yml`: config present, nothing executing it.
++#
++# The gateway *image* scan lives in `gateway-image.yml` (it scans the image it
++# already built for GHCR — no second build).
++#
++# Additive by design (mirrors codeql.yml): findings are printed and uploaded as
++# artefacts. The job is REPORT-ONLY (`exit-code: 0`) because the first run
++# against the current lockfiles is a baseline, not a regression — promoting it
++# to blocking is a one-line change once the baseline is clean.
++#
++# Security note: trivy-action is pinned to a full commit SHA (not a tag, never
++# @master) — mutable action refs have been a compromise vector before.
++
++on:
++  push:
++    branches: [main]
++    paths:
++      - "gateway/Dockerfile"
++      - "gateway/requirements.lock"
++      - "core/requirements.lock"
++      - ".github/workflows/container-security.yml"
++  pull_request:
++    branches: [main]
++    paths:
++      - "gateway/Dockerfile"
++      - "gateway/requirements.lock"
++      - "core/requirements.lock"
++      - ".github/workflows/container-security.yml"
++  schedule:
++    # Weekly re-scan catches CVEs published against images already shipped.
++    - cron: '30 6 * * 1'
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++concurrency:
++  group: container-security-${{ github.ref }}
++  cancel-in-progress: true
++
++jobs:
++  dependency-cve-gate:
++    name: "Dependency CVE gate (lockfiles)"
++    runs-on: ubuntu-latest
++    timeout-minutes: 15
++    steps:
++      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
++        with:
++          persist-credentials: false
++
++      - name: Trivy fs scan (lockfiles, JSON)
++        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
++        with:
++          scan-type: fs
++          scan-ref: .
++          scanners: vuln
++          severity: HIGH,CRITICAL
++          ignore-unfixed: true
++          format: json
++          output: trivy-report.json
++          exit-code: "0"   # report-only stage 1 — see header
++
++      - name: Evaluate with the repo security gate
++        run: |
++          set +e
++          python scripts/ci/security_gate.py --trivy trivy-report.json --output security-report.json
++          rc=$?
++          set -e
++          python - <<'PY'
++          import json, pathlib
++          report = json.loads(pathlib.Path("security-report.json").read_text(encoding="utf-8"))
++          findings = report.get("blocking_findings", [])
++          print(f"blocking_findings={len(findings)} status={report.get('status')}")
++          for f in findings[:50]:
++              print(f"  {f['severity']:8} {f['id']:18} {f['package']:24} {f['target']}")
++          if len(findings) > 50:
++              print(f"  ... {len(findings) - 50} more")
++          PY
++          if [ "$rc" -ne 0 ]; then
++            echo "::warning::Dependency CVE gate would block: HIGH/CRITICAL fixable dependencies present (report-only stage 1)."
++          fi
++
++      - name: Upload dependency report
++        if: always()
++        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
++        with:
++          name: trivy-dependency-report
++          path: |
++            trivy-report.json
++            security-report.json
++          if-no-files-found: warn
++          retention-days: 14
+diff --git a/.github/workflows/unified-pipeline.yml b/.github/workflows/unified-pipeline.yml
+index c44d095..604d09e 100644
+--- a/.github/workflows/unified-pipeline.yml
++++ b/.github/workflows/unified-pipeline.yml
+@@ -159,7 +159,7 @@ jobs:
+       - name: Install minimal dependencies
+         run: |
+           python -m pip install --upgrade pip
+-          pip install -c core/requirements.lock -c gateway/requirements.lock ruff pytest pytest-asyncio pydantic pydantic-settings python-dotenv fastapi httpx pyyaml sqlalchemy redis pyjwt requests aiosqlite
++          pip install -c core/requirements.lock -c gateway/requirements.lock ruff pytest pytest-asyncio pydantic pydantic-settings python-dotenv fastapi httpx pyyaml sqlalchemy redis pyjwt requests aiosqlite mypy==2.4.1
+ 
+       - name: Fast fatal error & syntax lint
+         run: ruff check core/ gateway/ scripts/ci/ --select E9,F63,F7,F82 --exclude core/tests/
+@@ -176,6 +176,19 @@ jobs:
+       # vscode/. This check is read-only; there is no in-tree extension to build.
+       - name: Verify Satellite Client API Contracts
+         run: python scripts/ci/nightly_repo_hygiene.py --verify-client-contracts
++      # TYPING RATCHET: mypy has been configured `strict = true` in
++      # core/pyproject.toml for a long time but was never executed by any
++      # workflow — a decorative guard while 400k+ lines shipped unchecked.
++      # The ratchet enforces only the modules that are clean TODAY and may
++      # only grow; rollback is deleting the step, not disabling the script.
++      - name: Typing ratchet (mypy, enforced file list)
++        run: python scripts/ci/check_mypy_ratchet.py
++
++      # SPRAWL RATCHET: core/ has 150 top-level modules (11 of them config*).
++      # This does not force a risky merge; it makes the count non-increasing so
++      # new responsibility lands in an existing module instead of a new file.
++      - name: Top-level module budget (non-increasing)
++        run: python scripts/ci/check_module_budget.py
+ 
+   runtime-readiness:
+     name: "Tier 1: Runtime Readiness & Boundaries (<30s, cloud fallback)"
+@@ -335,6 +348,10 @@ jobs:
+           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+           python -m compileall -q core/ gateway/ scripts/
+           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
++          python scripts/ci/check_mypy_ratchet.py
++          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
++          python scripts/ci/check_module_budget.py
++          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+ 
+       - name: Publish CI Attestation to MCP Tower
+         if: always()
+@@ -1235,6 +1252,139 @@ jobs:
+           fi
+           python evals/golden/run_eval.py --provider http --min-accuracy 0.90
+ 
++  # =========================================================================
++  # NIGHTLY FULL REGRESSION BATTERY (restored)
++  # -------------------------------------------------------------------------
++  # #731 deleted `full-test-suite.yml` while consolidating workflows. The
++  # consolidation itself was right (no duplicate PR runs), but it also removed
++  # the ONLY job that executed the full ~11.9k-test corpus: every remaining
++  # tier — PR, nightly, self-hosted, emergency — runs `config/ci/pr-battery.args`
++  # (36 files, ~439 tests). Net effect: the per-PR gate never regressed, but
++  # nothing anywhere proved the other ~96% of the suite still passed.
++  #
++  # This restores it as a NIGHTLY-ONLY job inside the unified pipeline:
++  #   • no new workflow file, so no duplicate-run class (#1854 dedup ledger);
++  #   • no extra PR minutes — the PR gate keeps using the fast battery;
++  #   • self-hosted first (0 cloud minutes), cloud fallback only when the
++  #     local-pc runner is offline — the same tier doctrine as the heavy gate.
++  # Rollback: set `MCP_NIGHTLY_FULL_SUITE=off` in repo variables, or delete
++  # these two jobs.
++  # =========================================================================
++  nightly-full-suite-local:
++    name: "Nightly: Full regression battery (${{ matrix.suite }}, self-hosted)"
++    needs: [resolve-execution-tier]
++    if: |
++      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
++      needs.resolve-execution-tier.outputs.is_local_online == 'true'
++    permissions:
++      contents: read
++    runs-on: [self-hosted, local-pc]
++    timeout-minutes: 120
++    strategy:
++      fail-fast: false
++      matrix:
++        suite: [repo, core, gateway]
++    steps:
++      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
++        with:
++          persist-credentials: false
++          fetch-depth: 0
++      - name: Install locked runtimes and pytest tooling
++        shell: powershell
++        run: |
++          python -m pip install -r core/requirements.lock -r gateway/requirements.lock -r config/ci/full-test-requirements.txt ruff pytest pytest-asyncio pytest-cov pytest-timeout pytest-mock aiosqlite fakeredis "mcp>=1.28.1,<2"
++          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
++      - name: Run full regression suite (self-hosted)
++        shell: powershell
++        env:
++          SUITE: ${{ matrix.suite }}
++        run: |
++          switch ($env:SUITE) {
++            "repo"    { $paths = @("tests") }
++            "core"    { $paths = @("core/tests") }
++            "gateway" { $paths = @("gateway/tests") }
++            default   { Write-Host "::error::Unknown suite"; exit 2 }
++          }
++          python -m pytest $paths -m 'not (external or requires_network or hitl or e2e)' --timeout=90 --junitxml=pytest.xml
++          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
++      - name: Report the suite and tested revision
++        if: ${{ !cancelled() }}
++        shell: powershell
++        env:
++          SUITE: ${{ matrix.suite }}
++          OUTCOME: ${{ job.status }}
++        run: |
++          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### nightly full battery - $env:SUITE`n`n- SHA: ``$env:GITHUB_SHA```n- Result: $env:OUTCOME`n"
++      - name: Upload suite evidence (including failures)
++        if: ${{ !cancelled() }}
++        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.1
++        with:
++          name: nightly-pytest-${{ matrix.suite }}-${{ github.sha }}
++          path: pytest.xml
++          retention-days: 14
++          if-no-files-found: warn
++
++  nightly-full-suite-cloud:
++    name: "Nightly: Full regression battery (${{ matrix.suite }}, cloud fallback)"
++    needs: [resolve-execution-tier]
++    if: |
++      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
++      needs.resolve-execution-tier.outputs.is_local_online != 'true' &&
++      vars.MCP_NIGHTLY_FULL_SUITE != 'off'
++    permissions:
++      contents: read
++    runs-on: ubuntu-24.04
++    timeout-minutes: 90
++    strategy:
++      fail-fast: false
++      matrix:
++        suite: [repo, core, gateway]
++    steps:
++      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
++        with:
++          persist-credentials: false
++          fetch-depth: 0
++      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
++        with:
++          python-version: "3.12"
++          cache: pip
++          cache-dependency-path: |
++            core/requirements.lock
++            gateway/requirements.lock
++            config/ci/full-test-requirements.txt
++      - name: Install locked runtimes and pytest tooling
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install -r core/requirements.lock -r gateway/requirements.lock -r config/ci/full-test-requirements.txt ruff pytest pytest-asyncio pytest-cov pytest-timeout pytest-mock aiosqlite fakeredis "mcp>=1.28.1,<2"
++      - name: Run full regression suite (cloud fallback)
++        env:
++          SUITE: ${{ matrix.suite }}
++        shell: bash
++        run: |
++          set -euo pipefail
++          case "$SUITE" in
++            repo) paths=(tests) ;;
++            core) paths=(core/tests) ;;
++            gateway) paths=(gateway/tests) ;;
++            *) echo "::error::Unknown suite"; exit 2 ;;
++          esac
++          python -m pytest "${paths[@]}" -m 'not (external or requires_network or hitl or e2e)' --timeout=90 --junitxml=pytest.xml
++      - name: Report the suite and tested revision
++        if: ${{ !cancelled() }}
++        env:
++          SUITE: ${{ matrix.suite }}
++          OUTCOME: ${{ job.status }}
++        run: |
++          printf '### nightly full battery — %s\n\n- SHA: `%s`\n- Result: %s\n' "$SUITE" "$GITHUB_SHA" "$OUTCOME" >> "$GITHUB_STEP_SUMMARY"
++      - name: Upload suite evidence (including failures)
++        if: ${{ !cancelled() }}
++        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.1
++        with:
++          name: nightly-pytest-${{ matrix.suite }}-${{ github.sha }}
++          path: pytest.xml
++          retention-days: 14
++          if-no-files-found: warn
++
+   regenerate-architecture-gap-baseline:
+     name: Regenerate architecture gap baseline (auto-commit)
+     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+diff --git a/config/ci/mypy-ratchet.txt b/config/ci/mypy-ratchet.txt
+new file mode 100644
+index 0000000..f585d6a
+--- /dev/null
++++ b/config/ci/mypy-ratchet.txt
+@@ -0,0 +1,28 @@
++# mypy RATCHET — files that MUST stay type-clean under the CI flag set.
++#
++# WHY THIS EXISTS
++#   `core/pyproject.toml` has declared `[tool.mypy] strict = true` for a long
++#   time, but no workflow ever invoked mypy. The config was decorative: 400k+
++#   lines of Python shipping with 434 `# type: ignore` comments and no
++#   type-level regression detection at all.
++#
++#   A big-bang `mypy core/` would fail with thousands of pre-existing errors
++#   and be switched off within a week. So this is a ratchet: only files listed
++#   here are enforced, every listed file is CLEAN today, and the list may only
++#   GROW. Removing a file is not allowed without deleting the module.
++#
++# HOW TO ADD A FILE
++#   1. mypy --ignore-missing-imports --follow-imports=skip --no-error-summary <file>
++#   2. Fix (not silence) the errors — a bare `# type: ignore` without an error
++#      code is rejected by scripts/ci/check_mypy_ratchet.py.
++#   3. Append the path below, alphabetically.
++#
++# Verified clean against core @ b25da39 with mypy 2.4.1:
++core/config_control_plane.py
++core/config_parsers.py
++core/config_registry.py
++core/config_validator.py
++core/health_policy.py
++core/intent.py
++core/intent_router.py
++core/intent_router_v2.py
+diff --git a/requirements-dev.txt b/requirements-dev.txt
+index 28416e7..8f67283 100644
+--- a/requirements-dev.txt
++++ b/requirements-dev.txt
+@@ -16,3 +16,7 @@ pytest-xdist==3.8.0
+ tree-sitter==0.25.2
+ tree-sitter-python==0.25.0
+ tree-sitter-language-pack==1.14.3
++# TYPING RATCHET: the only type checker CI executes (see
++# scripts/ci/check_mypy_ratchet.py). Pin matches the version the ratchet
++# baseline was verified against.
++mypy==2.4.1
+diff --git a/scripts/ci/check_module_budget.py b/scripts/ci/check_module_budget.py
+new file mode 100755
+index 0000000..d4acdd9
+--- /dev/null
++++ b/scripts/ci/check_module_budget.py
+@@ -0,0 +1,82 @@
++#!/usr/bin/env python3
++"""Keep top-level module count NON-INCREASING (sprawl ratchet).
++
++Context: ``core/`` carries 150 top-level modules, eleven of them ``config*``
++(``config``, ``config_cache``, ``config_classification``, ``config_control_plane``,
++``config_fields``, ``config_parsers``, ``config_proxy``, ``config_registry``,
++``config_validation``, ``config_validator``). Each one is individually
++justified — ``config_fields``/``config_validation`` really are the internal
++decomposition of ``Settings`` — but the *aggregate* is the problem: a newcomer
++cannot tell which of the eleven owns a given concern, and every new concern
++historically spawned a twelfth file.
++
++A big-bang merge would break 230+ import sites for cosmetic gain. This guard
++takes the cheap, reversible half: the count may never grow again. New
++responsibility must land in an existing module (or replace one), and every
++deletion lowers the budget below.
++
++Usage:
++    python scripts/ci/check_module_budget.py
++    python scripts/ci/check_module_budget.py --show     # current vs budget
++    python scripts/ci/check_module_budget.py --lower    # print the tightened value
++"""
++
++from __future__ import annotations
++
++import argparse
++import pathlib
++import sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[2]
++
++# (glob, budget, rationale)
++BUDGETS: tuple[tuple[str, int, str], ...] = (
++    ("core/*.py", 150, "top-level core modules (11 config*, 4 health*, 3 intent*)"),
++    ("core/api/routes/*.py", 162, "flat route modules mounted by core/api/routers.py"),
++)
++
++
++def count(pattern: str) -> int:
++    # Only files directly matching the glob — `core/*.py` must not recurse, or
++    # every subpackage module would inflate the figure and the guard would be
++    # meaningless.
++    return len(sorted(ROOT.glob(pattern)))
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--show", action="store_true")
++    parser.add_argument("--lower", action="store_true")
++    args = parser.parse_args()
++
++    violations: list[str] = []
++    rows: list[str] = []
++    for pattern, budget, why in BUDGETS:
++        actual = count(pattern)
++        rows.append(f"{pattern:28} {actual:4} / {budget:4}  {'OK' if actual <= budget else 'OVER'}  — {why}")
++        if actual > budget:
++            violations.append(
++                f"{pattern}: {actual} modules > budget {budget}. "
++                "Add the new responsibility to an existing module, or delete an obsolete one and "
++                f"lower the budget in {__file__.replace(str(ROOT) + '/', '')}."
++            )
++
++    if args.lower:
++        for pattern, _budget, _why in BUDGETS:
++            print(f'    ("{pattern}", {count(pattern)}),')
++        return 0
++    if args.show:
++        print("\n".join(rows))
++        return 0
++
++    print("\n".join(rows))
++    for v in violations:
++        print(f"::error::{v}")
++    if violations:
++        return 2
++    print("module budget OK (non-increasing)")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/scripts/ci/check_mypy_ratchet.py b/scripts/ci/check_mypy_ratchet.py
+new file mode 100755
+index 0000000..bfe4db2
+--- /dev/null
++++ b/scripts/ci/check_mypy_ratchet.py
+@@ -0,0 +1,97 @@
++#!/usr/bin/env python3
++"""Fail CI when a ratchet-listed module stops being type-clean.
++
++The mypy *config* in ``core/pyproject.toml`` has said ``strict = true`` for a
++long time while no workflow ran mypy — a decorative guard. This script makes
++the ratchet real without a big-bang migration:
++
++* only files in ``config/ci/mypy-ratchet.txt`` are checked;
++* the list only grows;
++* a bare ``# type: ignore`` (no error code) inside a ratcheted file is a
++  policy violation, because it silences future, unrelated errors wholesale.
++
++Usage:
++    python scripts/ci/check_mypy_ratchet.py            # enforce
++    python scripts/ci/check_mypy_ratchet.py --list     # print the ratchet
++"""
++
++from __future__ import annotations
++
++import argparse
++import pathlib
++import re
++import subprocess
++import sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[2]
++RATCHET = ROOT / "config" / "ci" / "mypy-ratchet.txt"
++BARE_IGNORE = re.compile(r"#\s*type:\s*ignore\s*(?:$|[,)\]])")
++
++
++def ratchet_files() -> list[str]:
++    if not RATCHET.exists():
++        raise SystemExit(f"::error::missing ratchet manifest: {RATCHET}")
++    out: list[str] = []
++    for raw in RATCHET.read_text(encoding="utf-8").splitlines():
++        line = raw.strip()
++        if not line or line.startswith("#"):
++            continue
++        out.append(line)
++    return out
++
++
++def bare_ignores(path: str) -> list[str]:
++    hits: list[str] = []
++    file = ROOT / path
++    if not file.exists():
++        return hits
++    for i, line in enumerate(file.read_text(encoding="utf-8").splitlines(), 1):
++        if BARE_IGNORE.search(line):
++            hits.append(f"{path}:{i}: bare `# type: ignore` (add an error code)")
++    return hits
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--list", action="store_true", help="print ratchet entries and exit")
++    parser.add_argument("--python", default=sys.executable, help="python interpreter owning mypy")
++    args = parser.parse_args()
++
++    files = ratchet_files()
++    if args.list:
++        print("\n".join(files))
++        return 0
++    if not files:
++        print("::error::mypy ratchet is empty — the guard would silently pass forever")
++        return 2
++
++    missing = [f for f in files if not (ROOT / f).exists()]
++    if missing:
++        for path in missing:
++            print(f"::error file={path}::ratchet entry no longer exists — delete the line or restore the module")
++        return 2
++
++    ignores = [hit for path in files for hit in bare_ignores(path)]
++    for hit in ignores:
++        print(f"::error::{hit}")
++
++    cmd = [
++        args.python, "-m", "mypy",
++        "--ignore-missing-imports",
++        "--follow-imports=skip",
++        "--no-error-summary",
++        *files,
++    ]
++    print(f"+ {' '.join(cmd)}")
++    proc = subprocess.run(cmd, cwd=ROOT, check=False)
++    if proc.returncode != 0:
++        print("::error::mypy ratchet regressed — a ratcheted module no longer type-checks")
++        return proc.returncode
++    if ignores:
++        return 2
++    print(f"mypy ratchet OK ({len(files)} modules type-clean)")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())

@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
-    "lint": "eslint .",
+    "lint": "eslint . && npm run lint:structure && tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -25,7 +25,9 @@
     "test:security": "tsx --test src/shared/productionHardening.test.ts",
     "version:sync": "node scripts/sync-versions.mjs",
     "test": "npm run test:security && vitest run",
-    "typecheck:edge": "tsc -p tsconfig.edge.json"
+    "typecheck:edge": "tsc -p tsconfig.edge.json",
+    "lint:structure": "node scripts/check-server-budget.mjs",
+    "split:deps": "node scripts/server-scope-deps.mjs"
   },
   "dependencies": {
     "@google/genai": "^3.6.1",
