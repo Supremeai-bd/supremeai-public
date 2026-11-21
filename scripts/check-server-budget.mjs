@@ -57,7 +57,11 @@ const TARGET = 'server.ts';
 //         src/server/routes/workspace/{browserProxy,browserVault,gmailSession,browserSchedules}.ts
 //         — 12 routes, 798 lines removed (325+131+86+284 blocks −14+4 delegation + studioDataDir dedup).
 //         api/workspace/* now complete; server.ts 10076→8819 (−1257) total workspace.
-const BUDGET = 8819;
+// 8819 → 8796 after removing 17 dead imports that were moved to routes
+//         (collectLiveServiceHealth, sampleHostRuntime, DEFAULT_MCP_TOWER_ORIGIN,
+//         adminPasskeySchema, browserProxyHtml 4, isProtectedWorkspaceFile,
+//         gmailSessionCrypto 6, cronMatcher 2, execFile/promisify) — lint clean.
+const BUDGET = 8796;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

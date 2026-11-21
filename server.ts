@@ -5,8 +5,6 @@ import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import fs from 'fs';
 import os from 'os';
 import dotenv from 'dotenv';
@@ -26,11 +24,9 @@ import { registerWorkspaceBrowserVaultRoutes } from './src/server/routes/workspa
 import { registerWorkspaceGmailSessionRoutes } from './src/server/routes/workspace/gmailSession';
 import { registerWorkspaceBrowserSchedulesRoutes } from './src/server/routes/workspace/browserSchedules';
 import {
-  collectLiveServiceHealth,
   getLiveMcpTowerServices,
   getRealGatewayTrafficSummary,
   recordHttpRequestMetric,
-  sampleHostRuntime,
 } from './src/server/mcpHealthCollector';
 import {
   buildBanglaSpeechStylePrompt,
@@ -46,7 +42,6 @@ import {
 import type { LiveVoiceName } from './src/hooks/useLiveVoiceSession';
 import {
   DEFAULT_BACKEND_ORIGIN,
-  DEFAULT_MCP_TOWER_ORIGIN,
   DEFAULT_WEB_STUDIO_URL,
   GITHUB_MONOREPO_SLUG,
   GITHUB_PUBLIC_REPO_SLUG,
@@ -67,20 +62,12 @@ import {
   refreshSchema,
   totpConfirmSchema,
   verify2faSchema,
-  adminPasskeySchema,
   parseBody,
 } from './src/server/validation';
 import { PLAN_CATALOG, TOPUP_PACKAGES, getPlanSpec } from './src/config/plans';
 import {
-  buildJsonViewerHtml,
-  buildTextViewerHtml,
-  extractCapturedCookieHeader,
-  processProxiedHtml,
-} from './src/shared/browserProxyHtml';
-import {
   ADMIN_SESSION_TTL_MS,
   hashPassword,
-  isProtectedWorkspaceFile,
   isRestrictedProxyTarget,
   parseCookieHeader,
   resolveAndCheckProxyTarget,
@@ -89,15 +76,6 @@ import {
   verifyPassword,
   verifySessionToken,
 } from './src/shared/serverSecurity';
-import {
-  buildGmailSessionSetCookie,
-  GMAIL_SESSION_COOKIE_NAME,
-  GMAIL_SESSION_TTL_SECONDS,
-  parseCookieFromHeader,
-  sealGmailSessionCookie,
-  unsealGmailSessionCookie,
-} from './src/shared/gmailSessionCrypto';
-import { getCronMinuteKey, matchesCronAtDate } from './src/shared/cronMatcher';
 import {
   decodeBase64AttachmentText,
   isTextReadableMimeOrFilename,
@@ -116,7 +94,6 @@ import {
   parseGitHubRepoSlug,
 } from './src/utils/projectRepoUtils';
 
-const execFileAsync = promisify(execFile);
 dotenv.config();
 const visionCooldownRegistry = new VisionCooldownRegistry();
 
