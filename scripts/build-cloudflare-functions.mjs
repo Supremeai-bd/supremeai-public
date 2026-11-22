@@ -16,7 +16,8 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const functionsDir = path.join(root, 'functions');
 const outDir = path.join(root, 'dist', '_worker.js');
-const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'supremeai-cf-functions-'));
+// Stage inside `root` so relative imports like `../../../src/shared/...` resolve identically.
+const stagingDir = path.join(root, `.functions-build-${process.pid}`);
 
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs|cjs)$/i;
 
