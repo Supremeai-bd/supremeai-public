@@ -5,9 +5,9 @@
  * Android APK aligned on the live Render services and GitHub monorepo topology.
  */
 
-export const DEFAULT_MCP_TOWER_ORIGIN = 'https://supremeai-mcp-tower-live.onrender.com';
+export const DEFAULT_MCP_TOWER_ORIGIN = 'https://mcp.supremeai.live';
 export const DEFAULT_MCP_AGENT_KEY = 'federated_bridge_agent';
-export const DEFAULT_BACKEND_ORIGIN = 'https://supremeai-api-ulw0.onrender.com';
+export const DEFAULT_BACKEND_ORIGIN = 'https://api.supremeai.live';
 export const DEFAULT_WEB_STUDIO_URL = 'https://supremeai-studio.pages.dev';
 
 export const GITHUB_ORG = 'Supremeai-bd';
