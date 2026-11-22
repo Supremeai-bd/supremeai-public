@@ -200,7 +200,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       title: 'SupremeAI Chat',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      model: 'supreme-spark',
+      model: 'supreme-core',
       roleId: SYSTEM_ROLES[0].id,
       messages: [],
     };
@@ -225,7 +225,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   return {
     sessions: initialSessions,
     activeSessionId: initialSessions[0]?.id || '',
-    activeModel: SUPREMEAI_MODELS.find((m) => m.id === 'supreme-spark') || SUPREMEAI_MODELS[0],
+    activeModel: SUPREMEAI_MODELS.find((m) => m.id === 'supreme-core') || SUPREMEAI_MODELS[0],
     activeRole: SYSTEM_ROLES[0],
     customInstruction: '',
     runSettings: loadSavedRunSettings(),

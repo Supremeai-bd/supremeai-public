@@ -827,7 +827,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
                       {showManualModels && (
                         <div className="space-y-0.5 max-h-60 overflow-y-auto pt-0.5">
-                          {SUPREMEAI_MODELS.map((model) => {
+                          {SUPREMEAI_MODELS.filter(
+                            (model) => (config.modelPolicies[model.id]?.enabled ?? true)
+                          ).map((model) => {
                             const policy = config.modelPolicies[model.id] || {
                               enabled: true,
                               minTier: 'Free',

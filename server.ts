@@ -674,12 +674,12 @@ async function startServer() {
     allowNewSignups: true,
     defaultModelId: 'supreme-spark',
     modelPolicies: {
-      'supreme-spark': { enabled: true, minTier: 'Free' as PlanTier },
       'supreme-core': { enabled: true, minTier: 'Free' as PlanTier },
-      'supreme-reason': { enabled: true, minTier: 'Pro' as PlanTier },
-      'supreme-deep': { enabled: true, minTier: 'Enterprise' as PlanTier },
-      'supremeai-web': { enabled: true, minTier: 'Free' as PlanTier },
-      'supremeai-api': { enabled: true, minTier: 'Free' as PlanTier },
+      'supreme-spark': { enabled: false, minTier: 'Free' as PlanTier },
+      'supreme-reason': { enabled: false, minTier: 'Pro' as PlanTier },
+      'supreme-deep': { enabled: false, minTier: 'Enterprise' as PlanTier },
+      'supremeai-web': { enabled: false, minTier: 'Free' as PlanTier },
+      'supremeai-api': { enabled: false, minTier: 'Free' as PlanTier },
     } as Record<string, { enabled: boolean; minTier: PlanTier }>,
   };
 
@@ -2324,6 +2324,8 @@ async function startServer() {
   registerConversationsRoutes(app, {
     resolveAuthenticatedEmail: (req) => resolveAuthenticatedEmail(req),
   });
+  // বাংলা মন্তব্য: /api/* ক্যাচ-অল প্রক্সির আগেই Control Plane রাউট রেজিস্টার করতে হবে।
+  registerControlPlaneRoutes(app, { recordAudit, isIpBlocked });
 
   // ---------------------------------------------------------------------------
   const FEDERATION_PROXY_HOP_HEADERS = new Set([
@@ -2435,9 +2437,6 @@ async function startServer() {
       });
     }
   });
-
-  // Register Unified Central Control Center Proxy & MCP Tower Routes
-  registerControlPlaneRoutes(app, { recordAudit, isIpBlocked });
 
   // Express Vite Dev Server or Production Static Serving
   let viteServerPromise: Promise<Awaited<ReturnType<typeof createViteServer>>> | null = null;
