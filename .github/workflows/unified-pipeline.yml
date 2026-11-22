@@ -50,8 +50,10 @@ permissions:
   contents: write
 
 concurrency:
+  # বাংলা মন্তব্য: PR-এ নতুন কমিট এলে পুরোনো রান ক্যান্সেল হবে (সময় ও রানার বাঁচাতে),
+  # কিন্তু main/tag পুশে চলমান রিলিজ/ডিপ্লয় কখনোই ক্যান্সেল হবে না।
   group: supremeai-release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-web:
@@ -92,7 +94,7 @@ jobs:
           node scripts/build-cloudflare-functions.mjs
 
       - name: Deploy to Cloudflare Pages (if secrets configured)
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        if: github.event_name != 'pull_request' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -108,6 +110,9 @@ jobs:
 
   build-desktop-windows:
     name: '2/4 Auto-Build Desktop Installers (Windows NSIS & MSI)'
+    # বাংলা মন্তব্য: ভারী Windows নেটিভ বিল্ড শুধু main/tag পুশ বা ম্যানুয়াল রিলিজে চলবে;
+    # PR-এ শুধু ফাস্ট Web + VSIX + CodeQL চেক চালিয়ে ফিডব্যাক দ্রুত রাখা হয়েছে।
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -155,6 +160,8 @@ jobs:
 
   build-android-tauri-apk:
     name: '3/4 Auto-Build Tauri v2 Android APK (Same React UI + Rust Core)'
+    # বাংলা মন্তব্য: ভারী Android APK নেটিভ বিল্ড শুধু main/tag পুশ বা ম্যানুয়াল রিলিজে চলবে।
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -172,6 +179,9 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Configure Pre-installed Android SDK, Licenses & NDK
         shell: bash
