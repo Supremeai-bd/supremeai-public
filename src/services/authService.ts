@@ -253,7 +253,18 @@ export const authService = {
     try {
       const data = await apiClient.get<any>('/api/v1/auth/me');
       return normalizeAuthUser(data);
-    } catch {
+    } catch (err: any) {
+      // If refresh endpoint is missing (404) or temporarily unavailable (503),
+      // keep the existing stored access token instead of forcing a logout.
+      const status = err?.status ?? err?.response?.status;
+      if (status === 404 || status === 503) {
+        try {
+          const existing = localStorage.getItem(TOKEN_STORAGE_KEY);
+          if (existing) return existing;
+        } catch {
+          // ignore storage errors
+        }
+      }
       return null;
     }
   },
@@ -318,7 +329,18 @@ export const authService = {
       if (!token) return null;
       authService.persistSession(token, data?.refresh_token || data?.refreshToken);
       return token;
-    } catch {
+    } catch (err: any) {
+      // If refresh endpoint is missing (404) or temporarily unavailable (503),
+      // keep the existing stored access token instead of forcing a logout.
+      const status = err?.status ?? err?.response?.status;
+      if (status === 404 || status === 503) {
+        try {
+          const existing = localStorage.getItem(TOKEN_STORAGE_KEY);
+          if (existing) return existing;
+        } catch {
+          // ignore storage errors
+        }
+      }
       return null;
     }
   },
