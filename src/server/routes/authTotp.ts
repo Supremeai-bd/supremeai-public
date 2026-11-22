@@ -58,16 +58,40 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
       if (fs.existsSync(TOTP_VAULT_PATH)) {
         const raw = fs.readFileSync(TOTP_VAULT_PATH, 'utf8');
         const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') return parsed;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, TotpVaultEntry>;
+        }
       }
-    } catch {}
+    } catch (err) {
+      // বাংলা মন্তব্য: করাপ্ট ভল্ট ফাইল সাইলেন্টলি মুছে না ফেলে এরর লগ ও ব্যাকআপ রাখা হচ্ছে
+      console.error('[authTotp] Failed to load or parse TOTP vault file:', err);
+      try {
+        const corruptBackupPath = `${TOTP_VAULT_PATH}.corrupt.${Date.now()}`;
+        fs.copyFileSync(TOTP_VAULT_PATH, corruptBackupPath);
+      } catch (backupErr) {
+        console.warn('[authTotp] Could not back up corrupt TOTP vault file:', backupErr);
+      }
+    }
     return {};
   };
 
-  const saveTotpVault = (vault: Record<string, TotpVaultEntry>) => {
+  const saveTotpVault = (vault: Record<string, TotpVaultEntry>): boolean => {
     try {
-      fs.writeFileSync(TOTP_VAULT_PATH, JSON.stringify(vault, null, 2), { mode: 0o600 });
-    } catch {}
+      const tmpPath = `${TOTP_VAULT_PATH}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(vault, null, 2), { mode: 0o600 });
+      fs.renameSync(tmpPath, TOTP_VAULT_PATH);
+      return true;
+    } catch (err) {
+      // বাংলা মন্তব্য: ভল্ট রাইট ব্যর্থ হলে fail-closed করার জন্য false রিটার্ন ও লগ করা হচ্ছে
+      console.error('[authTotp] Failed to persist TOTP vault to disk:', err);
+      try {
+        fs.writeFileSync(TOTP_VAULT_PATH, JSON.stringify(vault, null, 2), { mode: 0o600 });
+        return true;
+      } catch (fallbackErr) {
+        console.error('[authTotp] Fallback writeFileSync also failed:', fallbackErr);
+        return false;
+      }
+    }
   };
 
   const totpVault: Record<string, TotpVaultEntry> = loadTotpVault();
@@ -163,7 +187,9 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
             return { cleanEmail: upEmail, isEligible: upRbac.isAdminEligible };
           }
         }
-      } catch {}
+      } catch (err) {
+        console.warn('[authTotp] Upstream /api/v1/auth/me check failed:', err);
+      }
     }
 
     return { cleanEmail: '', isEligible: false };
@@ -238,14 +264,22 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
         return;
       }
       if (check.matchedStep !== null) {
+        const prevEntry = totpVault[cleanEmail];
         totpVault[cleanEmail] = {
-          ...(totpVault[cleanEmail] || {
+          ...(prevEntry || {
             secret: existing.secret,
             enrolledAt: new Date().toISOString(),
           }),
           lastAcceptedStep: check.matchedStep,
         };
-        saveTotpVault(totpVault);
+        if (!saveTotpVault(totpVault)) {
+          if (prevEntry) totpVault[cleanEmail] = prevEntry;
+          else delete totpVault[cleanEmail];
+          res.status(500).json({
+            error: 'Failed to persist 2FA state to storage. Please retry.',
+          });
+          return;
+        }
       }
     }
 
@@ -309,12 +343,21 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
       return;
     }
 
+    const previousEntry = totpVault[cleanEmail];
     totpVault[cleanEmail] = {
       secret: pending.secret,
       enrolledAt: new Date().toISOString(),
       lastAcceptedStep: verification.matchedStep ?? undefined,
     };
-    saveTotpVault(totpVault);
+    if (!saveTotpVault(totpVault)) {
+      if (previousEntry) totpVault[cleanEmail] = previousEntry;
+      else delete totpVault[cleanEmail];
+      res.status(500).json({
+        success: false,
+        error: 'Failed to persist TOTP enrollment to vault storage.',
+      });
+      return;
+    }
     pendingTotpSecrets.delete(cleanEmail);
 
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -391,12 +434,21 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
     }
 
     if (verification.matchedStep !== null) {
+      const prevEntry = totpVault[cleanEmail];
       totpVault[cleanEmail] = {
         secret: totpVault[cleanEmail]?.secret || activeTotp.secret,
         enrolledAt: totpVault[cleanEmail]?.enrolledAt || new Date().toISOString(),
         lastAcceptedStep: verification.matchedStep,
       };
-      saveTotpVault(totpVault);
+      if (!saveTotpVault(totpVault)) {
+        if (prevEntry) totpVault[cleanEmail] = prevEntry;
+        else delete totpVault[cleanEmail];
+        res.status(500).json({
+          success: false,
+          error: 'Failed to record TOTP verification step in vault storage.',
+        });
+        return;
+      }
     }
 
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;

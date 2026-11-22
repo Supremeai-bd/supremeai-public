@@ -1154,6 +1154,7 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
     const interval = setInterval(() => {
       void pushSample(true);
     }, 5000);
+    interval.unref?.();
 
     req.on('close', () => {
       clearInterval(interval);

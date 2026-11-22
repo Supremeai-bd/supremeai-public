@@ -4,7 +4,7 @@ import {
   jsonEdgeResponse,
   resolveUpstreamOrigin,
   fetchWithTimeout,
-  verifyEdgeTotpToken,
+  verifyEdgeTotpTokenDetailed,
 } from '../../_lib/edgeHelpers';
 
 export async function onRequest(context: PagesContext): Promise<Response> {
@@ -62,10 +62,55 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       );
       if (prefRes.ok) {
         const data = (await prefRes.json().catch(() => null)) as any;
-        const secret = data?.preferences?.security_totp?.secret || data?.security_totp?.secret;
+        const totpPref = data?.preferences?.security_totp || data?.security_totp;
+        const secret = totpPref?.secret;
+        const lastAcceptedStep =
+          typeof totpPref?.lastAcceptedStep === 'number' ? totpPref.lastAcceptedStep : null;
         if (typeof secret === 'string' && secret.trim()) {
-          const valid = await verifyEdgeTotpToken(secret.trim(), code, 1);
-          if (valid) {
+          // বাংলা মন্তব্য: রিপ্লে অ্যাটাক প্রতিরোধে lastAcceptedStep সহ TOTP যাচাই করা হচ্ছে
+          const check = await verifyEdgeTotpTokenDetailed(secret.trim(), code, 1, {
+            lastAcceptedStep,
+            replayKey: `user_vault:${secret.trim()}`,
+          });
+          if (check.reason === 'replayed_step') {
+            return jsonEdgeResponse(
+              {
+                success: false,
+                verified: false,
+                error:
+                  'This 6-digit TOTP code has already been used. Wait for the next 30-second code.',
+              },
+              401,
+              request,
+              undefined,
+              env
+            );
+          }
+          if (check.valid) {
+            if (check.matchedStep !== null) {
+              await fetchWithTimeout(
+                `${upstreamOrigin}/api/v1/user/preferences`,
+                {
+                  method: 'POST',
+                  headers: {
+                    Authorization: authHeader,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    security_totp: {
+                      ...totpPref,
+                      secret: secret.trim(),
+                      enrolled: true,
+                      lastAcceptedStep: check.matchedStep,
+                      updatedAt: new Date().toISOString(),
+                    },
+                  }),
+                },
+                3500
+              ).catch((err) => {
+                console.warn('[edge/verify-2fa] Failed to persist lastAcceptedStep:', err);
+              });
+            }
             return jsonEdgeResponse(
               {
                 success: true,
@@ -82,16 +127,31 @@ export async function onRequest(context: PagesContext): Promise<Response> {
           }
         }
       }
-    } catch {
-      // Continue to upstream check
+    } catch (err) {
+      console.warn('[edge/verify-2fa] User preference TOTP lookup failed:', err);
     }
   }
 
   // 2. Check Cloudflare Pages env ADMIN_TOTP_SECRET if configured
   const envSecret = env?.ADMIN_TOTP_SECRET?.trim();
   if (envSecret) {
-    const valid = await verifyEdgeTotpToken(envSecret, code, 1);
-    if (valid) {
+    const check = await verifyEdgeTotpTokenDetailed(envSecret, code, 1, {
+      replayKey: `env_totp:${envSecret}`,
+    });
+    if (check.reason === 'replayed_step') {
+      return jsonEdgeResponse(
+        {
+          success: false,
+          verified: false,
+          error: 'This 6-digit TOTP code has already been used. Wait for the next 30-second code.',
+        },
+        401,
+        request,
+        undefined,
+        env
+      );
+    }
+    if (check.valid) {
       return jsonEdgeResponse(
         {
           success: true,

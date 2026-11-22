@@ -53,14 +53,40 @@ export function buildTextViewerHtml(rawBody: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><style>body{background:#090d16;color:#e2e8f0;font-family:ui-monospace,monospace;padding:20px;font-size:13px;line-height:1.6;}pre{white-space:pre-wrap;word-break:break-word;}</style></head><body><pre>${escapeHtmlText(rawBody.slice(0, 120000))}</pre></body></html>`;
 }
 
-export function buildSrcdocRuntimeShims(finalUrl: string): {
+// বাংলা মন্তব্য: প্যারেন্ট অরিজিন ভ্যালিডেশন — কেবল বৈধ http(s) অরিজিন হলে তা postMessage targetOrigin হিসেবে ব্যবহৃত হবে
+export function normalizeProxyParentOrigin(rawOrigin?: string | null): string {
+  const candidate = String(rawOrigin || '').trim();
+  if (!candidate || candidate === 'null' || candidate === '*') return '';
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.origin;
+    }
+  } catch {
+    // Ignore malformed origin
+  }
+  return '';
+}
+
+export function buildSrcdocRuntimeShims(
+  finalUrl: string,
+  parentOrigin?: string | null
+): {
   headInject: string;
   bodyInject: string;
 } {
   const safeBase = escapeHtmlAttr(finalUrl);
+  const targetOriginLiteral = JSON.stringify(normalizeProxyParentOrigin(parentOrigin));
+  // বাংলা মন্তব্য: postToHost হেল্পার নিশ্চিত করে যে কেবল top-level host উইন্ডোতে এবং নির্ধারিত targetOrigin-এ মেসেজ যাবে (nested 3rd-party frame লিক বন্ধ)
+  const postToHostHelper =
+    `var _hostOrigin=${targetOriginLiteral};` +
+    `function _resolveTargetOrigin(){if(_hostOrigin)return _hostOrigin;try{if(document.referrer){var r=new URL(document.referrer).origin;if(r&&r!=='null')return r;}}catch(_){}try{if(window.location&&window.location.origin&&window.location.origin!=='null')return window.location.origin;}catch(_){}return '*';}` +
+    `function postToHost(msg){try{if(window.parent!==window.top||window.parent===window)return;window.parent.postMessage(msg,_resolveTargetOrigin());}catch(_){}}`;
+
   const headInject =
     `<base href="${safeBase}" />` +
     `<script>(function(){` +
+    postToHostHelper +
     `try{var _ls=window.localStorage;}catch(_e){` +
     `var mem=Object.create(null);var fake={getItem:function(k){return Object.prototype.hasOwnProperty.call(mem,k)?mem[k]:null;},setItem:function(k,v){mem[String(k)]=String(v);},removeItem:function(k){delete mem[String(k)];},clear:function(){mem=Object.create(null);},key:function(i){return Object.keys(mem)[i]||null;},get length(){return Object.keys(mem).length;}};` +
     `try{Object.defineProperty(window,'localStorage',{value:fake,configurable:true});}catch(_){}` +
@@ -68,9 +94,10 @@ export function buildSrcdocRuntimeShims(finalUrl: string): {
     `}` +
     `try{var origPush=history.pushState.bind(history);history.pushState=function(s,t,u){try{return origPush(s,t,u);}catch(_){}};}catch(_){}` +
     `try{var origReplace=history.replaceState.bind(history);history.replaceState=function(s,t,u){try{return origReplace(s,t,u);}catch(_){}};}catch(_){}` +
-    `try{window.open=function(u){if(typeof u==='string'&&u){try{window.parent.postMessage({channel:'supremeai-browser',type:'navigate',href:new URL(u,document.baseURI).toString()},'*');}catch(_){}}return null;};}catch(_){}` +
+    `try{window.open=function(u){if(typeof u==='string'&&u){try{postToHost({channel:'supremeai-browser',type:'navigate',href:new URL(u,document.baseURI).toString()});}catch(_){}}return null;};}catch(_){}` +
     `var pendingRpc=Object.create(null);var rpcSeq=0;` +
     `window.addEventListener('message',function(ev){` +
+    `if(_hostOrigin&&ev.origin&&ev.origin!==_hostOrigin)return;` +
     `var d=ev&&ev.data;if(!d||d.channel!=='supremeai-browser-host'||d.type!=='proxy-rpc-response')return;` +
     `var entry=pendingRpc[d.requestId];if(!entry)return;` +
     `delete pendingRpc[d.requestId];clearTimeout(entry.timer);` +
@@ -81,7 +108,7 @@ export function buildSrcdocRuntimeShims(finalUrl: string): {
     `var id='rpc_'+(++rpcSeq)+'_'+Date.now();` +
     `var timer=setTimeout(function(){if(pendingRpc[id]){delete pendingRpc[id];reject(new Error('Proxy RPC timeout'));}},20000);` +
     `pendingRpc[id]={resolve:resolve,reject:reject,timer:timer};` +
-    `window.parent.postMessage({channel:'supremeai-browser',type:'proxy-rpc',requestId:id,url:url,method:method||'GET',headers:headers||{},body:body},'*');` +
+    `postToHost({channel:'supremeai-browser',type:'proxy-rpc',requestId:id,url:url,method:method||'GET',headers:headers||{},body:body});` +
     `});` +
     `}` +
     `function normalizeHeadersObj(h){var out={};if(!h)return out;if(typeof Headers!=='undefined'&&h instanceof Headers){h.forEach(function(v,k){out[k]=v;});return out;}if(Array.isArray(h)){h.forEach(function(p){if(p&&p.length>=2)out[String(p[0])]=String(p[1]);});return out;}if(typeof h==='object'){Object.keys(h).forEach(function(k){out[k]=String(h[k]);});}return out;}` +
@@ -165,9 +192,10 @@ export function buildSrcdocRuntimeShims(finalUrl: string): {
 
   const bodyInject =
     `<script>(function(){` +
+    postToHostHelper +
     `function findUsernameForPw(pwEl,scope){var root=scope||document;var list=root.querySelectorAll('input[autocomplete="username"],input[type="email"],input[name*="user" i],input[name*="email" i],input[name*="login" i],input[type="text"]');for(var i=0;i<list.length;i++){if(list[i]!==pwEl&&list[i].value&&list[i].value.trim())return list[i].value.trim();}return '';}` +
     `var lastEmitSig='';var lastEmitAt=0;` +
-    `function emitSubmittedLogin(scope){try{var root=scope||document;var pw=root.querySelector('input[type="password"]');if(!pw||!pw.value)return;var u=findUsernameForPw(pw,root);if(!u)return;var dom='';try{dom=new URL(document.baseURI).hostname;}catch(_){}var sig=dom+'|'+u+'|'+pw.value;var now=Date.now();if(sig===lastEmitSig&&now-lastEmitAt<800)return;lastEmitSig=sig;lastEmitAt=now;window.parent.postMessage({channel:'supremeai-browser',type:'login-credentials-submitted',domain:dom,username:u,password:pw.value},'*');}catch(_){}}` +
+    `function emitSubmittedLogin(scope){try{var root=scope||document;var pw=root.querySelector('input[type="password"]');if(!pw||!pw.value)return;var u=findUsernameForPw(pw,root);if(!u)return;var dom='';try{dom=new URL(document.baseURI).hostname;}catch(_){}var sig=dom+'|'+u+'|'+pw.value;var now=Date.now();if(sig===lastEmitSig&&now-lastEmitAt<800)return;lastEmitSig=sig;lastEmitAt=now;postToHost({channel:'supremeai-browser',type:'login-credentials-submitted',domain:dom,username:u,password:pw.value});}catch(_){}}` +
     `document.addEventListener('click',function(ev){` +
     `var subBtn=ev.target&&ev.target.closest?ev.target.closest('button,input[type="submit"]'):null;` +
     `if(subBtn){var bf=subBtn.form||(subBtn.closest?subBtn.closest('form'):null);emitSubmittedLogin(bf||document);}` +
@@ -179,7 +207,7 @@ export function buildSrcdocRuntimeShims(finalUrl: string): {
     `try{` +
     `var resolvedUrl=new URL(href,document.baseURI);` +
     `if(resolvedUrl.hostname.indexOf('duckduckgo.com')!==-1&&resolvedUrl.searchParams.get('uddg')){resolvedUrl=new URL(resolvedUrl.searchParams.get('uddg'));}` +
-    `window.parent.postMessage({channel:'supremeai-browser',type:'navigate',href:resolvedUrl.toString()},'*');` +
+    `postToHost({channel:'supremeai-browser',type:'navigate',href:resolvedUrl.toString()});` +
     `}catch(_){}` +
     `},true);` +
     `document.addEventListener('submit',function(ev){` +
@@ -193,21 +221,22 @@ export function buildSrcdocRuntimeShims(finalUrl: string): {
     `var fd=new FormData(form);` +
     `if(method==='get'){` +
     `fd.forEach(function(v,k){if(typeof v==='string')u.searchParams.set(k,v);});` +
-    `window.parent.postMessage({channel:'supremeai-browser',type:'navigate',href:u.toString()},'*');` +
+    `postToHost({channel:'supremeai-browser',type:'navigate',href:u.toString()});` +
     `}else{` +
     `var enc=(form.getAttribute('enctype')||'application/x-www-form-urlencoded').toLowerCase();` +
     `var usp=new URLSearchParams();fd.forEach(function(v,k){if(typeof v==='string')usp.append(k,v);});` +
     `var payload=usp.toString();var ctype='application/x-www-form-urlencoded;charset=UTF-8';` +
     `if(enc==='application/json'){var obj={};fd.forEach(function(v,k){if(typeof v==='string')obj[k]=v;});payload=JSON.stringify(obj);ctype='application/json';}` +
-    `window.parent.postMessage({channel:'supremeai-browser',type:'submit-form',action:u.toString(),method:method.toUpperCase(),contentType:ctype,body:payload},'*');` +
+    `postToHost({channel:'supremeai-browser',type:'submit-form',action:u.toString(),method:method.toUpperCase(),contentType:ctype,body:payload});` +
     `}` +
     `}catch(_){}` +
     `},true);` +
-    `function scanLoginForm(){try{var pw=document.querySelector('input[type="password"]');if(pw){window.parent.postMessage({channel:'supremeai-browser',type:'login-form-detected',hasPassword:true},'*');}}catch(_){}}` +
-    `function emitLiveCookies(){try{if(document.cookie){window.parent.postMessage({channel:'supremeai-browser',type:'cookies-captured',cookies:document.cookie},'*');}}catch(_){}}` +
+    `function scanLoginForm(){try{var pw=document.querySelector('input[type="password"]');if(pw){postToHost({channel:'supremeai-browser',type:'login-form-detected',hasPassword:true});}}catch(_){}}` +
+    `function emitLiveCookies(){try{if(document.cookie){postToHost({channel:'supremeai-browser',type:'cookies-captured',cookies:document.cookie});}}catch(_){}}` +
     `if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',function(){scanLoginForm();emitLiveCookies();});}else{scanLoginForm();emitLiveCookies();}` +
     `document.addEventListener('focusin',function(ev){var t=ev.target;if(!t||t.tagName!=='INPUT')return;var tp=(t.type||'text').toLowerCase();if(tp==='password'||tp==='email'||tp==='text'){scanLoginForm();}},true);` +
     `window.addEventListener('message',function(ev){` +
+    `if(_hostOrigin&&ev.origin&&ev.origin!==_hostOrigin)return;` +
     `var d=ev&&ev.data;if(!d||d.channel!=='supremeai-browser-host'||d.type!=='autofill-credentials')return;` +
     `try{` +
     `var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');` +
@@ -217,7 +246,7 @@ export function buildSrcdocRuntimeShims(finalUrl: string): {
     `var count=0;` +
     `if(userEl&&d.username){setVal(userEl,d.username);count++;}` +
     `if(pwEl&&d.password){setVal(pwEl,d.password);count++;pwEl.focus();}` +
-    `window.parent.postMessage({channel:'supremeai-browser',type:'autofill-applied',filledFields:count},'*');` +
+    `postToHost({channel:'supremeai-browser',type:'autofill-applied',filledFields:count});` +
     `}catch(_){}` +
     `});` +
     `})();</script>`;
@@ -228,7 +257,8 @@ export function buildSrcdocRuntimeShims(finalUrl: string): {
 export function processProxiedHtml(
   rawBody: string,
   finalUrl: string,
-  fallbackHost: string
+  fallbackHost: string,
+  parentOrigin?: string | null
 ): {
   title: string;
   html: string;
@@ -255,7 +285,7 @@ export function processProxiedHtml(
     })
     .filter((l) => l.text.length > 0 && !l.href.startsWith('javascript:'));
 
-  const { headInject, bodyInject } = buildSrcdocRuntimeShims(finalUrl);
+  const { headInject, bodyInject } = buildSrcdocRuntimeShims(finalUrl, parentOrigin);
   let cleanHtml = rawBody
     .replace(/<meta[^>]*http-equiv=["']?Content-Security-Policy["']?[^>]*>/gi, '')
     .replace(/<meta[^>]*http-equiv=["']?X-Frame-Options["']?[^>]*>/gi, '');

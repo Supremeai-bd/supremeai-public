@@ -79,23 +79,29 @@ export function registerAdminSwarmQueueRoutes(app: Express, ctx: AdminSwarmQueue
     );
 
     const interval = setInterval(() => {
-      const traffic = ctx.getRealGatewayTrafficSummary();
-      const activeWorkersCount = devSwarmWorkers.filter((w) => w.status === 'active').length;
-      const swarmHeartbeat = {
-        type: 'swarm_pulse',
-        timestamp: Date.now(),
-        activeWorkers: activeWorkersCount,
-        throughputRps: traffic.rpm,
-        logEvent: {
-          id: `log-${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString(),
-          source: 'autonomous-swarm-orchestrator',
-          level: 'INFO',
-          message: `Swarm heartbeat verified (${activeWorkersCount} active daemons · gateway ${traffic.rpm} RPM · avg ${traffic.avgLatencyMs}ms).`,
-        },
-      };
-      res.write(`data: ${JSON.stringify(swarmHeartbeat)}\n\n`);
+      // বাংলা মন্তব্য: SSE হার্টবিট লুপে আনকট এক্সেপশন রোধে try/catch এবং টাইমারে unref() যোগ করা হয়েছে
+      try {
+        const traffic = ctx.getRealGatewayTrafficSummary();
+        const activeWorkersCount = devSwarmWorkers.filter((w) => w.status === 'active').length;
+        const swarmHeartbeat = {
+          type: 'swarm_pulse',
+          timestamp: Date.now(),
+          activeWorkers: activeWorkersCount,
+          throughputRps: traffic.rpm,
+          logEvent: {
+            id: `log-${Date.now()}`,
+            timestamp: new Date().toLocaleTimeString(),
+            source: 'autonomous-swarm-orchestrator',
+            level: 'INFO',
+            message: `Swarm heartbeat verified (${activeWorkersCount} active daemons · gateway ${traffic.rpm} RPM · avg ${traffic.avgLatencyMs}ms).`,
+          },
+        };
+        res.write(`data: ${JSON.stringify(swarmHeartbeat)}\n\n`);
+      } catch (err) {
+        console.warn('[swarmQueue] SSE heartbeat error:', err);
+      }
     }, 5000);
+    interval.unref?.();
 
     req.on('close', () => {
       clearInterval(interval);

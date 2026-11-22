@@ -952,10 +952,8 @@ async function startServer() {
   }
 
   const getSessionSigningSecret = (): string => {
-    const fromEnv =
-      process.env.AUTH_TOKEN_SECRET?.trim() ||
-      process.env.ADMIN_PASSKEY?.trim() ||
-      process.env.SESSION_SECRET?.trim();
+    // বাংলা মন্তব্য: ডুয়াল-পারপাস কী (ADMIN_PASSKEY) সাইনিং চেইন থেকে বাদ দেওয়া হয়েছে যাতে সেশন টোকেন ও পাসকি আলাদা থাকে
+    const fromEnv = process.env.AUTH_TOKEN_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
     if (fromEnv) return fromEnv;
     const keyFilePath = path.join(os.tmpdir(), 'supremeai_session_signing.key');
     try {

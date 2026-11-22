@@ -600,21 +600,77 @@ export async function generateEdgeHotp(
   return String(binary % 10 ** digits).padStart(digits, '0');
 }
 
+// বাংলা মন্তব্য: Edge রানটাইমে TOTP কোড রিপ্লে প্রতিরোধের জন্য ইন-মেমরি স্টেপ ট্র্যাকার
+const edgeTotpReplayStepMap = new Map<string, number>();
+
+export interface EdgeTotpVerificationResult {
+  valid: boolean;
+  matchedStep: number | null;
+  reason?: 'invalid_format' | 'invalid_secret' | 'replayed_step' | 'invalid_code';
+}
+
+export function getEdgeTotpLastAcceptedStep(replayKey: string): number | null {
+  const val = edgeTotpReplayStepMap.get(replayKey);
+  return typeof val === 'number' ? val : null;
+}
+
+export function recordEdgeTotpAcceptedStep(replayKey: string, step: number): void {
+  const prev = edgeTotpReplayStepMap.get(replayKey);
+  if (typeof prev !== 'number' || step > prev) {
+    edgeTotpReplayStepMap.set(replayKey, step);
+  }
+}
+
+export function resetEdgeTotpReplayCache(): void {
+  edgeTotpReplayStepMap.clear();
+}
+
+export async function verifyEdgeTotpTokenDetailed(
+  base32Secret: string,
+  code: string,
+  windowSteps: number = 1,
+  options?: { lastAcceptedStep?: number | null; replayKey?: string }
+): Promise<EdgeTotpVerificationResult> {
+  const cleanCode = String(code || '').replace(/\s+/g, '');
+  if (!/^\d{6}$/.test(cleanCode)) {
+    return { valid: false, matchedStep: null, reason: 'invalid_format' };
+  }
+  const keyBytes = decodeBase32ToBytes(base32Secret);
+  if (keyBytes.length === 0) {
+    return { valid: false, matchedStep: null, reason: 'invalid_secret' };
+  }
+  const replayKey = options?.replayKey || base32Secret.trim().toUpperCase();
+  const cachedStep = getEdgeTotpLastAcceptedStep(replayKey);
+  const effectiveLastStep =
+    typeof options?.lastAcceptedStep === 'number' && typeof cachedStep === 'number'
+      ? Math.max(options.lastAcceptedStep, cachedStep)
+      : typeof options?.lastAcceptedStep === 'number'
+        ? options.lastAcceptedStep
+        : cachedStep;
+
+  const currentStep = Math.floor(Date.now() / 1000 / 30);
+  for (let offset = -windowSteps; offset <= windowSteps; offset++) {
+    const candidateStep = currentStep + offset;
+    const candidate = await generateEdgeHotp(keyBytes, candidateStep, 6);
+    if (candidate === cleanCode) {
+      if (typeof effectiveLastStep === 'number' && candidateStep <= effectiveLastStep) {
+        return { valid: false, matchedStep: candidateStep, reason: 'replayed_step' };
+      }
+      recordEdgeTotpAcceptedStep(replayKey, candidateStep);
+      return { valid: true, matchedStep: candidateStep };
+    }
+  }
+  return { valid: false, matchedStep: null, reason: 'invalid_code' };
+}
+
 export async function verifyEdgeTotpToken(
   base32Secret: string,
   code: string,
-  windowSteps: number = 1
+  windowSteps: number = 1,
+  options?: { lastAcceptedStep?: number | null; replayKey?: string }
 ): Promise<boolean> {
-  const cleanCode = String(code || '').replace(/\s+/g, '');
-  if (!/^\d{6}$/.test(cleanCode)) return false;
-  const keyBytes = decodeBase32ToBytes(base32Secret);
-  if (keyBytes.length === 0) return false;
-  const currentStep = Math.floor(Date.now() / 1000 / 30);
-  for (let offset = -windowSteps; offset <= windowSteps; offset++) {
-    const candidate = await generateEdgeHotp(keyBytes, currentStep + offset, 6);
-    if (candidate === cleanCode) return true;
-  }
-  return false;
+  const result = await verifyEdgeTotpTokenDetailed(base32Secret, code, windowSteps, options);
+  return result.valid;
 }
 
 export async function extractLlmCompletionText(

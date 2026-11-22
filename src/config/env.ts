@@ -80,7 +80,20 @@ export const env: AppEnvConfig = {
  * Toggle between local Mock mode and live Backend API proxy mode at runtime.
  */
 export const setRuntimeMockMode = (enabled: boolean): void => {
-  localStorage.setItem('supremeai_mock_override', String(enabled));
+  // বাংলা মন্তব্য: প্রাইভেসি মোড বা স্টোরেজ-ব্লকড ব্রাউজারে যাতে localStorage/window অ্যাক্সেস ক্র্যাশ না করে সেজন্য try-catch ব্যবহৃত
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('supremeai_mock_override', String(enabled));
+    }
+  } catch (err) {
+    console.warn('[env] Failed to persist runtime mock override in localStorage:', err);
+  }
   env.isMockEnabled = enabled;
-  window.dispatchEvent(new CustomEvent('supremeai-mock-mode-changed', { detail: { enabled } }));
+  try {
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('supremeai-mock-mode-changed', { detail: { enabled } }));
+    }
+  } catch (err) {
+    console.warn('[env] Failed to dispatch supremeai-mock-mode-changed event:', err);
+  }
 };

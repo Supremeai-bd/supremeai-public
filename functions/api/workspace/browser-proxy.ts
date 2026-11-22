@@ -401,12 +401,14 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       );
     }
 
+    // বাংলা মন্তব্য: Edge প্রক্সি থেকে ইনজেক্ট করা শিমগুলোর postMessage targetOrigin প্যারেন্ট অরিজিনে সীমাবদ্ধ করা হচ্ছে
+    const parentOrigin = requestOrigin || incomingUrl.origin;
     const {
       title,
       html: cleanHtml,
       extractedLinks,
       textPreview,
-    } = processProxiedHtml(rawBody, finalUrl, new URL(finalUrl).hostname);
+    } = processProxiedHtml(rawBody, finalUrl, new URL(finalUrl).hostname, parentOrigin);
 
     return new Response(
       JSON.stringify({

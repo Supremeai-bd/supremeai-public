@@ -14,6 +14,12 @@ import {
   type TtsAudioChunk,
 } from '../../utils/speechUtils';
 import type { LiveVoiceName } from '../../hooks/useLiveVoiceSession';
+import {
+  EDGE_TTS_ORIGIN,
+  EDGE_TTS_USER_AGENT,
+  computeEdgeTtsSecMsGecInput,
+  resolveEdgeTtsClientConfig,
+} from '../../shared/edgeTtsConfig';
 
 /**
  * Multilingual Neural TTS — `POST /api/tts` + `POST /api/tts/edge`
@@ -182,16 +188,13 @@ export function registerTtsRoutes(app: Express, ctx: TtsContext): void {
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&apos;');
 
-      // Generate Edge ReadAloud Sec-MS-GEC DRM token using BigInt (avoids IEEE-754 precision loss above 2^53)
-      const TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-      const WIN_EPOCH_OFFSET = 11644473600n;
-      const unixSec = BigInt(Math.floor(Date.now() / 1000));
-      let ticks = unixSec + WIN_EPOCH_OFFSET;
-      ticks -= ticks % 300n;
-      const ticks100Ns = ticks * 10000000n;
+      // বাংলা মন্তব্য: শেয়ার্ড কনফিগ ব্যবহার করে Edge ReadAloud Sec-MS-GEC টোকেন তৈরি করা হচ্ছে (DRY নীতি ও এনভায়রনমেন্ট ওভাররাইড সমর্থনসহ)
+      const { trustedClientToken, gecVersion } = resolveEdgeTtsClientConfig(
+        process.env as Record<string, string | undefined>
+      );
       const secMsGec = crypto
         .createHash('sha256')
-        .update(`${ticks100Ns.toString()}${TRUSTED_CLIENT_TOKEN}`)
+        .update(computeEdgeTtsSecMsGecInput(trustedClientToken))
         .digest('hex')
         .toUpperCase();
 
@@ -199,9 +202,9 @@ export function registerTtsRoutes(app: Express, ctx: TtsContext): void {
       const muid = crypto.randomBytes(16).toString('hex').toUpperCase();
       const wsUrl =
         `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1` +
-        `?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}` +
+        `?TrustedClientToken=${trustedClientToken}` +
         `&Sec-MS-GEC=${secMsGec}` +
-        `&Sec-MS-GEC-Version=1-143.0.3650.96` +
+        `&Sec-MS-GEC-Version=${encodeURIComponent(gecVersion)}` +
         `&ConnectionId=${requestId}`;
 
       const synthesizeViaEdgeWs = (): Promise<Buffer> =>
@@ -229,9 +232,8 @@ export function registerTtsRoutes(app: Express, ctx: TtsContext): void {
             headers: {
               Pragma: 'no-cache',
               'Cache-Control': 'no-cache',
-              'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
-              Origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
+              'User-Agent': EDGE_TTS_USER_AGENT,
+              Origin: EDGE_TTS_ORIGIN,
               Cookie: `muid=${muid};`,
             },
           });
@@ -373,7 +375,8 @@ export function registerTtsRoutes(app: Express, ctx: TtsContext): void {
             lang: edgeLang,
           },
         ];
-      } catch {
+      } catch (wsErr) {
+        console.warn('[tts/edge] Edge WebSocket synthesis failed, falling back to bilingual MP3:', wsErr);
         const freeResult = await synthesizeViaFreeBilingualMp3();
         audioBuffer = freeResult.combined;
         structuredChunks = freeResult.chunks;

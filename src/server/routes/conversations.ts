@@ -70,10 +70,13 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
           }
         }
       }
-    } catch {}
+    } catch (err) {
+      // বাংলা মন্তব্য: কথোপকথনের লোকাল ফাইল লোডে ত্রুটি হলে লগ করা হচ্ছে
+      console.warn('[conversations] Failed to load persisted conversations:', err);
+    }
   };
 
-  const persistExpressConversations = () => {
+  const persistExpressConversations = (): boolean => {
     try {
       fs.mkdirSync(studioDataDir, { recursive: true });
       fs.writeFileSync(
@@ -81,7 +84,11 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
         JSON.stringify(Array.from(expressConversationStore.values()), null, 2),
         'utf-8'
       );
-    } catch {}
+      return true;
+    } catch (err) {
+      console.warn('[conversations] Failed to persist conversations to disk:', err);
+      return false;
+    }
   };
 
   loadExpressConversations();
@@ -145,6 +152,7 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
             counts[m.conversation_id] = (counts[m.conversation_id] || 0) + 1;
           }
         }
+        res.setHeader('X-SupremeAI-Storage', 'supabase');
         res.json({
           conversations: convs.map((c) => ({
             id: c.id,
@@ -153,10 +161,13 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
             updated_at: c.updated_at,
             message_count: counts[c.id] || 0,
           })),
+          storage: 'supabase',
         });
         return;
-      } catch {
-        /* fall through to local store */
+      } catch (err) {
+        // বাংলা মন্তব্য: Supabase ব্যর্থ হলে লোকাল ফলব্যাকে যাওয়ার আগে ওয়ার্নিং ও হেডার যুক্ত করা হচ্ছে
+        console.warn('[conversations] Supabase GET /conversations failed, falling back to local store:', err);
+        res.setHeader('X-SupremeAI-Storage', 'local-fallback');
       }
     }
     const list = Array.from(expressConversationStore.values())
@@ -206,6 +217,18 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
             updated_at: nowIso,
           },
         ]);
+        // বাংলা মন্তব্য: লোকাল ক্যাশেও মিরর রাখা হচ্ছে যাতে split-brain অবস্থায় ডেটা না হারায়
+        expressConversationStore.set(id, {
+          id,
+          title: titleVal,
+          created_at: nowIso,
+          updated_at: nowIso,
+          model: modelVal,
+          messages: existingConv?.messages || [],
+          ownerEmail: owner,
+        });
+        persistExpressConversations();
+        res.setHeader('X-SupremeAI-Storage', 'supabase');
         res.status(201).json({
           id,
           title: titleVal,
@@ -213,10 +236,12 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
           updated_at: nowIso,
           model: modelVal,
           messages: [],
+          storage: 'supabase',
         });
         return;
-      } catch {
-        /* fall through to local store */
+      } catch (err) {
+        console.warn('[conversations] Supabase POST /conversations failed, falling back to local store:', err);
+        res.setHeader('X-SupremeAI-Storage', 'local-fallback');
       }
     }
     const conv: StoredConversation = {
@@ -258,10 +283,12 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
           undefined,
           'return=minimal'
         );
+        res.setHeader('X-SupremeAI-Storage', 'supabase');
         res.json({ messages: Array.isArray(msgs) ? msgs : [] });
         return;
-      } catch {
-        /* fall through to local store */
+      } catch (err) {
+        console.warn('[conversations] Supabase GET /messages failed, falling back to local store:', err);
+        res.setHeader('X-SupremeAI-Storage', 'local-fallback');
       }
     }
     const conv = expressConversationStore.get(req.params.id);
@@ -303,6 +330,18 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
         await convSupabaseRest(`conversations?id=eq.${convSb(req.params.id)}`, 'PATCH', {
           updated_at: nowIso,
         });
+        const localConv = expressConversationStore.get(req.params.id);
+        if (localConv && (localConv.ownerEmail || '') === owner) {
+          localConv.messages.push({
+            id: newMsg.id,
+            role: newMsg.role as 'user' | 'assistant',
+            content: newMsg.content,
+            created_at: newMsg.created_at,
+          });
+          localConv.updated_at = nowIso;
+          persistExpressConversations();
+        }
+        res.setHeader('X-SupremeAI-Storage', 'supabase');
         res.status(201).json({
           id: newMsg.id,
           role: newMsg.role,
@@ -310,8 +349,9 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
           created_at: newMsg.created_at,
         });
         return;
-      } catch {
-        /* fall through to local store */
+      } catch (err) {
+        console.warn('[conversations] Supabase POST /messages failed, falling back to local store:', err);
+        res.setHeader('X-SupremeAI-Storage', 'local-fallback');
       }
     }
     const conv = expressConversationStore.get(req.params.id);
@@ -352,10 +392,18 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
           res.status(404).json({ error: 'Conversation not found' });
           return;
         }
+        const localConv = expressConversationStore.get(req.params.id);
+        if (localConv && (localConv.ownerEmail || '') === owner) {
+          if (typeof patch.title === 'string') localConv.title = patch.title;
+          localConv.updated_at = String(patch.updated_at);
+          persistExpressConversations();
+        }
+        res.setHeader('X-SupremeAI-Storage', 'supabase');
         res.json(updated);
         return;
-      } catch {
-        /* fall through to local store */
+      } catch (err) {
+        console.warn('[conversations] Supabase PATCH /conversations/:id failed, falling back to local store:', err);
+        res.setHeader('X-SupremeAI-Storage', 'local-fallback');
       }
     }
     const conv = expressConversationStore.get(req.params.id);
@@ -402,10 +450,15 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
           undefined,
           'return=minimal'
         );
+        if (expressConversationStore.delete(req.params.id)) {
+          persistExpressConversations();
+        }
+        res.setHeader('X-SupremeAI-Storage', 'supabase');
         res.json({ success: true, deleted: true });
         return;
-      } catch {
-        /* fall through to local store */
+      } catch (err) {
+        console.warn('[conversations] Supabase DELETE /conversations/:id failed, falling back to local store:', err);
+        res.setHeader('X-SupremeAI-Storage', 'local-fallback');
       }
     }
     const conv = expressConversationStore.get(req.params.id);
