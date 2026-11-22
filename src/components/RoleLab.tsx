@@ -3,7 +3,9 @@ import { Sparkles, Play, Copy, Check, ArrowRight, Shield, Cpu, Zap, Code } from 
 import { RolePersona } from '../types';
 import { SYSTEM_ROLES } from '../data/roles';
 import { SUPREMEAI_MODELS } from '../data/models';
+import { env } from '../config/env';
 import { useI18n } from '../utils/i18n';
+import { getWorkspaceAuthHeaders } from '../utils/workspaceAuth';
 
 interface RoleLabProps {
   onSelectRoleForChat: (role: RolePersona, customInstruction?: string) => void;
@@ -34,9 +36,18 @@ export const RoleLab: React.FC<RoleLabProps> = ({ onSelectRoleForChat, onNavigat
     setTestResponse('');
 
     try {
-      const response = await fetch('/api/chat', {
+      // বাংলা মন্তব্য: ব্যাকএন্ড অথেনটিকেশন ও অ্যাডমিন/ইউজার টিয়ার যাচাইয়ের জন্য টোকেন হেডার যুক্ত করা হয়েছে।
+      const adminToken =
+        typeof sessionStorage !== 'undefined'
+          ? sessionStorage.getItem('supremeai_admin_token')
+          : null;
+      const headers = getWorkspaceAuthHeaders({
+        'Content-Type': 'application/json',
+        ...(adminToken ? { 'X-Admin-Token': adminToken } : {}),
+      });
+      const response = await fetch(`${env.apiBaseUrl}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           model: testModel,
           systemInstruction: testInstruction,

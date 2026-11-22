@@ -132,16 +132,17 @@ export const useAdminStore = create<AdminState>((set, get) => {
 
     fetchAdminSync: async () => {
       try {
+        // বাংলা মন্তব্য: একটি এন্ডপয়েন্ট ব্যর্থ হলেও যাতে অন্য ৭টি অ্যাডমিন ট্যাবের ডেটা লোড হয়, তাই allSettled ব্যবহার করা হয়েছে।
         const [
-          customers,
-          blockedIps,
-          auditRecords,
-          swarmWorkers,
-          queueJobs,
-          schemaTables,
-          gatewayPayload,
-          securityEvents,
-        ] = await Promise.all([
+          customersRes,
+          blockedIpsRes,
+          auditRecordsRes,
+          swarmWorkersRes,
+          queueJobsRes,
+          schemaTablesRes,
+          gatewayPayloadRes,
+          securityEventsRes,
+        ] = await Promise.allSettled([
           adminService.fetchCustomers(),
           adminService.fetchBlockedIps(),
           adminService.fetchAuditRecords(),
@@ -151,37 +152,40 @@ export const useAdminStore = create<AdminState>((set, get) => {
           adminService.fetchLlmGatewayRoutes(),
           adminService.fetchSecurityEvents(),
         ]);
-        if (Array.isArray(customers)) {
-          localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(customers));
-          set({ customers });
+        if (customersRes.status === 'fulfilled' && Array.isArray(customersRes.value)) {
+          localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(customersRes.value));
+          set({ customers: customersRes.value });
         }
-        if (Array.isArray(blockedIps)) {
-          localStorage.setItem(BLOCKED_IPS_KEY, JSON.stringify(blockedIps));
-          set({ blockedIps });
+        if (blockedIpsRes.status === 'fulfilled' && Array.isArray(blockedIpsRes.value)) {
+          localStorage.setItem(BLOCKED_IPS_KEY, JSON.stringify(blockedIpsRes.value));
+          set({ blockedIps: blockedIpsRes.value });
         }
-        if (Array.isArray(auditRecords)) {
-          localStorage.setItem(AUDIT_KEY, JSON.stringify(auditRecords));
-          set({ auditRecords });
+        if (auditRecordsRes.status === 'fulfilled' && Array.isArray(auditRecordsRes.value)) {
+          localStorage.setItem(AUDIT_KEY, JSON.stringify(auditRecordsRes.value));
+          set({ auditRecords: auditRecordsRes.value });
         }
-        if (Array.isArray(swarmWorkers)) {
-          localStorage.setItem(SWARM_KEY, JSON.stringify(swarmWorkers));
-          set({ swarmWorkers });
+        if (swarmWorkersRes.status === 'fulfilled' && Array.isArray(swarmWorkersRes.value)) {
+          localStorage.setItem(SWARM_KEY, JSON.stringify(swarmWorkersRes.value));
+          set({ swarmWorkers: swarmWorkersRes.value });
         }
-        if (Array.isArray(queueJobs)) {
-          localStorage.setItem(QUEUE_KEY, JSON.stringify(queueJobs));
-          set({ queueJobs });
+        if (queueJobsRes.status === 'fulfilled' && Array.isArray(queueJobsRes.value)) {
+          localStorage.setItem(QUEUE_KEY, JSON.stringify(queueJobsRes.value));
+          set({ queueJobs: queueJobsRes.value });
         }
-        if (Array.isArray(schemaTables)) {
-          localStorage.setItem(SCHEMA_KEY, JSON.stringify(schemaTables));
-          set({ schemaTables });
+        if (schemaTablesRes.status === 'fulfilled' && Array.isArray(schemaTablesRes.value)) {
+          localStorage.setItem(SCHEMA_KEY, JSON.stringify(schemaTablesRes.value));
+          set({ schemaTables: schemaTablesRes.value });
         }
-        if (Array.isArray(gatewayPayload?.routes)) {
-          localStorage.setItem(GATEWAY_KEY, JSON.stringify(gatewayPayload.routes));
-          set({ gatewayRoutes: gatewayPayload.routes });
+        if (
+          gatewayPayloadRes.status === 'fulfilled' &&
+          Array.isArray(gatewayPayloadRes.value?.routes)
+        ) {
+          localStorage.setItem(GATEWAY_KEY, JSON.stringify(gatewayPayloadRes.value.routes));
+          set({ gatewayRoutes: gatewayPayloadRes.value.routes });
         }
-        if (Array.isArray(securityEvents)) {
-          localStorage.setItem(SECURITY_KEY, JSON.stringify(securityEvents));
-          set({ securityEvents });
+        if (securityEventsRes.status === 'fulfilled' && Array.isArray(securityEventsRes.value)) {
+          localStorage.setItem(SECURITY_KEY, JSON.stringify(securityEventsRes.value));
+          set({ securityEvents: securityEventsRes.value });
         }
       } catch (err) {
         logger.warn('Admin central sync failed, keeping local cache:', err);

@@ -29,8 +29,9 @@ interface TableDetailItem {
 
 function mapSchemaTables(tables?: SchemaParityTable[]): TableDetailItem[] {
   if (!Array.isArray(tables)) return [];
-  return tables.map((live) => ({
-    name: live.tableName,
+  return tables.map((live, idx) => ({
+    // বাংলা মন্তব্য: এজ প্যারিটি বা ব্যাকএন্ড থেকে tableName অথবা name যে-কোনোটি এলেও নিরাপদে ম্যাপ হবে।
+    name: live.tableName || (live as unknown as { name?: string }).name || `table_${idx + 1}`,
     localColumns: live.localColumns || 0,
     stagingColumns: live.stagingColumns || 0,
     prodColumns: live.prodColumns || 0,

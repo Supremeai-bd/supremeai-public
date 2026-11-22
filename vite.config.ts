@@ -1,18 +1,33 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import { createRequire } from 'node:module';
 import path from 'node:path';
-import { defineConfig } from 'vite';
-import { VitePWA } from 'vite-plugin-pwa';
+import { defineConfig, type PluginOption } from 'vite';
+
+const require = createRequire(import.meta.url);
+
+// বাংলা মন্তব্য: vite-plugin-pwa প্যাকেজটি node_modules-এ থাকলে লোড হবে, না থাকলে নিরাপদ noop প্লাগইন ব্যবহৃত হবে।
+function loadVitePwaPlugin(): ((options: Record<string, unknown>) => PluginOption) | null {
+  try {
+    const mod = require('vite-plugin-pwa') as {
+      VitePWA?: (options: Record<string, unknown>) => PluginOption;
+    };
+    return typeof mod?.VitePWA === 'function' ? mod.VitePWA : null;
+  } catch {
+    return null;
+  }
+}
 
 export default defineConfig(() => {
   const isTauriBuild = Boolean(process.env.TAURI_ENV_PLATFORM);
+  const VitePWA = !isTauriBuild ? loadVitePwaPlugin() : null;
 
   return {
     base: isTauriBuild ? './' : '/',
     plugins: [
       react(),
       tailwindcss(),
-      ...(!isTauriBuild
+      ...(VitePWA
         ? [
             VitePWA({
               registerType: 'autoUpdate',

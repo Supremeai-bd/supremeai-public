@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getWorkspaceAuthHeaders } from '../utils/workspaceAuth';
 
 export interface UseAudioTranscriptionOptions {
   onTranscript?: (transcript: string) => void;
@@ -115,9 +116,10 @@ export function useAudioTranscription(
 
     try {
       const audioData = await blobToBase64(blob);
+      // বাংলা মন্তব্য: ট্রান্সক্রিপশন এন্ডপয়েন্টেও ইউজার/গেস্ট টোকেন হেডার যুক্ত করা হয়েছে।
       const res = await fetch('/api/transcribe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getWorkspaceAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           audioData,
           mimeType: blob.type || mimeType,

@@ -10,8 +10,10 @@ import {
   timingSafeEqualStrings,
 } from '../../_lib/edgeHelpers';
 
+// বাংলা মন্তব্য: ফ্রন্টএন্ডের SchemaParityTable এবং LlmGatewayRoute ইন্টারফেসের সাথে শতভাগ সামঞ্জস্যপূর্ণ এজ প্যারিটি ডেটা।
 const DEFAULT_SCHEMA_TABLES = [
   {
+    tableName: 'users',
     name: 'users',
     localColumns: 12,
     stagingColumns: 12,
@@ -21,6 +23,7 @@ const DEFAULT_SCHEMA_TABLES = [
     lastMigrated: 'Head',
   },
   {
+    tableName: 'user_preferences',
     name: 'user_preferences',
     localColumns: 10,
     stagingColumns: 10,
@@ -30,6 +33,7 @@ const DEFAULT_SCHEMA_TABLES = [
     lastMigrated: 'Head',
   },
   {
+    tableName: 'conversations',
     name: 'conversations',
     localColumns: 8,
     stagingColumns: 8,
@@ -39,6 +43,7 @@ const DEFAULT_SCHEMA_TABLES = [
     lastMigrated: 'Head',
   },
   {
+    tableName: 'api_keys',
     name: 'api_keys',
     localColumns: 9,
     stagingColumns: 9,
@@ -48,6 +53,7 @@ const DEFAULT_SCHEMA_TABLES = [
     lastMigrated: 'Head',
   },
   {
+    tableName: 'system_audit_logs',
     name: 'system_audit_logs',
     localColumns: 7,
     stagingColumns: 7,
@@ -62,41 +68,53 @@ const DEFAULT_GATEWAY_ROUTES = [
   {
     id: 'route-spark',
     modelId: 'supreme-spark',
+    displayName: 'SupremeAI Spark',
     primaryProvider: 'Gemini Web Relay',
     fallbackProvider: 'OpenRouter Free',
     autoFailoverActive: true,
     requestsPerMin: 0,
     errorRatePercent: 0,
+    costPer1MIn: 0.0,
+    costPer1MOut: 0.0,
     customerPricePer1M: 0.0,
   },
   {
     id: 'route-core',
     modelId: 'supreme-core',
+    displayName: 'SupremeAI Core',
     primaryProvider: 'Gemini Flash',
     fallbackProvider: 'OpenRouter Standard',
     autoFailoverActive: true,
     requestsPerMin: 0,
     errorRatePercent: 0,
+    costPer1MIn: 0.08,
+    costPer1MOut: 0.24,
     customerPricePer1M: 0.35,
   },
   {
     id: 'route-reason',
     modelId: 'supreme-reason',
+    displayName: 'SupremeAI Reason',
     primaryProvider: 'Gemini Pro Thinking',
     fallbackProvider: 'DeepSeek R1',
     autoFailoverActive: true,
     requestsPerMin: 0,
     errorRatePercent: 0,
+    costPer1MIn: 0.4,
+    costPer1MOut: 0.9,
     customerPricePer1M: 1.25,
   },
   {
     id: 'route-deep',
     modelId: 'supreme-deep',
+    displayName: 'SupremeAI Deep',
     primaryProvider: 'Deep Research Pipeline',
     fallbackProvider: 'Web + LLM Synthesis',
     autoFailoverActive: true,
     requestsPerMin: 0,
     errorRatePercent: 0,
+    costPer1MIn: 0.6,
+    costPer1MOut: 1.2,
     customerPricePer1M: 1.75,
   },
 ];

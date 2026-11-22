@@ -17,9 +17,16 @@ export interface AppEnvConfig {
   version: string;
 }
 
+// বাংলা মন্তব্য: Vite ও Edge (node types) উভয় পরিবেশেই import.meta.env নিরাপদে পড়ার হেল্পার।
+const getMetaEnv = (): Record<string, string | boolean | undefined> | undefined => {
+  if (typeof import.meta === 'undefined') return undefined;
+  return (import.meta as unknown as { env?: Record<string, string | boolean | undefined> }).env;
+};
+
 const isProdEnvironment = (): boolean => {
-  if (typeof import.meta !== 'undefined' && import.meta.env?.PROD !== undefined) {
-    return Boolean(import.meta.env.PROD);
+  const metaEnv = getMetaEnv();
+  if (metaEnv?.PROD !== undefined) {
+    return Boolean(metaEnv.PROD);
   }
   if (typeof process !== 'undefined' && process.env?.NODE_ENV) {
     return process.env.NODE_ENV === 'production';
@@ -28,19 +35,18 @@ const isProdEnvironment = (): boolean => {
 };
 
 const getEnvBool = (key: string, defaultValue: boolean): boolean => {
-  const metaEnv = typeof import.meta !== 'undefined' ? import.meta.env : undefined;
+  const metaEnv = getMetaEnv();
   const val = metaEnv?.[key] ?? (typeof process !== 'undefined' ? process.env?.[key] : undefined);
   if (val === undefined || val === null || val === '') return defaultValue;
-  return val === 'true' || val === '1';
+  return val === true || val === 'true' || val === '1';
 };
 
 const getEnvString = (key: string, defaultValue: string): string => {
-  const metaEnv = typeof import.meta !== 'undefined' ? import.meta.env : undefined;
-  return (
+  const metaEnv = getMetaEnv();
+  const raw =
     metaEnv?.[key] ??
-    (typeof process !== 'undefined' ? process.env?.[key] : undefined) ??
-    defaultValue
-  );
+    (typeof process !== 'undefined' ? process.env?.[key] : undefined);
+  return typeof raw === 'string' ? raw : defaultValue;
 };
 
 // Check for runtime local override if developer switches mock mode in UI (ONLY in dev mode!)

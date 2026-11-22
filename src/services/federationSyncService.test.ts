@@ -400,4 +400,33 @@ describe('FederationSyncEngine', () => {
     expect(bundle.sources[0].records).toBe(2);
     expect(bundle.events.length).toBeGreaterThan(0);
   });
+
+  it('invokes global fetch without binding `this` to the engine instance', async () => {
+    const strictFetch = vi.fn(async function (this: unknown) {
+      // বাংলা মন্তব্য: ব্রাউজারের Window.fetch-এর মতো `this` ইঞ্জিন ইনস্ট্যান্স হলে Illegal invocation ছুঁড়ে দেবে।
+      if (this instanceof FederationSyncEngine) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+      return jsonResponse({ body: { status: 'ok' } });
+    });
+
+    vi.stubGlobal('fetch', strictFetch);
+    try {
+      const engine = new FederationSyncEngine({
+        sources: [SOURCE],
+        storage: null,
+        autoSchedule: false,
+        credentialMissing: () => false,
+        authResolver: () => ({}),
+      });
+      await engine.syncSource(SOURCE.id);
+
+      const snapshot = engine.getSnapshot(SOURCE.id)!;
+      expect(snapshot.state).toBe('ok');
+      expect(snapshot.error).toBeNull();
+      expect(strictFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
