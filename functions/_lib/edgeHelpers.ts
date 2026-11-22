@@ -1,12 +1,56 @@
+import {
+  DEFAULT_BACKEND_ORIGIN,
+  DEFAULT_MCP_TOWER_ORIGIN as SSOT_MCP_TOWER_ORIGIN,
+} from '../../src/config/platformEndpoints';
+
 export interface PagesContext {
   request: Request;
   env?: Record<string, string | undefined>;
   params?: Record<string, string | string[] | undefined>;
 }
 
-export const DEFAULT_UPSTREAM_ORIGIN = 'https://supremeai-api-ulw0.onrender.com';
+export const DEFAULT_UPSTREAM_ORIGIN = DEFAULT_BACKEND_ORIGIN;
 export const FALLBACK_UPSTREAM_ORIGIN = 'https://supremeai-primary-node-5xso.onrender.com';
-export const DEFAULT_MCP_TOWER_ORIGIN = 'https://supremeai-mcp-tower-live.onrender.com';
+export const DEFAULT_MCP_TOWER_ORIGIN = SSOT_MCP_TOWER_ORIGIN;
+
+const HOP_BY_HOP_REQUEST_HEADERS = new Set([
+  'host',
+  'connection',
+  'keep-alive',
+  'transfer-encoding',
+  'upgrade',
+  'content-length',
+  'cf-connecting-ip',
+  'cf-ipcountry',
+  'cf-ray',
+  'cf-visitor',
+  'x-forwarded-proto',
+  'x-real-ip',
+  'user-agent',
+  'sec-fetch-dest',
+  'sec-fetch-mode',
+  'sec-fetch-site',
+  'sec-fetch-user',
+]);
+
+/**
+ * Build sanitized server-to-server headers for Cloudflare -> Render upstream calls.
+ * Strips browser fingerprint headers (`sec-ch-ua*`, `sec-fetch-*`, Chrome User-Agent)
+ * so upstream Cloudflare WAF does not trigger false Bot Management 403 challenges.
+ */
+export function buildUpstreamForwardHeaders(request: Request, incomingUrl: URL): Headers {
+  const forwarded = new Headers();
+  request.headers.forEach((value, key) => {
+    const lower = key.toLowerCase();
+    if (!HOP_BY_HOP_REQUEST_HEADERS.has(lower) && !lower.startsWith('sec-ch-ua')) {
+      forwarded.set(key, value);
+    }
+  });
+  forwarded.set('User-Agent', 'SupremeAI-Pages-Proxy/1.0');
+  forwarded.set('X-Forwarded-Host', incomingUrl.host);
+  forwarded.set('X-Forwarded-Proto', incomingUrl.protocol.replace(':', ''));
+  return forwarded;
+}
 
 export function resolveUpstreamOrigin(env?: Record<string, string | undefined>): string {
   return (env?.SUPREMEAI_BACKEND_URL || DEFAULT_UPSTREAM_ORIGIN).replace(/\/+$/, '');

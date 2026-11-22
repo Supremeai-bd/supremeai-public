@@ -6,36 +6,18 @@
  * unbuffered SSE (`text/event-stream`) streaming.
  */
 
-import { applyCorsHeaders } from '../_lib/edgeHelpers';
+import {
+  applyCorsHeaders,
+  buildUpstreamForwardHeaders,
+  FALLBACK_UPSTREAM_ORIGIN,
+  resolveUpstreamOrigin,
+} from '../_lib/edgeHelpers';
 
 interface PagesContext {
   request: Request;
   env?: Record<string, string | undefined>;
   params?: { path?: string | string[] };
 }
-
-const DEFAULT_UPSTREAM_ORIGIN = 'https://supremeai-api-ulw0.onrender.com';
-const FALLBACK_UPSTREAM_ORIGIN = 'https://supremeai-primary-node-5xso.onrender.com';
-
-const HOP_BY_HOP_REQUEST_HEADERS = new Set([
-  'host',
-  'connection',
-  'keep-alive',
-  'transfer-encoding',
-  'upgrade',
-  'content-length',
-  'cf-connecting-ip',
-  'cf-ipcountry',
-  'cf-ray',
-  'cf-visitor',
-  'x-forwarded-proto',
-  'x-real-ip',
-  'user-agent',
-  'sec-fetch-dest',
-  'sec-fetch-mode',
-  'sec-fetch-site',
-  'sec-fetch-user',
-]);
 
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env = {} } = context;
@@ -53,19 +35,10 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     });
   }
 
-  const upstreamOrigin = (env.SUPREMEAI_BACKEND_URL || DEFAULT_UPSTREAM_ORIGIN).replace(/\/+$/, '');
+  const upstreamOrigin = resolveUpstreamOrigin(env);
   const targetUrl = `${upstreamOrigin}${incomingUrl.pathname}${incomingUrl.search}`;
 
-  const forwardedHeaders = new Headers();
-  request.headers.forEach((value, key) => {
-    const lower = key.toLowerCase();
-    if (!HOP_BY_HOP_REQUEST_HEADERS.has(lower) && !lower.startsWith('sec-ch-ua')) {
-      forwardedHeaders.set(key, value);
-    }
-  });
-  forwardedHeaders.set('User-Agent', 'SupremeAI-Pages-Proxy/1.0');
-  forwardedHeaders.set('X-Forwarded-Host', incomingUrl.host);
-  forwardedHeaders.set('X-Forwarded-Proto', incomingUrl.protocol.replace(':', ''));
+  const forwardedHeaders = buildUpstreamForwardHeaders(request, incomingUrl);
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
   const cookieHeader = forwardedHeaders.get('cookie') || '';
