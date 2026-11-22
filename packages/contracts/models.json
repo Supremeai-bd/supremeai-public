@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0.0",
-  "gatewayBaseUrl": "https://supremeai-api-ulw0.onrender.com",
+  "gatewayBaseUrl": "https://supremeai-studio.pages.dev/api",
   "models": [
     {
       "id": "supreme-core",
