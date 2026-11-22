@@ -45,11 +45,10 @@ async function runTests(): Promise<void> {
   const invalidKill = await bridge.triggerEmergencyKill('12');
   assert.strictEqual(invalidKill, false);
 
-  assert.strictEqual(MODEL_TIERS.length, 4);
-  assert.strictEqual(tierToModel('fast'), 'llama-3.1-8b-instant');
-  assert.strictEqual(tierToModel('balanced'), 'gpt-4o-mini');
-  assert.strictEqual(tierToModel('pro'), 'claude-sonnet-4-5');
-  assert.strictEqual(modelToTier('gpt-4o-mini'), 'balanced');
+  assert.strictEqual(MODEL_TIERS.length, 1);
+  assert.strictEqual(tierToModel('supreme-core'), 'auto');
+  assert.strictEqual(tierToModel('fast'), 'auto');
+  assert.strictEqual(modelToTier('auto'), 'supreme-core');
 
   const mockServer = http.createServer((req, res) => {
     let rawBody = '';
@@ -61,7 +60,7 @@ async function runTests(): Promise<void> {
       assert.strictEqual(req.url, '/v1/chat/completions');
       assert.strictEqual(req.headers['x-supremeai-key'], 'test-key-123');
       const parsed = JSON.parse(rawBody);
-      assert.strictEqual(parsed.model, 'gpt-4o-mini');
+      assert.strictEqual(parsed.model, 'auto');
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -81,7 +80,7 @@ async function runTests(): Promise<void> {
         'X-SupremeAI-Key': 'test-key-123',
       },
       body: JSON.stringify({
-        model: tierToModel('balanced'),
+        model: tierToModel('supreme-core'),
         messages: [{ role: 'user', content: 'ping' }],
         stream: false,
       }),

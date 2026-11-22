@@ -8,21 +8,13 @@ export interface ModelTier {
 }
 
 export const MODEL_TIERS: ModelTier[] = [
-  { id: 'auto', label: 'SupremeAI Auto (Smart routing)', model: 'auto' },
-  { id: 'fast', label: 'SupremeAI Fast', model: 'llama-3.1-8b-instant' },
-  { id: 'balanced', label: 'SupremeAI Balanced', model: 'gpt-4o-mini' },
-  { id: 'pro', label: 'SupremeAI Pro', model: 'claude-sonnet-4-5' },
+  { id: 'supreme-core', label: 'SupremeAI Core (Unified Smart Routing)', model: 'auto' },
 ];
 
-export function tierToModel(tierOrModel: string): string {
-  const found = MODEL_TIERS.find((t) => t.id === tierOrModel);
-  if (found) return found.model;
-  return tierOrModel || 'auto';
+export function tierToModel(_tierOrModel: string): string {
+  return 'auto';
 }
 
-export function modelToTier(model: string): string {
-  const found = MODEL_TIERS.find(
-    (t) => t.model === model || (model.includes('/') && t.model === model.split('/')[1])
-  );
-  return found ? found.id : 'auto';
+export function modelToTier(_model: string): string {
+  return 'supreme-core';
 }
