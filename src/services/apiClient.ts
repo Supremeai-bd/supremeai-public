@@ -216,9 +216,7 @@ class ApiClient {
           rawText.includes('challenge-platform') ||
           rawText.includes('Just a moment...') ||
           rawText.includes('cf_chl_opt') ||
-          (!isJson &&
-            (response.status === 403 || response.status === 503) &&
-            rawText.includes('cloudflare'));
+          (!isJson && response.status === 403 && rawText.toLowerCase().includes('cloudflare'));
 
         if (isCloudflareChallenge) {
           throw new ApiError(

@@ -30,6 +30,11 @@ const HOP_BY_HOP_REQUEST_HEADERS = new Set([
   'cf-visitor',
   'x-forwarded-proto',
   'x-real-ip',
+  'user-agent',
+  'sec-fetch-dest',
+  'sec-fetch-mode',
+  'sec-fetch-site',
+  'sec-fetch-user',
 ]);
 
 export async function onRequest(context: PagesContext): Promise<Response> {
@@ -53,10 +58,12 @@ export async function onRequest(context: PagesContext): Promise<Response> {
 
   const forwardedHeaders = new Headers();
   request.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP_REQUEST_HEADERS.has(key.toLowerCase())) {
+    const lower = key.toLowerCase();
+    if (!HOP_BY_HOP_REQUEST_HEADERS.has(lower) && !lower.startsWith('sec-ch-ua')) {
       forwardedHeaders.set(key, value);
     }
   });
+  forwardedHeaders.set('User-Agent', 'SupremeAI-Pages-Proxy/1.0');
   forwardedHeaders.set('X-Forwarded-Host', incomingUrl.host);
   forwardedHeaders.set('X-Forwarded-Proto', incomingUrl.protocol.replace(':', ''));
 
@@ -103,22 +110,24 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   }
 
   try {
-    const upstreamInit: RequestInit & { duplex?: 'half' } = {
+    const bufferedBody = hasBody && request.body ? await request.arrayBuffer() : undefined;
+    const buildInit = (): RequestInit => ({
       method: request.method,
       headers: forwardedHeaders,
+      body: bufferedBody,
       redirect: 'manual',
-    };
-    if (hasBody && request.body) {
-      upstreamInit.body = request.body;
-      upstreamInit.duplex = 'half';
-    }
-    let upstreamResponse = await fetch(targetUrl, upstreamInit);
+    });
+    let upstreamResponse = await fetch(targetUrl, buildInit());
 
-    // If primary upstream returns 502/503/504 or CF challenge/hibernate error, attempt fallback upstream
-    if (!upstreamResponse.ok && [502, 503, 504].includes(upstreamResponse.status)) {
+    // If primary upstream returns 502/503/504 or a Cloudflare 403 challenge, attempt fallback upstream
+    const isCfChallenge =
+      upstreamResponse.status === 403 &&
+      (upstreamResponse.headers.get('cf-mitigated') === 'challenge' ||
+        (upstreamResponse.headers.get('content-type') || '').includes('text/html'));
+    if (!upstreamResponse.ok && ([502, 503, 504].includes(upstreamResponse.status) || isCfChallenge)) {
       try {
         const fallbackTarget = `${FALLBACK_UPSTREAM_ORIGIN}${incomingUrl.pathname}${incomingUrl.search}`;
-        const fallbackRes = await fetch(fallbackTarget, upstreamInit);
+        const fallbackRes = await fetch(fallbackTarget, buildInit());
         if (
           fallbackRes.ok ||
           fallbackRes.status === 401 ||
