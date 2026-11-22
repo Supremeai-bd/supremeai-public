@@ -253,18 +253,7 @@ export const authService = {
     try {
       const data = await apiClient.get<any>('/api/v1/auth/me');
       return normalizeAuthUser(data);
-    } catch (err: any) {
-      // If refresh endpoint is missing (404) or temporarily unavailable (503),
-      // keep the existing stored access token instead of forcing a logout.
-      const status = err?.status ?? err?.response?.status;
-      if (status === 404 || status === 503) {
-        try {
-          const existing = localStorage.getItem(TOKEN_STORAGE_KEY);
-          if (existing) return existing;
-        } catch {
-          // ignore storage errors
-        }
-      }
+    } catch {
       return null;
     }
   },
@@ -335,7 +324,7 @@ export const authService = {
       const status = err?.status ?? err?.response?.status;
       if (status === 404 || status === 503) {
         try {
-          const existing = localStorage.getItem(TOKEN_STORAGE_KEY);
+          const existing = localStorage.getItem('supremeai_token');
           if (existing) return existing;
         } catch {
           // ignore storage errors
