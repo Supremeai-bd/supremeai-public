@@ -90,7 +90,17 @@ export default defineConfig(() => {
               },
             }),
           ]
-        : []),
+        : [
+            {
+              name: 'tauri-pwa-noop',
+              resolveId(id: string) {
+                if (id === 'virtual:pwa-register') return '\0virtual:pwa-register';
+              },
+              load(id: string) {
+                if (id === '\0virtual:pwa-register') return 'export function registerSW() { return () => {}; }';
+              },
+            },
+          ]),
     ],
     clearScreen: false,
     resolve: {
