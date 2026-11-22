@@ -89,11 +89,7 @@ jobs:
           # functions/ ফোল্ডার থেকে নেওয়া হচ্ছে; আগে dist/functions/*.test.ts ঢুকে esbuild
           # parse error দিচ্ছিল ("using fetchSpy")।
           npm install --no-save --no-audit --no-fund wrangler@4
-          mv functions/api/chat.test.ts /tmp/chat.test.ts.bak
-          mv functions/api/workspace/browser-schedules.test.ts /tmp/browser-schedules.test.ts.bak
-          npx wrangler pages functions build functions --outdir=dist/_worker.js
-          mv /tmp/chat.test.ts.bak functions/api/chat.test.ts
-          mv /tmp/browser-schedules.test.ts.bak functions/api/workspace/browser-schedules.test.ts
+          node scripts/build-cloudflare-functions.mjs
 
       - name: Deploy to Cloudflare Pages (if secrets configured)
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''

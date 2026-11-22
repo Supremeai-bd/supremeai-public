@@ -293,15 +293,19 @@ async function fetchLiveGithubCommit(): Promise<{
 const RENDER_API_BASE = 'https://api.render.com/v1';
 
 function getRenderServiceId(serviceName: string): string | null {
-  const map: Record<string, string> = {
-    'supremeai-api': 'RENDER_SERVICE_ID_API',
-    'supremeai-browser': 'RENDER_SERVICE_ID_BROWSER',
-    'supremeai-mcp-tower': 'RENDER_SERVICE_ID_MCP',
-    'supremeai-mcp-tower-live': 'RENDER_SERVICE_ID_MCP',
+  // Canonical Monorepo SSOT env vars take precedence; legacy aliases retained for compatibility.
+  const map: Record<string, string[]> = {
+    'supremeai-api': ['RENDER_API_SERVICE_ID', 'RENDER_SERVICE_ID_API'],
+    'supremeai-browser': ['RENDER_SCRAPER_SERVICE_ID', 'RENDER_BROWSER_SERVICE_ID', 'RENDER_SERVICE_ID_BROWSER'],
+    'supremeai-mcp-tower': ['RENDER_MCP_SERVICE_ID', 'RENDER_SERVICE_ID_MCP'],
+    'supremeai-mcp-tower-live': ['RENDER_MCP_SERVICE_ID', 'RENDER_SERVICE_ID_MCP'],
   };
-  const envVar = map[serviceName];
-  const val = envVar ? process.env[envVar]?.trim() : '';
-  return val || KNOWN_RENDER_SERVICE_IDS[serviceName] || null;
+  const candidates = map[serviceName] || [];
+  for (const envVar of candidates) {
+    const val = process.env[envVar]?.trim();
+    if (val) return val;
+  }
+  return KNOWN_RENDER_SERVICE_IDS[serviceName] || null;
 }
 
 type RenderDeployInfo = {
@@ -2090,7 +2094,9 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
     const activeServiceChecks =
       liveStatusPayload?.services || liveStatusPayload?.health?.services || {};
     const redisInfo = liveStatusPayload?.redis || parityPayload?.redis || null;
-    const renderMcpServiceId = process.env.RENDER_SERVICE_ID_MCP?.trim();
+    const renderMcpServiceId = (
+      process.env.RENDER_MCP_SERVICE_ID || process.env.RENDER_SERVICE_ID_MCP
+    )?.trim();
 
     if (!mcpReachable) {
       findings.push({
