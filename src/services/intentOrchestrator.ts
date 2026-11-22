@@ -1,5 +1,6 @@
 import type { ChatAttachment, ChatMessage, KnowledgeDoc, WorkbenchThinkingLevel } from '../types';
 import { parseSmartIntent, type SmartIntentResult } from '../utils/chatAutoIntent';
+import { getWorkspaceAuthHeaders } from '../utils/workspaceAuth';
 
 export type IntentPrimaryGoal =
   | 'chat'
@@ -516,9 +517,10 @@ export async function orchestrateUserIntent(params: {
       const memory = loadUserMemory();
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 2200);
+      // বাংলা মন্তব্য: ইনটেন্ট অ্যানালাইজারে বিদ্যমান টোকেন পাঠালে এজ ফাংশনে নতুন গেস্ট টোকেন মিন্ট করতে হয় না।
       const res = await fetch('/api/intent/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getWorkspaceAuthHeaders({ 'Content-Type': 'application/json' }),
         signal: controller.signal,
         body: JSON.stringify({
           prompt: trimmed,

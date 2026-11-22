@@ -354,12 +354,22 @@ export function registerWorkspaceBrowserProxyRoutes(
         return;
       }
 
+      // বাংলা মন্তব্য: রিকোয়েস্টের Origin বা হোস্ট হেডার থেকে প্যারেন্ট অরিজিন নির্ধারণ করে postMessage targetOrigin লক করা হচ্ছে
+      const reqOriginHeader = String(req.headers.origin || '').trim();
+      const hostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || '').trim();
+      const protoHeader =
+        String(req.headers['x-forwarded-proto'] || req.protocol || 'http')
+          .split(',')[0]
+          .trim() || 'http';
+      const inferredParentOrigin =
+        reqOriginHeader || (hostHeader ? `${protoHeader}://${hostHeader}` : '');
+
       const {
         title,
         html: cleanHtml,
         extractedLinks,
         textPreview,
-      } = processProxiedHtml(rawBody, finalUrl, finalHostname);
+      } = processProxiedHtml(rawBody, finalUrl, finalHostname, inferredParentOrigin);
 
       res.json({
         url: finalDisplayUrl,

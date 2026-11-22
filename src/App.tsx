@@ -592,15 +592,11 @@ export default function App() {
 
   // Sync central admin records whenever an admin workspace tab is active and authenticated
   useEffect(() => {
-    if (currentRole === 'admin' && ADMIN_ONLY_TABS.has(activeTab)) {
-      const hasAdminToken =
-        typeof sessionStorage !== 'undefined' &&
-        Boolean(sessionStorage.getItem('supremeai_admin_token'));
-      if (hasAdminToken) {
-        fetchAdminSync();
-      }
+    // বাংলা মন্তব্য: প্রজেক্ট অ্যাডমিন (2FA/RBAC বা X-Admin-Token) অ্যাডমিন ট্যাবে গেলে কেন্দ্রীয় রেকর্ড সিঙ্ক হবে।
+    if (isProjectAdmin && ADMIN_ONLY_TABS.has(activeTab)) {
+      fetchAdminSync();
     }
-  }, [currentRole, activeTab, fetchAdminSync]);
+  }, [isProjectAdmin, activeTab, fetchAdminSync]);
 
   // Smooth tab routing guard: keep default landing page as 'chat' for all roles;
   // only downgrade away from admin-only tabs when leaving admin role.
@@ -639,7 +635,8 @@ export default function App() {
   useEffect(() => {
     if (isGuest) {
       if (isDockOpen && !isSharedArtifactView && !hasGeneratedWorkspace) setDockOpen(false);
-      if (activeTab !== 'chat') {
+      // বাংলা মন্তব্য: গেস্ট মোডে chat এবং live-sync (লাইভ ডেটা ফ্যাব্রিক) ট্যাব উন্মুক্ত থাকবে।
+      if (activeTab !== 'chat' && activeTab !== 'live-sync') {
         const label = SUBVIEW_TITLES[activeTab] || 'Workspace Features';
         setActiveTab('chat', true);
         setAuthModal({ open: true, reason: label });
@@ -1978,8 +1975,10 @@ export default function App() {
                   useAuthStore.setState({ trustedBrowserUntil: newTrustedUntil });
                 }
                 setIsTwoFactorModalOpen(false);
+                // বাংলা মন্তব্য: 2FA সফল হলে useAuthStore ও useAppPreferencesStore উভয় স্টোরেই admin রোল সিঙ্ক করা হচ্ছে।
                 useAuthStore.setState({ currentRole: 'admin' });
                 localStorage.setItem('supremeai_studio_user_role', 'admin');
+                setRole('admin');
                 setActiveTab('admin-overview');
               }}
               userEmail={authUser?.email || ''}

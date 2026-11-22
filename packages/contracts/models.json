@@ -1,20 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0.0",
-  "gatewayBaseUrl": "https://supremeai-api-ulw0.onrender.com",
+  "gatewayBaseUrl": "https://supremeai-studio.pages.dev/api",
   "models": [
     {
       "id": "supreme-core",
       "gatewayModel": "auto",
+      "enabled": true,
       "name": "SupremeAI Core",
       "shortLabel": "Core",
       "speed": "Balanced",
       "accentHex": "#06b6d4",
-      "description": "Flagship multimodal model for general engineering, architecture, and writing"
+      "description": "Unified flagship model routing across all sovereign providers & stealth relays"
     },
     {
       "id": "supreme-spark",
       "gatewayModel": "supremeai/groq",
+      "enabled": false,
       "name": "SupremeAI Spark",
       "shortLabel": "Spark",
       "speed": "Fast",
@@ -24,6 +26,7 @@
     {
       "id": "supreme-reason",
       "gatewayModel": "supremeai/openrouter",
+      "enabled": false,
       "name": "SupremeAI Reason",
       "shortLabel": "Reason",
       "speed": "Deep",
@@ -33,6 +36,7 @@
     {
       "id": "supreme-deep",
       "gatewayModel": "supremeai/openrouter",
+      "enabled": false,
       "name": "SupremeAI Deep",
       "shortLabel": "Deep",
       "speed": "Deep",
@@ -42,6 +46,7 @@
     {
       "id": "supreme-web",
       "gatewayModel": "auto",
+      "enabled": false,
       "name": "SupremeAI Web",
       "shortLabel": "Web",
       "speed": "Balanced",
@@ -51,6 +56,7 @@
     {
       "id": "supreme-api",
       "gatewayModel": "auto",
+      "enabled": false,
       "name": "SupremeAI API",
       "shortLabel": "API",
       "speed": "Fast",

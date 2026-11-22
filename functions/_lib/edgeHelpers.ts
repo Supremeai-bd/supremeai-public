@@ -1,12 +1,56 @@
+import {
+  DEFAULT_BACKEND_ORIGIN,
+  DEFAULT_MCP_TOWER_ORIGIN as SSOT_MCP_TOWER_ORIGIN,
+} from '../../src/config/platformEndpoints';
+
 export interface PagesContext {
   request: Request;
   env?: Record<string, string | undefined>;
   params?: Record<string, string | string[] | undefined>;
 }
 
-export const DEFAULT_UPSTREAM_ORIGIN = 'https://supremeai-api-ulw0.onrender.com';
+export const DEFAULT_UPSTREAM_ORIGIN = DEFAULT_BACKEND_ORIGIN;
 export const FALLBACK_UPSTREAM_ORIGIN = 'https://supremeai-primary-node-5xso.onrender.com';
-export const DEFAULT_MCP_TOWER_ORIGIN = 'https://supremeai-mcp-tower-live.onrender.com';
+export const DEFAULT_MCP_TOWER_ORIGIN = SSOT_MCP_TOWER_ORIGIN;
+
+const HOP_BY_HOP_REQUEST_HEADERS = new Set([
+  'host',
+  'connection',
+  'keep-alive',
+  'transfer-encoding',
+  'upgrade',
+  'content-length',
+  'cf-connecting-ip',
+  'cf-ipcountry',
+  'cf-ray',
+  'cf-visitor',
+  'x-forwarded-proto',
+  'x-real-ip',
+  'user-agent',
+  'sec-fetch-dest',
+  'sec-fetch-mode',
+  'sec-fetch-site',
+  'sec-fetch-user',
+]);
+
+/**
+ * Build sanitized server-to-server headers for Cloudflare -> Render upstream calls.
+ * Strips browser fingerprint headers (`sec-ch-ua*`, `sec-fetch-*`, Chrome User-Agent)
+ * so upstream Cloudflare WAF does not trigger false Bot Management 403 challenges.
+ */
+export function buildUpstreamForwardHeaders(request: Request, incomingUrl: URL): Headers {
+  const forwarded = new Headers();
+  request.headers.forEach((value, key) => {
+    const lower = key.toLowerCase();
+    if (!HOP_BY_HOP_REQUEST_HEADERS.has(lower) && !lower.startsWith('sec-ch-ua')) {
+      forwarded.set(key, value);
+    }
+  });
+  forwarded.set('User-Agent', 'SupremeAI-Pages-Proxy/1.0');
+  forwarded.set('X-Forwarded-Host', incomingUrl.host);
+  forwarded.set('X-Forwarded-Proto', incomingUrl.protocol.replace(':', ''));
+  return forwarded;
+}
 
 export function resolveUpstreamOrigin(env?: Record<string, string | undefined>): string {
   return (env?.SUPREMEAI_BACKEND_URL || DEFAULT_UPSTREAM_ORIGIN).replace(/\/+$/, '');
@@ -556,21 +600,77 @@ export async function generateEdgeHotp(
   return String(binary % 10 ** digits).padStart(digits, '0');
 }
 
+// বাংলা মন্তব্য: Edge রানটাইমে TOTP কোড রিপ্লে প্রতিরোধের জন্য ইন-মেমরি স্টেপ ট্র্যাকার
+const edgeTotpReplayStepMap = new Map<string, number>();
+
+export interface EdgeTotpVerificationResult {
+  valid: boolean;
+  matchedStep: number | null;
+  reason?: 'invalid_format' | 'invalid_secret' | 'replayed_step' | 'invalid_code';
+}
+
+export function getEdgeTotpLastAcceptedStep(replayKey: string): number | null {
+  const val = edgeTotpReplayStepMap.get(replayKey);
+  return typeof val === 'number' ? val : null;
+}
+
+export function recordEdgeTotpAcceptedStep(replayKey: string, step: number): void {
+  const prev = edgeTotpReplayStepMap.get(replayKey);
+  if (typeof prev !== 'number' || step > prev) {
+    edgeTotpReplayStepMap.set(replayKey, step);
+  }
+}
+
+export function resetEdgeTotpReplayCache(): void {
+  edgeTotpReplayStepMap.clear();
+}
+
+export async function verifyEdgeTotpTokenDetailed(
+  base32Secret: string,
+  code: string,
+  windowSteps: number = 1,
+  options?: { lastAcceptedStep?: number | null; replayKey?: string }
+): Promise<EdgeTotpVerificationResult> {
+  const cleanCode = String(code || '').replace(/\s+/g, '');
+  if (!/^\d{6}$/.test(cleanCode)) {
+    return { valid: false, matchedStep: null, reason: 'invalid_format' };
+  }
+  const keyBytes = decodeBase32ToBytes(base32Secret);
+  if (keyBytes.length === 0) {
+    return { valid: false, matchedStep: null, reason: 'invalid_secret' };
+  }
+  const replayKey = options?.replayKey || base32Secret.trim().toUpperCase();
+  const cachedStep = getEdgeTotpLastAcceptedStep(replayKey);
+  const effectiveLastStep =
+    typeof options?.lastAcceptedStep === 'number' && typeof cachedStep === 'number'
+      ? Math.max(options.lastAcceptedStep, cachedStep)
+      : typeof options?.lastAcceptedStep === 'number'
+        ? options.lastAcceptedStep
+        : cachedStep;
+
+  const currentStep = Math.floor(Date.now() / 1000 / 30);
+  for (let offset = -windowSteps; offset <= windowSteps; offset++) {
+    const candidateStep = currentStep + offset;
+    const candidate = await generateEdgeHotp(keyBytes, candidateStep, 6);
+    if (candidate === cleanCode) {
+      if (typeof effectiveLastStep === 'number' && candidateStep <= effectiveLastStep) {
+        return { valid: false, matchedStep: candidateStep, reason: 'replayed_step' };
+      }
+      recordEdgeTotpAcceptedStep(replayKey, candidateStep);
+      return { valid: true, matchedStep: candidateStep };
+    }
+  }
+  return { valid: false, matchedStep: null, reason: 'invalid_code' };
+}
+
 export async function verifyEdgeTotpToken(
   base32Secret: string,
   code: string,
-  windowSteps: number = 1
+  windowSteps: number = 1,
+  options?: { lastAcceptedStep?: number | null; replayKey?: string }
 ): Promise<boolean> {
-  const cleanCode = String(code || '').replace(/\s+/g, '');
-  if (!/^\d{6}$/.test(cleanCode)) return false;
-  const keyBytes = decodeBase32ToBytes(base32Secret);
-  if (keyBytes.length === 0) return false;
-  const currentStep = Math.floor(Date.now() / 1000 / 30);
-  for (let offset = -windowSteps; offset <= windowSteps; offset++) {
-    const candidate = await generateEdgeHotp(keyBytes, currentStep + offset, 6);
-    if (candidate === cleanCode) return true;
-  }
-  return false;
+  const result = await verifyEdgeTotpTokenDetailed(base32Secret, code, windowSteps, options);
+  return result.valid;
 }
 
 export async function extractLlmCompletionText(

@@ -191,9 +191,16 @@ export class FederationSyncEngine {
   constructor(options: FederationSyncEngineOptions = {}) {
     this.sources = options.sources ?? FEDERATION_SOURCES;
     this.sourceMap = new Map(this.sources.map((source) => [source.id, source]));
+    // বাংলা মন্তব্য: ব্রাউজারে this.fetcher() সরাসরি window.fetch কল করলে Illegal invocation হয়;
+    // তাই arrow function দিয়ে global fetch কল র‍্যাপ করা হয়েছে।
     this.fetcher =
       options.fetcher ??
-      ((typeof fetch !== 'undefined' ? fetch : undefined) as unknown as FetchLike);
+      (((input: Parameters<FetchLike>[0], init?: Parameters<FetchLike>[1]) => {
+        if (typeof fetch !== 'function') {
+          return Promise.reject(new Error('fetch is not available in this environment'));
+        }
+        return fetch(input, init);
+      }) as unknown as FetchLike);
     this.storage =
       options.storage === undefined
         ? typeof localStorage !== 'undefined'

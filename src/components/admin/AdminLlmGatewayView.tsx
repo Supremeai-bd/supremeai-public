@@ -37,13 +37,15 @@ export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
   const totalRpm = routes.reduce((acc, r) => acc + r.requestsPerMin, 0);
   const failoverArmedCount = routes.filter((r) => r.autoFailoverActive).length;
 
+  // বাংলা মন্তব্য: costPer1MIn/costPer1MOut অনুপস্থিত থাকলে NaN এড়াতে Number() ফলব্যাক ব্যবহার করা হয়েছে।
   const avgMargin =
     routes.length > 0
       ? (
           routes.reduce((acc, r) => {
-            if (r.customerPricePer1M <= 0) return acc;
-            const avgCost = (r.costPer1MIn + r.costPer1MOut) / 2;
-            return acc + ((r.customerPricePer1M - avgCost) / r.customerPricePer1M) * 100;
+            const price = Number(r.customerPricePer1M) || 0;
+            if (price <= 0) return acc;
+            const avgCost = ((Number(r.costPer1MIn) || 0) + (Number(r.costPer1MOut) || 0)) / 2;
+            return acc + ((price - avgCost) / price) * 100;
           }, 0) / routes.length
         ).toFixed(1)
       : '0.0';
@@ -149,13 +151,12 @@ export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {routes.map((route) => {
+              const costIn = Number(route.costPer1MIn) || 0;
+              const costOut = Number(route.costPer1MOut) || 0;
+              const retailPrice = Number(route.customerPricePer1M) || 0;
               const margin =
-                route.customerPricePer1M > 0
-                  ? Math.round(
-                      ((route.customerPricePer1M - (route.costPer1MIn + route.costPer1MOut) / 2) /
-                        route.customerPricePer1M) *
-                        100
-                    )
+                retailPrice > 0
+                  ? Math.round(((retailPrice - (costIn + costOut) / 2) / retailPrice) * 100)
                   : 0;
 
               return (
@@ -167,7 +168,7 @@ export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
                     <div>
                       <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         <Cpu className="w-4 h-4 text-blue-600" />
-                        {route.displayName}
+                        {route.displayName || route.modelId}
                       </h3>
                       <div className="flex items-center gap-2 font-mono text-[10px] text-slate-400 mt-1">
                         <span>ID: {route.modelId}</span>
@@ -216,13 +217,13 @@ export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
                     <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/40">
                       <div className="text-[10px] text-slate-400">{t.inOutCostLabel}</div>
                       <div className="font-mono font-bold text-slate-700 dark:text-slate-300 mt-0.5">
-                        ${route.costPer1MIn}/${route.costPer1MOut}
+                        ${costIn}/${costOut}
                       </div>
                     </div>
                     <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/40">
                       <div className="text-[10px] text-slate-400">{t.retailRateLabel}</div>
                       <div className="font-mono font-bold text-blue-600 dark:text-blue-400 mt-0.5">
-                        ${route.customerPricePer1M.toFixed(2)}/1M
+                        ${retailPrice.toFixed(2)}/1M
                       </div>
                     </div>
                     <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/40">

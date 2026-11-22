@@ -29,9 +29,33 @@ import type {
 } from '../types/controlCenter';
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const token = localStorage.getItem('supremeai_access_token');
-  const adminToken =
-    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('supremeai_admin_token') : null;
+  // বাংলা মন্তব্য: localStorage ও sessionStorage থেকে নিরাপদে ইউজার এবং অ্যাডমিন টোকেন সংগ্রহ করা হচ্ছে।
+  let token: string | null = null;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      token = localStorage.getItem('supremeai_access_token');
+      if (!token) {
+        const rawUser = localStorage.getItem('supremeai_auth_user');
+        if (rawUser) {
+          const parsed = JSON.parse(rawUser);
+          if (typeof parsed?.token === 'string' && parsed.token.trim()) {
+            token = parsed.token.trim();
+          }
+        }
+      }
+    }
+  } catch {
+    token = null;
+  }
+  let adminToken: string | null = null;
+  try {
+    adminToken =
+      typeof sessionStorage !== 'undefined'
+        ? sessionStorage.getItem('supremeai_admin_token')
+        : null;
+  } catch {
+    adminToken = null;
+  }
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init?.headers as Record<string, string> | undefined),

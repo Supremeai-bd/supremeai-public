@@ -6,31 +6,18 @@
  * unbuffered SSE (`text/event-stream`) streaming.
  */
 
-import { applyCorsHeaders } from '../_lib/edgeHelpers';
+import {
+  applyCorsHeaders,
+  buildUpstreamForwardHeaders,
+  FALLBACK_UPSTREAM_ORIGIN,
+  resolveUpstreamOrigin,
+} from '../_lib/edgeHelpers';
 
 interface PagesContext {
   request: Request;
   env?: Record<string, string | undefined>;
   params?: { path?: string | string[] };
 }
-
-const DEFAULT_UPSTREAM_ORIGIN = 'https://supremeai-api-ulw0.onrender.com';
-const FALLBACK_UPSTREAM_ORIGIN = 'https://supremeai-primary-node-5xso.onrender.com';
-
-const HOP_BY_HOP_REQUEST_HEADERS = new Set([
-  'host',
-  'connection',
-  'keep-alive',
-  'transfer-encoding',
-  'upgrade',
-  'content-length',
-  'cf-connecting-ip',
-  'cf-ipcountry',
-  'cf-ray',
-  'cf-visitor',
-  'x-forwarded-proto',
-  'x-real-ip',
-]);
 
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env = {} } = context;
@@ -48,17 +35,10 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     });
   }
 
-  const upstreamOrigin = (env.SUPREMEAI_BACKEND_URL || DEFAULT_UPSTREAM_ORIGIN).replace(/\/+$/, '');
+  const upstreamOrigin = resolveUpstreamOrigin(env);
   const targetUrl = `${upstreamOrigin}${incomingUrl.pathname}${incomingUrl.search}`;
 
-  const forwardedHeaders = new Headers();
-  request.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP_REQUEST_HEADERS.has(key.toLowerCase())) {
-      forwardedHeaders.set(key, value);
-    }
-  });
-  forwardedHeaders.set('X-Forwarded-Host', incomingUrl.host);
-  forwardedHeaders.set('X-Forwarded-Proto', incomingUrl.protocol.replace(':', ''));
+  const forwardedHeaders = buildUpstreamForwardHeaders(request, incomingUrl);
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
   const cookieHeader = forwardedHeaders.get('cookie') || '';
@@ -103,22 +83,24 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   }
 
   try {
-    const upstreamInit: RequestInit & { duplex?: 'half' } = {
+    const bufferedBody = hasBody && request.body ? await request.arrayBuffer() : undefined;
+    const buildInit = (): RequestInit => ({
       method: request.method,
       headers: forwardedHeaders,
+      body: bufferedBody,
       redirect: 'manual',
-    };
-    if (hasBody && request.body) {
-      upstreamInit.body = request.body;
-      upstreamInit.duplex = 'half';
-    }
-    let upstreamResponse = await fetch(targetUrl, upstreamInit);
+    });
+    let upstreamResponse = await fetch(targetUrl, buildInit());
 
-    // If primary upstream returns 502/503/504 or CF challenge/hibernate error, attempt fallback upstream
-    if (!upstreamResponse.ok && [502, 503, 504].includes(upstreamResponse.status)) {
+    // If primary upstream returns 502/503/504 or a Cloudflare 403 challenge, attempt fallback upstream
+    const isCfChallenge =
+      upstreamResponse.status === 403 &&
+      (upstreamResponse.headers.get('cf-mitigated') === 'challenge' ||
+        (upstreamResponse.headers.get('content-type') || '').includes('text/html'));
+    if (!upstreamResponse.ok && ([502, 503, 504].includes(upstreamResponse.status) || isCfChallenge)) {
       try {
         const fallbackTarget = `${FALLBACK_UPSTREAM_ORIGIN}${incomingUrl.pathname}${incomingUrl.search}`;
-        const fallbackRes = await fetch(fallbackTarget, upstreamInit);
+        const fallbackRes = await fetch(fallbackTarget, buildInit());
         if (
           fallbackRes.ok ||
           fallbackRes.status === 401 ||

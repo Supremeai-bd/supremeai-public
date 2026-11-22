@@ -8,6 +8,7 @@ import { useRealtimeStream } from '../../hooks/useRealtimeStream';
 import { useI18n } from '../../utils/i18n';
 import { normalizeProxyInputUrl } from '../../stores/useWorkspaceStore';
 import { logger } from '../../utils/logger';
+import { getWorkspaceAuthHeaders } from '../../utils/workspaceAuth';
 
 interface SwarmStreamEvent {
   type: string;
@@ -124,7 +125,11 @@ export async function executeClientFallbackCommand(
       const targetEndpoint = url.startsWith('/')
         ? url
         : `/api/workspace/browser-proxy?url=${encodeURIComponent(url)}`;
-      const res = await fetch(targetEndpoint, { method: 'GET' });
+      // বাংলা মন্তব্য: /api/workspace/* এন্ডপয়েন্টের requireAuthMiddleware পাস করতে auth headers পাঠানো হচ্ছে।
+      const res = await fetch(targetEndpoint, {
+        method: 'GET',
+        headers: getWorkspaceAuthHeaders(),
+      });
       const elapsed = Date.now() - start;
       const contentType = res.headers.get('content-type') || '';
       if (!url.startsWith('/') && contentType.includes('application/json')) {
@@ -244,9 +249,10 @@ export const WorkspaceTerminalTab: React.FC = () => {
         let backendFailed = false;
 
         try {
+          // বাংলা মন্তব্য: লোকাল টার্মিনাল এন্ডপয়েন্টে auth headers না পাঠালে 401 এসে ফলব্যাকে চলে যেত।
           const res = await fetch('/api/workspace/terminal', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getWorkspaceAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ command: trimmed }),
           });
           const rawBody = await res.text();

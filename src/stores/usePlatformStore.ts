@@ -13,7 +13,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
     level: 'info',
   },
   allowNewSignups: true,
-  defaultModelId: 'supreme-spark',
+  defaultModelId: 'supreme-core',
   featureFlags: {
     enable_supreme_reason: true,
     enable_multimodal_vision: true,
@@ -23,12 +23,12 @@ const DEFAULT_CONFIG: PlatformConfig = {
     maintenance_mode: false,
   },
   modelPolicies: {
-    'supreme-spark': { enabled: true, minTier: 'Free' },
     'supreme-core': { enabled: true, minTier: 'Free' },
-    'supreme-reason': { enabled: true, minTier: 'Pro' },
-    'supreme-deep': { enabled: true, minTier: 'Enterprise' },
-    'supremeai-web': { enabled: true, minTier: 'Free' },
-    'supremeai-api': { enabled: true, minTier: 'Free' },
+    'supreme-spark': { enabled: false, minTier: 'Free' },
+    'supreme-reason': { enabled: false, minTier: 'Pro' },
+    'supreme-deep': { enabled: false, minTier: 'Enterprise' },
+    'supremeai-web': { enabled: false, minTier: 'Free' },
+    'supremeai-api': { enabled: false, minTier: 'Free' },
   },
 };
 

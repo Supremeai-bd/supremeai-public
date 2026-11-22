@@ -5,6 +5,13 @@
  * like `supremeai-studio.pages.dev` and keeps Windows PC Chrome speaking Bengali).
  */
 
+import {
+  EDGE_TTS_ORIGIN,
+  EDGE_TTS_USER_AGENT,
+  computeEdgeTtsSecMsGecInput,
+  resolveEdgeTtsClientConfig,
+} from '../../../src/shared/edgeTtsConfig';
+
 interface PagesContext {
   request: Request;
   env?: Record<string, string | undefined>;
@@ -135,12 +142,8 @@ function applyCorsHeaders(headers: Headers, requestOrigin: string): void {
 }
 
 async function computeSecMsGec(trustedToken: string): Promise<string> {
-  const winEpochOffset = 11644473600n;
-  const unixSec = BigInt(Math.floor(Date.now() / 1000));
-  let ticks = unixSec + winEpochOffset;
-  ticks -= ticks % 300n;
-  const ticks100Ns = ticks * 10000000n;
-  const payload = new TextEncoder().encode(`${ticks100Ns.toString()}${trustedToken}`);
+  // বাংলা মন্তব্য: শেয়ার্ড কনফিগ থেকে Sec-MS-GEC পে-লোড তৈরি করে SHA-256 হ্যাশ করা হচ্ছে
+  const payload = new TextEncoder().encode(computeEdgeTtsSecMsGecInput(trustedToken));
   const digest = await crypto.subtle.digest('SHA-256', payload);
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, '0'))
@@ -152,10 +155,11 @@ async function synthesizeViaEdgeWs(
   text: string,
   edgeVoice: string,
   edgeLang: 'bn-BD' | 'bn-IN' | 'en-US',
-  ssmlPitch: string
+  ssmlPitch: string,
+  env?: Record<string, string | undefined>
 ): Promise<Uint8Array> {
-  const TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-  const secMsGec = await computeSecMsGec(TRUSTED_CLIENT_TOKEN);
+  const { trustedClientToken, gecVersion } = resolveEdgeTtsClientConfig(env);
+  const secMsGec = await computeSecMsGec(trustedClientToken);
   const requestId = crypto.randomUUID().replace(/-/g, '');
   const muidBytes = new Uint8Array(16);
   crypto.getRandomValues(muidBytes);
@@ -166,9 +170,9 @@ async function synthesizeViaEdgeWs(
 
   const edgeHttpsUrl =
     `https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1` +
-    `?TrustedClientToken=${TRUSTED_CLIENT_TOKEN}` +
+    `?TrustedClientToken=${trustedClientToken}` +
     `&Sec-MS-GEC=${secMsGec}` +
-    `&Sec-MS-GEC-Version=1-143.0.3650.96` +
+    `&Sec-MS-GEC-Version=${encodeURIComponent(gecVersion)}` +
     `&ConnectionId=${requestId}`;
 
   const upgradeResp = await fetch(edgeHttpsUrl, {
@@ -176,9 +180,8 @@ async function synthesizeViaEdgeWs(
       Upgrade: 'websocket',
       Pragma: 'no-cache',
       'Cache-Control': 'no-cache',
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
-      Origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
+      'User-Agent': EDGE_TTS_USER_AGENT,
+      Origin: EDGE_TTS_ORIGIN,
       Cookie: `muid=${muid};`,
     },
   });
@@ -391,7 +394,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       : 'en-US';
 
     try {
-      const wsAudio = await synthesizeViaEdgeWs(truncatedText, edgeVoice, edgeLang, ssmlPitch);
+      const wsAudio = await synthesizeViaEdgeWs(
+        truncatedText,
+        edgeVoice,
+        edgeLang,
+        ssmlPitch,
+        context.env
+      );
       const base64 = bytesToBase64(wsAudio);
       return new Response(
         JSON.stringify({
@@ -408,7 +417,8 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         }),
         { status: 200, headers }
       );
-    } catch {
+    } catch (wsErr) {
+      console.warn('[edge/tts] Edge WebSocket TTS failed, falling back to unified MP3:', wsErr);
       const chunks = await synthesizeViaUnifiedMp3(truncatedText);
       return new Response(
         JSON.stringify({

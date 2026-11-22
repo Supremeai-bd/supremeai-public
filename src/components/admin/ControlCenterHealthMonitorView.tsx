@@ -72,7 +72,8 @@ export const ControlCenterHealthMonitorView: React.FC = () => {
 
   // Live SSE real-time stream
   useEffect(() => {
-    if (!streamingEnabled) {
+    // বাংলা মন্তব্য: ব্রাউজার বা টেস্ট এনভায়রনমেন্টে EventSource না থাকলে নিরাপদে স্কিপ করবে।
+    if (!streamingEnabled || typeof EventSource === 'undefined') {
       setStreamConnected(false);
       return;
     }
@@ -109,11 +110,16 @@ export const ControlCenterHealthMonitorView: React.FC = () => {
   const filteredServices = useMemo(() => {
     const list = healthSnapshot?.services || [];
     return list.filter((svc) => {
+      // বাংলা মন্তব্য: এজ বা ব্যাকএন্ড থেকে displayName/provider অনুপস্থিত থাকলে null-safe ফলব্যাক।
+      const displayName = (svc.displayName || svc.name || '').toLowerCase();
+      const name = (svc.name || '').toLowerCase();
+      const provider = (svc.provider || '').toLowerCase();
+      const query = searchTerm.trim().toLowerCase();
       const matchesSearch =
-        !searchTerm.trim() ||
-        svc.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        svc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        svc.provider.toLowerCase().includes(searchTerm.toLowerCase());
+        !query ||
+        displayName.includes(query) ||
+        name.includes(query) ||
+        provider.includes(query);
 
       const matchesStatus =
         statusFilter === 'all'
@@ -492,12 +498,12 @@ export const ControlCenterHealthMonitorView: React.FC = () => {
                   </p>
                 </div>
                 <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                  {healthSnapshot?.hostHistory.length || 0} samples
+                  {healthSnapshot?.hostHistory?.length || 0} samples
                 </span>
               </div>
 
               <div className="h-56 w-full">
-                {(healthSnapshot?.hostHistory.length || 0) > 0 ? (
+                {(healthSnapshot?.hostHistory?.length || 0) > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={healthSnapshot?.hostHistory || []}>
                       <defs>
@@ -551,7 +557,7 @@ export const ControlCenterHealthMonitorView: React.FC = () => {
               </div>
 
               <div className="h-56 w-full">
-                {(healthSnapshot?.hostHistory.length || 0) > 0 ? (
+                {(healthSnapshot?.hostHistory?.length || 0) > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={healthSnapshot?.hostHistory || []}>
                       <XAxis dataKey="ts" stroke="#94a3b8" fontSize={11} tickLine={false} />
@@ -774,7 +780,7 @@ export const ControlCenterHealthMonitorView: React.FC = () => {
 
               <div className="h-44 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={activeSelectedService.history}>
+                  <LineChart data={activeSelectedService.history || []}>
                     <XAxis dataKey="ts" stroke="#94a3b8" fontSize={11} tickLine={false} />
                     <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} unit="ms" />
                     <Tooltip

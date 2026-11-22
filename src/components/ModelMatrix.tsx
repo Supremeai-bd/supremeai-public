@@ -6,6 +6,7 @@ import { usePlatformStore } from '../stores/usePlatformStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { env } from '../config/env';
 import { useI18n } from '../utils/i18n';
+import { getWorkspaceAuthHeaders } from '../utils/workspaceAuth';
 
 interface ModelMatrixProps {
   activeModel: ModelDetail;
@@ -39,9 +40,18 @@ export const ModelMatrix: React.FC<ModelMatrixProps> = ({
     const start = performance.now();
 
     try {
+      // বাংলা মন্তব্য: মডেল লেটেন্সি বেঞ্চমার্কে সঠিক টিয়ার ও অথেনটিকেশন পাঠাতে auth headers যুক্ত করা হয়েছে।
+      const adminToken =
+        typeof sessionStorage !== 'undefined'
+          ? sessionStorage.getItem('supremeai_admin_token')
+          : null;
+      const headers = getWorkspaceAuthHeaders({
+        'Content-Type': 'application/json',
+        ...(adminToken ? { 'X-Admin-Token': adminToken } : {}),
+      });
       const response = await fetch(`${env.apiBaseUrl}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           model: modelId,
           messages: [{ role: 'user', content: 'Ping. Answer with single word: OK' }],

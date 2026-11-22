@@ -5,7 +5,7 @@ import {
   resolveUpstreamOrigin,
   fetchWithTimeout,
   generateEdgeBase32Secret,
-  verifyEdgeTotpToken,
+  verifyEdgeTotpTokenDetailed,
 } from '../../../_lib/edgeHelpers';
 
 const TOTP_ISSUER = 'SupremeAI Studio';
@@ -13,7 +13,7 @@ const TOTP_ISSUER = 'SupremeAI Studio';
 async function loadTotpSecretFromPrefs(
   upstreamOrigin: string,
   authHeader: string
-): Promise<{ secret: string; enrolled: boolean } | null> {
+): Promise<{ secret: string; enrolled: boolean; lastAcceptedStep: number | null } | null> {
   if (!authHeader) return null;
   try {
     const res = await fetchWithTimeout(
@@ -31,10 +31,12 @@ async function loadTotpSecretFromPrefs(
       return {
         secret: totp.secret.trim(),
         enrolled: Boolean(totp.enrolled),
+        lastAcceptedStep: typeof totp.lastAcceptedStep === 'number' ? totp.lastAcceptedStep : null,
       };
     }
     return null;
-  } catch {
+  } catch (err) {
+    console.warn('[edge/totp] Failed to load TOTP secret from preferences:', err);
     return null;
   }
 }
@@ -43,7 +45,8 @@ async function saveTotpToPrefs(
   upstreamOrigin: string,
   authHeader: string,
   secret: string,
-  enrolled: boolean
+  enrolled: boolean,
+  lastAcceptedStep?: number | null
 ): Promise<void> {
   if (!authHeader) return;
   await fetchWithTimeout(
@@ -58,12 +61,15 @@ async function saveTotpToPrefs(
         security_totp: {
           secret,
           enrolled,
+          ...(typeof lastAcceptedStep === 'number' ? { lastAcceptedStep } : {}),
           updatedAt: new Date().toISOString(),
         },
       }),
     },
     5000
-  ).catch(() => {});
+  ).catch((err) => {
+    console.warn('[edge/totp] Failed to save TOTP preferences:', err);
+  });
 }
 
 export async function onRequest(context: PagesContext): Promise<Response> {
@@ -117,12 +123,17 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     const existingSecret = envSecret || (existingVault?.enrolled ? existingVault.secret : '');
     if (existingSecret) {
       const currentCode = String(body.currentToken || '').trim();
-      const validCurrent = await verifyEdgeTotpToken(existingSecret, currentCode, 1);
-      if (!validCurrent) {
+      const checkCurrent = await verifyEdgeTotpTokenDetailed(existingSecret, currentCode, 1, {
+        lastAcceptedStep: existingVault?.lastAcceptedStep ?? null,
+        replayKey: `totp_rotate:${existingSecret}`,
+      });
+      if (!checkCurrent.valid) {
         return jsonEdgeResponse(
           {
             error:
-              'TOTP is already enrolled. Enter your current 6-digit Authenticator code to rotate your TOTP key.',
+              checkCurrent.reason === 'replayed_step'
+                ? 'This 6-digit TOTP code has already been used. Wait for the next 30-second code.'
+                : 'TOTP is already enrolled. Enter your current 6-digit Authenticator code to rotate your TOTP key.',
             requiresCurrentToken: true,
           },
           401,
@@ -207,10 +218,18 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       );
     }
 
-    const valid = await verifyEdgeTotpToken(activeSecret, code, 1);
-    if (!valid) {
+    const check = await verifyEdgeTotpTokenDetailed(activeSecret, code, 1, {
+      lastAcceptedStep: vaultEntry?.lastAcceptedStep ?? null,
+      replayKey: `totp_confirm:${activeSecret}`,
+    });
+    if (!check.valid) {
       return jsonEdgeResponse(
-        { error: 'Invalid 6-digit Authenticator verification code.' },
+        {
+          error:
+            check.reason === 'replayed_step'
+              ? 'This 6-digit TOTP code has already been used. Wait for the next 30-second code.'
+              : 'Invalid 6-digit Authenticator verification code.',
+        },
         401,
         request,
         undefined,
@@ -219,7 +238,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     }
 
     if (vaultEntry?.secret) {
-      await saveTotpToPrefs(upstreamOrigin, authHeader, vaultEntry.secret, true);
+      await saveTotpToPrefs(
+        upstreamOrigin,
+        authHeader,
+        vaultEntry.secret,
+        true,
+        check.matchedStep
+      );
     }
 
     const trustUntil = body.trustFor7Days ? Date.now() + 7 * 24 * 60 * 60 * 1000 : null;
