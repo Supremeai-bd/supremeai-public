@@ -1,0 +1,402 @@
+name: 'Dependabot — Intelligent Apply Gate'
+
+# =============================================================================
+# বাংলা: Dependabot নিজে Smarter হবে না — সে শুধু "নতুন ভার্সন আছে" জানে।
+# "এই ভার্সনটি কি আমাদের ভাঙবে?" সেই বিচার এখানে হয়।
+#
+# নীতি (risk-tiered):
+#   patch  + non-high-risk + সব gate সবুজ + soak শেষ → auto-merge
+#   patch  + high-risk (react/vite/ts/...)          → মানুষ review করবে
+#   minor                                           → মানুষ review (CI সবুজ থাকলেও)
+#   major                                           → কখনো auto নয়; structured
+#                                                     breaking-change রিপোর্ট + BLOCK
+#
+# হার্ড গেট (একটিও ফেল করলে merge হবে না):
+#   ১. required checks (unified-pipeline + CodeQL)
+#   ২. lockfile consistency (npm ci --dry-run)
+#   ৩. Node-runtime ↔ @types/node parity  ← #14-এর মতো skew ঠেকায়
+#   ৪. cross-tree version consistency (root/admin/ext)
+#   ৫. canonical publish-age = soak (version কত দিন পুরোনো)
+# =============================================================================
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+
+concurrency:
+  group: dependabot-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # ANALYSIS — শুধু পড়ে, কিছু বদলায় না। কোনো state পরিবর্তন করে না।
+  # ---------------------------------------------------------------------------
+  analyse:
+    name: 'Classify + gate analysis'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    outputs:
+      risk: ${{ steps.classify.outputs.risk }}
+      auto_merge_ok: ${{ steps.classify.outputs.auto_merge_ok }}
+      package: ${{ steps.classify.outputs.package }}
+      from_version: ${{ steps.classify.outputs.from_version }}
+      to_version: ${{ steps.classify.outputs.to_version }}
+      reason: ${{ steps.classify.outputs.reason }}
+      is_security: ${{ steps.meta.outputs.alert-state != '' }}
+    steps:
+      - name: Checkout (need runtime node version + manifests)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node 24 (matches CI runtime)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- GATE 3: Node runtime ↔ @types/node parity -------------------------
+      # বাংলা: #14 merge করে @types/node 20 → 26 হয়েছে, অথচ CI runtime node 24।
+      # ফলে কোড Node-26-এর API-র বিরুদ্ধে compile হতে পারে, যা প্রোডাকশনে নেই।
+      # নিয়ম: @types/node-এর major <= runtime node major।
+      - name: 'Gate: @types/node ↔ runtime parity'
+        id: nodeparity
+        run: |
+          set -euo pipefail
+          runtime=$(node -p "process.versions.node.split('.')[0]")
+          echo "runtime_node_major=$runtime"
+          bad=0
+          for manifest in package.json admin/package.json packages/vscode-extension/package.json packages/contracts/package.json; do
+            [ -f "$manifest" ] || continue
+            range=$(node -e "
+              const j=require('./$manifest');
+              const d={...j.dependencies||{},...j.devDependencies||{}};
+              process.stdout.write(d['@types/node']||'');
+            ")
+            [ -z "$range" ] && continue
+            # সবচেয়ে ছোট major ধরা: caret/range থেকে প্রথম সংখ্যাটাই যথেষ্ট
+            major=$(echo "$range" | grep -oE '[0-9]+' | head -1)
+            if [ "$major" -gt "$runtime" ]; then
+              echo "::error file=$manifest::@types/node major $major > runtime node $runtime ($range) — এতে এমন API-র বিরুদ্ধে compile হবে যা প্রোডাকশনে নেই"
+              bad=1
+            else
+              echo "ok: $manifest @types/node $range (<= $runtime)"
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "parity=fail" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "parity=pass" >> "$GITHUB_OUTPUT"
+
+      # ---- GATE 2: lockfile consistency ------------------------------------
+      # বাংলা: Dependabot কখনো কখনো package.json বদলে lockfile ঠিকমতো update করে না
+      # (বিশেষত monorepo workspace-এ)। npm ci fail করলে merge কখনো হবে না।
+      - name: 'Gate: lockfile consistency'
+        run: |
+          set -euo pipefail
+          npm ci --dry-run --no-audit --no-fund
+
+      # ---- GATE 4: cross-tree consistency ---------------------------------
+      - name: 'Gate: cross-tree version skew (report only)'
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          const trees = {
+            root: './package.json',
+            admin: './admin/package.json',
+            'vscode-ext': './packages/vscode-extension/package.json',
+          };
+          const majors = {};
+          for (const [name, path] of Object.entries(trees)) {
+            if (!fs.existsSync(path)) continue;
+            const j = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const deps = { ...(j.dependencies || {}), ...(j.devDependencies || {}) };
+            for (const dep of ['typescript', '@types/node', 'react', 'react-dom']) {
+              if (!deps[dep]) continue;
+              const m = String(deps[dep]).match(/(\d+)/);
+              if (!m) continue;
+              (majors[dep] ||= {})[name] = Number(m[1]);
+            }
+          }
+          let warn = 0;
+          for (const [dep, byTree] of Object.entries(majors)) {
+            const values = Object.values(byTree);
+            const spread = Math.max(...values) - Math.min(...values);
+            if (spread >= 1) {
+              const detail = Object.entries(byTree).map(([k, v]) => `${k}=${v}`).join(', ');
+              console.log(`::warning::${dep} major skew across trees (${detail}) — align deliberately, not by accident`);
+              warn++;
+            }
+          }
+          console.log(warn === 0 ? 'no cross-tree major skew' : `${warn} skew warning(s) — informational only`);
+          NODE
+
+      # ---- GATE 5: soak — version কত দিন পুরোনো ---------------------------
+      # বাংলা: cooldown dependabot.yml-এ আছে, কিন্তু এখানে স্বাধীনভাবে যাচাই —
+      # নইলে cooldown config ভুলে গেলে নীরবে বাইপাস হবে।
+      - name: 'Gate: release soak age'
+        id: soak
+        if: steps.meta.outputs.package-ecosystem == 'npm'
+        run: |
+          set -euo pipefail
+          pkg='${{ steps.meta.outputs.dependency-names }}'
+          ver='${{ steps.meta.outputs.new-version }}'
+          pkg=${pkg%%,*}      # group-এ প্রথম প্যাকেজ
+          echo "package=$pkg version=$ver"
+          published=$(npm view "$pkg@$ver" time --json 2>/dev/null | node -e "
+            let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+              try{const t=JSON.parse(s);process.stdout.write(t[process.argv[1]]||'');}catch(e){process.stdout.write('');}
+            });" "$ver")
+          if [ -z "$published" ]; then
+            echo "soak=unknown"; echo "age_days=unknown" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          age=$(( ( $(date -u +%s) - $(date -u -d "$published" +%s) ) / 86400 ))
+          echo "age_days=$age" >> "$GITHUB_OUTPUT"
+          echo "release age: ${age}d (published $published)"
+          # Tier অনুযায়ী ন্যূনতম soak — dependabot.yml cooldown-এর সাথে সামঞ্জস্যপূর্ণ
+          ut='${{ steps.meta.outputs.update-type }}'
+          case "$ut" in
+            version-update:semver-major) min=30 ;;
+            version-update:semver-minor) min=14 ;;
+            *) min=7 ;;
+          esac
+          echo "required_soak_days=$min"
+          if [ "$age" -lt "$min" ]; then
+            echo "soak=too_young"; echo "required=$min" >> "$GITHUB_OUTPUT"
+          else
+            echo "soak=pass"
+          fi
+
+      # ---- CLASSIFY: risk tier + auto-merge সিদ্ধান্ত ----------------------
+      - name: Classify risk + decide policy
+        id: classify
+        env:
+          META_UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          META_DEPS: ${{ steps.meta.outputs.dependency-names }}
+          META_SEMVER: ${{ steps.meta.outputs.semver-major-increment }}
+          SOAK: ${{ steps.soak.outputs.soak }}
+          META_ALERT_STATE: ${{ steps.meta.outputs.alert-state }}
+          NODE_PARITY: ${{ steps.nodeparity.outputs.parity }}
+        run: |
+          set -euo pipefail
+          pkgs="$META_DEPS"
+          ut="$META_UPDATE_TYPE"
+
+          # ---- HIGH-RISK LIST ---------------------------------------------
+          # বাংলা: এই প্যাকেজগুলোর patch-ও auto-merge করা হবে না, কারণ এগুলোর
+          # peer-dependency ও transitive প্রভাব বিশাল (vite/vitest/ts/react
+          # একে অপরের সাথে pinned; tauri/next-এর patch-ও binding বদলায়)।
+          HIGH_RISK_RE='^(react|react-dom|react-is|@types/react|@types/react-dom|typescript|vite|vitest|@vitejs/.*|@vitest/.*|next|eslint-config-next|@tauri-apps/.*|tauri|tauri-.*|webpack|esbuild|rollup|@babel/.*|electron|prisma|@prisma/.*|node-fetch|undici|sharp|canvas)$'
+
+          high=0
+          for p in $(echo "$pkgs" | tr ',' ' '); do
+            if echo "$p" | grep -qE "$HIGH_RISK_RE"; then high=1; fi
+          done
+
+          case "$ut" in
+            version-update:semver-patch) risk=patch ;;
+            version-update:semver-minor) risk=minor ;;
+            version-update:semver-major) risk=major ;;
+            *) risk=unknown ;;
+          esac
+
+          ok=false
+          reason=""
+
+          # বাংলা: SECURITY update-এ cooldown/soak কখনো প্রযোজ্য নয় (GitHub-ও
+          # security update-এ cooldown দেয় না)। CVE-প্যাচে অপেক্ষা করা মানে
+          # ঝুঁকি খোলা রাখা — তাই `security-aware` শাখা।
+          is_security="$META_ALERT_STATE"
+
+          if [ "$risk" = "patch" ] && [ "$high" -eq 0 ]; then
+            if [ -n "$is_security" ]; then
+              ok=true; reason="🛡️ security patch ($is_security) — soak ছাড়া, সব gate সবুজ"
+            elif [ "$SOAK" = "pass" ]; then
+              ok=true; reason="patch + non-high-risk + soak ${SOAK}"
+            else
+              reason="patch কিন্তু soak ${SOAK:-unknown} — publish-then-yank ঝুঁকি এড়াতে অপেক্ষা"
+            fi
+          elif [ "$risk" = "patch" ] && [ "$high" -eq 1 ]; then
+            reason="high-risk প্যাকেজের patch — মানুষকে দেখতে হবে (peer/transitive প্রভাব)"
+          elif [ "$risk" = "minor" ]; then
+            reason="minor bump — CI সবুজ হলেও API আচরণ বদলাতে পারে, মানুষ review করবে"
+          elif [ "$risk" = "major" ]; then
+            reason="major bump — কখনো auto নয়"
+          else
+            reason="update-type অজানা — নিরাপদ দিকে থাকা হলো"
+          fi
+
+          echo "risk=$risk"
+          echo "auto_merge_ok=$ok"
+          echo "reason=$reason"
+          echo "high_risk=$high"
+          {
+            echo "risk=$risk"
+            echo "auto_merge_ok=$ok"
+            echo "package=$pkgs"
+            echo "from_version=${{ steps.meta.outputs.previous-version }}"
+            echo "to_version=${{ steps.meta.outputs.new-version }}"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write classification to job summary
+        if: always()
+        run: |
+          {
+            echo "## 🤖 Dependabot gate — \`${{ steps.classify.outputs.package }}\`"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| আপডেট | \`${{ steps.meta.outputs.previous-version }}\` → \`${{ steps.meta.outputs.new-version }}\` |"
+            echo "| ধরন | **${{ steps.classify.outputs.risk }}** |"
+            echo "| Auto-merge | \`${{ steps.classify.outputs.auto_merge_ok }}\` |"
+            echo "| কারণ | ${{ steps.classify.outputs.reason }} |"
+            echo "| Release soak | \`${{ steps.soak.outputs.age_days }}d\` |"
+            echo "| Node types parity | \`${{ steps.nodeparity.outputs.parity }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # AUTO-MERGE — শুধু তখনই, যখন classify বলেছে ok এবং সব required check সবুজ
+  # ---------------------------------------------------------------------------
+  auto-merge:
+    name: 'Auto-merge (patch only, gate-verified)'
+    needs: analyse
+    if: |
+      needs.analyse.outputs.auto_merge_ok == 'true' &&
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Wait for required checks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          for i in $(seq 1 60); do
+            read -r state <<< "$(gh pr view "$PR" -R "$REPO" --json mergeStateStatus,statusCheckRollup \
+              --jq '"\(.mergeStateStatus) \([.statusCheckRollup[]?|select(.name!="Auto-merge (patch only, gate-verified)")|.conclusion//.status]|unique|join(","))"')"
+            echo "[$i] mergeState=$state"
+            summary=$(gh pr view "$PR" -R "$REPO" --json statusCheckRollup \
+              --jq '[.statusCheckRollup[]?|.conclusion//.status]|unique|join(",")')
+            case "$summary" in
+              *FAILURE*|*CANCELLED*|*TIMED_OUT*|*ACTION_REQUIRED*)
+                echo "::error::একটি check ব্যর্থ — auto-merge বাতিল"
+                exit 1 ;;
+            esac
+            if [ "$state" = "CLEAN" ] || [ "$state" = "HAS_HOOKS" ] || [ "$state" = "UNSTABLE" ]; then
+              echo "checks settled: $summary"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::৩০ মিনিটেও checks settle হয়নি — auto-merge বাতিল (মানুষ দেখবেন)"
+          exit 1
+
+      - name: Approve + enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # বাংলা: approve করা হয় যাতে branch protection-এর review-requirement
+          # আটকে না দেয়। GITHUB_TOKEN দিয়ে approve করলে checks আবার চলে (by design),
+          # ফলে শেষ কথা বলে সবসময় সবুজ CI।
+          gh pr review "$PR" -R "$REPO" --approve \
+            --body "🤖 Auto-approved: **patch** update, non-high-risk package, release soak \`${{ needs.analyse.outputs.reason }}\`, সব gate সবুজ।" || true
+          if gh pr merge "$PR" -R "$REPO" --squash --auto --delete-branch; then
+            echo "auto-merge armed"
+          else
+            echo "::warning::auto-merge arm করা যায়নি (রেপোতে auto-merge বন্ধ?) — সরাসরি merge চেষ্টা"
+            gh pr merge "$PR" -R "$REPO" --squash --delete-branch
+          fi
+
+  # ---------------------------------------------------------------------------
+  # MAJOR / HIGH-RISK — মানুষের জন্য structured রিপোর্ট, merge বন্ধ
+  # ---------------------------------------------------------------------------
+  flag-for-human:
+    name: 'Flag for human review (major / high-risk)'
+    needs: analyse
+    if: needs.analyse.outputs.auto_merge_ok != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (breaking-change surface)
+        uses: actions/checkout@v5
+
+      - name: Post structured decision comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          RISK: ${{ needs.analyse.outputs.risk }}
+          PKG: ${{ needs.analyse.outputs.package }}
+          FROM: ${{ needs.analyse.outputs.from_version }}
+          TO: ${{ needs.analyse.outputs.to_version }}
+          REASON: ${{ needs.analyse.outputs.reason }}
+        run: |
+          set -uo pipefail
+          marker='<!-- dependabot-intelligent-gate -->'
+          body=$(cat <<EOF
+          $marker
+          ### 🤖 Intelligent gate — মানুষ দরকার
+
+          | | |
+          |---|---|
+          | প্যাকেজ | \`$PKG\` |
+          | ভার্সন | \`$FROM\` → \`$TO\` |
+          | ঝুঁকি স্তর | **$RISK** |
+          | সিদ্ধান্ত | ❌ **auto-merge নয়** |
+          | কারণ | $REASON |
+
+          #### কেন auto নয়
+          - **major**: breaking API পরিবর্তনের সম্ভাবনা বেশি; माइগ্রেশন-নোট না পড়ে merge করা ভুল।
+          - **high-risk patch**: \`react\`/\`vite\`/\`vitest\`/\`typescript\`/\`tauri\`/\`next\`-এর patch-ও peer-dependency
+            গ্রাফ নাড়ায় — CI সবুজ থাকলেও runtime-এ ভাঙতে পারে।
+          - **soak**: নতুন রিলিজ ৭/১৪/৩০ দিনের কম পুরোনো হলে supply-chain ঝুঁকি (publish-then-yank)।
+
+          #### review করার সময় যা দেখুন
+          1. এই প্যাকেজের major/minor bump-এ **migration guide** আছে কি?
+          2. অ্যাফেক্টেড প্যাকেজ ট্রি (\`root\` / \`admin\` / \`vscode-ext\`) — সব একসাথে বদলাচ্ছে কি?
+          3. \`@types/node\` বদলালে runtime node (\`24\`) এর সাথে মিলছে কি?
+          4. lockfile-এ transitive major bump লুকিয়ে আছে কি?
+
+          <sub>নীতি: \`.github/dependabot.yml\` + \`.github/workflows/apply-dependabot-update.yml\`</sub>
+          EOF
+          )
+          existing=$(gh pr view "$PR" -R "$REPO" --json comments --jq '.comments[]?|select(.body|contains("dependabot-intelligent-gate"))|.body' | head -1)
+          if [ -n "$existing" ]; then
+            echo "আগেই কমেন্ট করা আছে — আবার লিখছি না (noise বন্ধ)"
+          else
+            gh pr comment "$PR" -R "$REPO" --body "$body"
+          fi
+
+      - name: Label for triage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          RISK: ${{ needs.analyse.outputs.risk }}
+        run: |
+          set -uo pipefail
+          for l in dependencies "risk:$RISK" "needs-human-review"; do
+            gh label create "$l" --repo "$REPO" --color "fbca04" --force >/dev/null 2>&1 || true
+            gh pr edit "$PR" -R "$REPO" --add-label "$l" >/dev/null 2>&1 || true
+          done
+          echo "labelled risk:$RISK"

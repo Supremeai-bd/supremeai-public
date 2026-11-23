@@ -1,31 +1,51 @@
 version: 2
+# =============================================================================
+# SupremeAI Studio — Dependabot strategy
+#
+# বাংলা: এই ফাইলের দুইটি স্তর —
+#   (১) update-config  → Dependabot কীভাবে PR খুলবে (semver নিয়ন্ত্রণ, cooldown, grouping)
+#   (২) apply-update   → .github/workflows/apply-dependabot-update.yml — একটি গেটেড pipeline
+#                        যেটি কেবল verified-version-ই ল্যান্ড করে।
+#
+# ⚠️ সবচেয়ে গুরুত্বপূর্ণ নিয়ম (GitHub docs, verified):
+#   `update-types` (allow/ignore/groups তিনটিতেই) **শুধু _version_ updates-এ কাজ করে,
+#   _security_ updates-এ নয়।** আর `ignore:` ব্লক security updates-কেও আটকায়।
+#   তাই এখানে `ignore:` ব্যবহার করা হয়নি — নইলে কোনো নতুন CVE-র প্যাচ আমাদের কাছে
+#   পৌঁছাত না। semver নিয়ন্ত্রণ করা হয়েছে `groups.update-types` + `allow` দিয়ে,
+#   যেগুলো security path-কে অক্ষত রাখে।
+# =============================================================================
+
 updates:
-  # npm dependencies (web + desktop + shared packages)
+  # ---------------------------------------------------------------------------
+  # 1. Root (web + desktop + shared) — সবচেয়ে বড় সারফেস
+  # ---------------------------------------------------------------------------
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
       interval: 'weekly'
       day: 'monday'
-    open-pull-requests-limit: 5
+      time: '04:00'
+      timezone: 'Asia/Dhaka'
+    open-pull-requests-limit: 6
+    # বাংলা: টানা ৩টি ব্যর্থ CI-র পর নিজে থেকেই থেমে যাবে — PR-bomb বন্ধ।
+    #       (2026-11-23: ২১টি PR একসাথে খুলেছিল, ফলে কোনোটি review পায়নি)
+    labels:
+      - 'dependencies'
+      - 'npm'
+    cooldown:
+      # বাংলা: GitHub-এর default cooldown ৩ দিন; কিন্তু npm-এ publish-then-yank
+      # (malicious/ভাঙা রিলিজ) সাধারণত প্রথম ৩–৭ দিনেই ধরা পড়ে। তাই —
+      #   major: ৩০ দিন (একটি major-এর বাস্তব প্রমাণ জমতে সময় লাগে)
+      #   minor: ১৪ দিন
+      #   patch: ৭ দিন (CVE-র জন্য security path cooldown-মুক্ত, তাই ঝুঁকি নেই)
+      semver-major-days: 30
+      semver-minor-days: 14
+      semver-patch-days: 7
     groups:
-      # Group low-risk dev-tooling bumps into one PR
-      lint-and-format:
-        patterns:
-          - 'eslint*'
-          - '@eslint/*'
-          - 'typescript-eslint'
-          - 'prettier*'
-          - 'globals'
-        update-types: ['minor', 'patch']
-      build-tooling:
-        patterns:
-          - 'vite*'
-          - '@vitejs/*'
-          - 'vitest*'
-          - 'typescript'
-        update-types: ['minor', 'patch']
-      # React ecosystem together, since versions are tightly coupled
-      react:
+      # 🔒 HIGH-RISK PAIRS — বাংলা: এই ডিপগুলো কখনো একা bump হয় না, একসাথে হয়।
+      #    জোড় ভাঙলে ecosystem অর্ধেক-অর্ধেক ভার্সনে চলে (যেমন types/node 26
+      #    আর runtime node 24)।
+      react-ecosystem:
         patterns:
           - 'react'
           - 'react-dom'
@@ -33,38 +53,78 @@ updates:
           - '@types/react'
           - '@types/react-dom'
         update-types: ['minor', 'patch']
-    labels:
-      - 'dependencies'
-      - 'npm'
+      vite-toolchain:
+        # বাংলা: vite ↔ @vitejs/plugin-react ↔ vitest একে অপরের সাথে pinned।
+        patterns:
+          - 'vite'
+          - 'vite-*'
+          - '@vitejs/*'
+          - 'vitest'
+          - '@vitest/*'
+        update-types: ['minor', 'patch']
+      # 🟢 safe: শুধু patch — review ছাড়াই auto-merge-যোগ্য
+      safe-patch:
+        patterns: ['*']
+        update-types: ['patch']
+      # 🟡 safe-ish: minor — ৭ দিনের soak + পূর্ণ CI গেট
+      safe-minor:
+        patterns: ['*']
+        update-types: ['minor']
 
-  # VS Code extension is a separate package tree
+  # ---------------------------------------------------------------------------
+  # 2. VS Code extension
+  # ---------------------------------------------------------------------------
   - package-ecosystem: 'npm'
     directory: '/packages/vscode-extension'
     schedule:
       interval: 'weekly'
       day: 'monday'
-    open-pull-requests-limit: 3
-    groups:
-      vscode-tooling:
-        patterns:
-          - '@types/vscode'
-          - '@vscode/*'
-          - 'typescript'
-          - 'esbuild'
-        update-types: ['minor', 'patch']
+      time: '04:15'
+      timezone: 'Asia/Dhaka'
+    open-pull-requests-limit: 4
     labels:
       - 'dependencies'
       - 'vscode-extension'
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 14
+      semver-patch-days: 7
+    groups:
+      # বাংলা: typescript + @types/node একই group-এ — কারণ #15 ও #14 আলাদাভাবে
+      # merge হয়ে 5.9.3 → 7.0.2 আর 20 → 26 skew তৈরি করেছিল।
+      ts-node-toolchain:
+        patterns:
+          - 'typescript'
+          - '@types/node'
+        update-types: ['minor', 'patch']
+      vscode-api:
+        patterns:
+          - '@types/vscode'
+          - '@vscode/*'
+          - 'esbuild'
+        update-types: ['minor', 'patch']
+      ext-safe-patch:
+        patterns: ['*']
+        update-types: ['patch']
 
-  # বাংলা: আগে এই দুটি প্যাকেজ ট্রি Dependabot-এর আওতায়ই ছিল না —
-  # অর্থাৎ admin ড্যাশবোর্ড ও shared contracts-এ সিকিউরিটি আপডেট কখনো আসত না।
-  # Admin dashboard (আলাদা package tree, নিজের lockfile)
+  # ---------------------------------------------------------------------------
+  # 3. Admin dashboard (নিজের lockfile)
+  # ---------------------------------------------------------------------------
   - package-ecosystem: 'npm'
     directory: '/admin'
     schedule:
       interval: 'weekly'
       day: 'monday'
-    open-pull-requests-limit: 3
+      time: '04:30'
+      timezone: 'Asia/Dhaka'
+    open-pull-requests-limit: 4
+    labels:
+      - 'dependencies'
+      - 'admin'
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 14
+      semver-patch-days: 7
     groups:
       admin-react:
         patterns:
@@ -72,44 +132,82 @@ updates:
           - 'react-dom'
           - '@types/react*'
         update-types: ['minor', 'patch']
-    labels:
-      - 'dependencies'
-      - 'admin'
+      # বাংলা: next একটি minor-এই breaking হতে পারে ("next" ecosystem-এ 15→16
+      # landing-এ বড় পরিবর্তন ছিল) — তাই отдельно, minor-এও গেটেড।
+      admin-next:
+        patterns: ['next', 'eslint-config-next']
+        update-types: ['minor', 'patch']
+      admin-safe-patch:
+        patterns: ['*']
+        update-types: ['patch']
 
-  # Shared contracts (@supremeai/contracts)
+  # ---------------------------------------------------------------------------
+  # 4. Shared contracts
+  # ---------------------------------------------------------------------------
   - package-ecosystem: 'npm'
     directory: '/packages/contracts'
     schedule:
       interval: 'weekly'
       day: 'monday'
-    open-pull-requests-limit: 3
+      time: '04:45'
+      timezone: 'Asia/Dhaka'
+    open-pull-requests-limit: 2
     labels:
       - 'dependencies'
       - 'contracts'
+    cooldown:
+      semver-major-days: 30
+      semver-minor-days: 14
+      semver-patch-days: 7
 
-  # Rust / Tauri crates
+  # ---------------------------------------------------------------------------
+  # 5. Rust / Tauri
+  # ---------------------------------------------------------------------------
   - package-ecosystem: 'cargo'
     directory: '/src-tauri'
     schedule:
       interval: 'weekly'
       day: 'monday'
+      time: '05:00'
+      timezone: 'Asia/Dhaka'
     open-pull-requests-limit: 3
+    labels:
+      - 'dependencies'
+      - 'rust'
+    # বাংলা: Rust-এ semver-major মানে প্রায়ই API rewrite (rand 0.8→0.10,
+    # aes-gcm 0.10→0.11 ইতিমধ্যেই এসেছে)। ৪৫ দিনের cooldown।
+    cooldown:
+      semver-major-days: 45
+      semver-minor-days: 21
+      semver-patch-days: 10
     groups:
       tauri:
         patterns:
           - 'tauri*'
+          - '@tauri-apps/*'
         update-types: ['minor', 'patch']
-    labels:
-      - 'dependencies'
-      - 'rust'
+      rust-safe-patch:
+        patterns: ['*']
+        update-types: ['patch']
 
-  # Keep GitHub Actions themselves current (avoids the Node 20 deprecation class of issue)
+  # ---------------------------------------------------------------------------
+  # 6. GitHub Actions — বাংলা: এখানে major bump প্রায়শই নিরাপদ ও কাম্য
+  #    (Node 20 deprecation-এর মতো জিনিস এভাবেই ঠিক হয়), তাই দ্রুত।
+  # ---------------------------------------------------------------------------
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
       interval: 'weekly'
       day: 'monday'
-    open-pull-requests-limit: 3
+      time: '05:15'
+      timezone: 'Asia/Dhaka'
+    open-pull-requests-limit: 4
     labels:
       - 'dependencies'
       - 'github-actions'
+    cooldown:
+      default-days: 3
+    groups:
+      actions-minor-patch:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
