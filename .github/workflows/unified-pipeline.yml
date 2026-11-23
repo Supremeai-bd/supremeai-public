@@ -55,8 +55,32 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  smart-pr-guard:
+    name: '0/4 Smart Intelligent PR Guard (<15s)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      risk_tier: ${{ steps.guard.outputs.risk_tier }}
+      pr_guard_passed: ${{ steps.guard.outputs.pr_guard_passed }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run Intelligent PR Guard Preflight
+        id: guard
+        shell: bash
+        run: node scripts/smart-pr-guard.mjs
+
   build-web:
     name: '1/4 Build & Deploy Web Studio'
+    needs: [smart-pr-guard]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -325,6 +349,7 @@ jobs:
 
   build-vscode-vsix:
     name: '4/4 Auto-Build VS Code Extension (.vsix)'
+    needs: [smart-pr-guard]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -457,3 +482,59 @@ jobs:
         shell: bash
         working-directory: admin
         run: npx wrangler pages deploy dist --project-name=supremeai-admin --branch=main --commit-dirty=true
+
+  pr-landing-decision:
+    name: 'PR Landing Decision (Auto vs HITL)'
+    if: github.event_name == 'pull_request'
+    needs: [smart-pr-guard, build-web, build-vscode-vsix]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Assess Landing Eligibility
+        shell: bash
+        run: |
+          RISK="${{ needs.smart-pr-guard.outputs.risk_tier }}"
+          PASSED="${{ needs.smart-pr-guard.outputs.pr_guard_passed }}"
+          echo "=========================================="
+          echo "   SupremeAI PR Landing Assessment"
+          echo "=========================================="
+          echo "Preflight Guard: $PASSED"
+          echo "Web Studio Build: SUCCESS"
+          echo "VS Code Extension Build: SUCCESS"
+          echo "Risk Classification: $RISK"
+          echo "=========================================="
+          if [[ "$RISK" == "LOW" ]]; then
+            echo "✅ LOW RISK: PR is verified and safe for autonomous merge via MCP Tower github.merge_pr"
+          else
+            echo "⚠️ $RISK RISK: Contains critical paths. Requires Operator / Admin approval before landing."
+          fi
+
+  sync-cross-repo-patches:
+    name: 'Sync cross-repo patches to supremeai (Auto-PR)'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply patches to supremeai
+        if: env.GH_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.SELF_HEAL_PAT || secrets.ORGANIZATION_SYNC_TOKEN }}
+        run: |
+          # বাংলা মন্তব্য: শুধুমাত্র .patches/private ডিরেক্টরিতে প্যাচ ফাইল থাকলেই এক্সিকিউট হবে
+          if [ -d ".patches/private" ] && [ "$(ls -A .patches/private 2>/dev/null)" ]; then
+            git clone "https://x-access-token:${GH_TOKEN}@github.com/Supremeai-bd/supremeai.git" ../supremeai
+            python scripts/ci/apply_cross_repo_patch.py \
+              --patch-dir .patches/private \
+              --target-dir ../supremeai \
+              --target-repo Supremeai-bd/supremeai \
+              --source-repo Supremeai-bd/supremeai-public \
+              --apply --create-pr
+          else
+            echo "No cross-repo patches in .patches/private; skipping."
+          fi
