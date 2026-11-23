@@ -92,12 +92,24 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     });
     let upstreamResponse = await fetch(targetUrl, buildInit());
 
-    // If primary upstream returns 502/503/504 or a Cloudflare 403 challenge, attempt fallback upstream
+    // বাংলা মন্তব্য: প্রাইমারি আপস্ট্রিম 502/503/504 বা Cloudflare 403/429 চ্যালেঞ্জ রিটার্ন করলে কিংবা নির্দিষ্ট রুট 404 হলে ফলব্যাক আপস্ট্রিমে (Core API) চেষ্টা করা হবে
     const isCfChallenge =
-      upstreamResponse.status === 403 &&
+      (upstreamResponse.status === 403 || upstreamResponse.status === 429) &&
       (upstreamResponse.headers.get('cf-mitigated') === 'challenge' ||
         (upstreamResponse.headers.get('content-type') || '').includes('text/html'));
-    if (!upstreamResponse.ok && ([502, 503, 504].includes(upstreamResponse.status) || isCfChallenge)) {
+    const isCoreRoute404 =
+      upstreamResponse.status === 404 &&
+      (incomingUrl.pathname.startsWith('/api/v1/ecosystem') ||
+        incomingUrl.pathname.startsWith('/api/v1/agents') ||
+        incomingUrl.pathname.startsWith('/api/v1/memory') ||
+        incomingUrl.pathname.startsWith('/api/v1/evolution') ||
+        incomingUrl.pathname === '/api/v1/status' ||
+        incomingUrl.pathname === '/api/v1/dashboard' ||
+        incomingUrl.pathname === '/api/v1/health/live');
+    if (
+      !upstreamResponse.ok &&
+      ([502, 503, 504].includes(upstreamResponse.status) || isCfChallenge || isCoreRoute404)
+    ) {
       try {
         const fallbackTarget = `${FALLBACK_UPSTREAM_ORIGIN}${incomingUrl.pathname}${incomingUrl.search}`;
         const fallbackRes = await fetch(fallbackTarget, buildInit());
@@ -112,6 +124,31 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       } catch {
         // Fallback fetch failed, retain original response
       }
+    }
+
+    // বাংলা মন্তব্য: যদি আপস্ট্রিম থেকে এখনো HTML ভিত্তিক Cloudflare চ্যালেঞ্জ (403/429) আসে, তবে কাঁচা HTML না পাঠিয়ে পরিষ্কার JSON এরর পাঠানো হবে যাতে ক্লায়েন্ট সরাসরি ডাইরেক্ট আপস্ট্রিম ফেইলওভার করতে পারে
+    const finalContentType = upstreamResponse.headers.get('content-type') || '';
+    const finalIsCfChallenge =
+      (upstreamResponse.status === 403 || upstreamResponse.status === 429) &&
+      (upstreamResponse.headers.get('cf-mitigated') === 'challenge' ||
+        finalContentType.includes('text/html'));
+    if (finalIsCfChallenge) {
+      const challengeHeaders = new Headers({
+        'Content-Type': 'application/json; charset=utf-8',
+        'X-SupremeAI-Edge-Challenge': '1',
+      });
+      applyCorsHeaders(challengeHeaders, requestOrigin, incomingUrl.origin, env);
+      return new Response(
+        JSON.stringify({
+          error: 'Upstream edge relay rate-limited by Cloudflare Bot Management.',
+          code: 'CF_EDGE_CHALLENGE',
+          retryDirectUpstream: true,
+        }),
+        {
+          status: 503,
+          headers: challengeHeaders,
+        }
+      );
     }
 
     const responseHeaders = new Headers(upstreamResponse.headers);

@@ -124,7 +124,22 @@ export const useAuthStore = create<AuthState>((set, get) => {
       // deployed API before trusting it. Mock mode keeps local state by design.
       if (env.isMockEnabled) return;
 
-      const token = localStorage.getItem('supremeai_access_token');
+      const token =
+        localStorage.getItem('supremeai_access_token') ||
+        (() => {
+          try {
+            const raw = localStorage.getItem(AUTH_USER_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (typeof parsed?.token === 'string' && parsed.token.trim()) {
+              localStorage.setItem('supremeai_access_token', parsed.token.trim());
+              return parsed.token.trim();
+            }
+          } catch {
+            // ignore parse errors
+          }
+          return null;
+        })();
       if (!token) {
         // No token: any locally stored user identity is not authenticated.
         if (localStorage.getItem(AUTH_USER_KEY)) {

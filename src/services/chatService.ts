@@ -7,6 +7,7 @@ import {
   WorkbenchRunSettings,
 } from '../types';
 import { env } from '../config/env';
+import { DEFAULT_BACKEND_ORIGIN } from '../config/platformEndpoints';
 import { apiClient } from './apiClient';
 import { detectBengaliOrBanglish } from '../utils/speechUtils';
 import { authService } from './authService';
@@ -384,18 +385,87 @@ export const chatService = {
       if (response.status === 401 && !userToken) {
         const freshGuestToken = await authService.ensureGuestToken(true);
         if (freshGuestToken) {
-          const retryHeaders: Record<string, string> = {
-            ...headers,
-            Authorization: `Bearer ${freshGuestToken}`,
-            'X-SupremeAI-Key': freshGuestToken,
-          };
+          headers['Authorization'] = `Bearer ${freshGuestToken}`;
+          headers['X-SupremeAI-Key'] = freshGuestToken;
           response = await fetch(streamEndpoint, {
             method: 'POST',
-            headers: retryHeaders,
+            headers,
             credentials: 'same-origin',
             signal,
             body: payloadBody,
           });
+        }
+      }
+
+      // বাংলা মন্তব্য: Cloudflare Pages -> Render প্রক্সিতে 403/429 চ্যালেঞ্জ বা 502/503/504 হলে ব্রাউজার থেকে সরাসরি Render গেটওয়েতে স্ট্রিমিং ও সিঙ্ক্রোনাস চ্যাট ফেইলওভার করা হচ্ছে
+      if (
+        !response.ok &&
+        !env.apiBaseUrl &&
+        (response.status === 403 ||
+          response.status === 429 ||
+          response.status === 502 ||
+          response.status === 503 ||
+          response.status === 504)
+      ) {
+        try {
+          if (!headers['Authorization'] && !userToken) {
+            const guestTok = await authService.ensureGuestToken();
+            if (guestTok) {
+              headers['Authorization'] = `Bearer ${guestTok}`;
+              headers['X-SupremeAI-Key'] = guestTok;
+            }
+          }
+          const directStreamRes = await fetch(`${DEFAULT_BACKEND_ORIGIN}/api/v1/stream/chat`, {
+            method: 'POST',
+            headers,
+            credentials: 'omit',
+            signal,
+            body: payloadBody,
+          });
+          if (directStreamRes.ok) {
+            response = directStreamRes;
+          } else {
+            const syncFallbackRes = await fetch('/api/chat', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(headers['Authorization'] ? { Authorization: headers['Authorization'] } : {}),
+                ...(headers['X-SupremeAI-Key']
+                  ? { 'X-SupremeAI-Key': headers['X-SupremeAI-Key'] }
+                  : {}),
+              },
+              credentials: 'same-origin',
+              signal,
+              body: JSON.stringify({
+                model: backendModel,
+                messages: formattedMessages,
+                systemInstruction,
+                groundingContext,
+                stream: false,
+                language,
+                ...(temperature !== undefined ? { temperature } : {}),
+                ...(topP !== undefined ? { top_p: topP } : {}),
+                ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+                ...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),
+                ...(effectiveThinkingBudget !== undefined
+                  ? { thinking_budget: effectiveThinkingBudget }
+                  : {}),
+                ...(serializedRunConfig ? { run_config: serializedRunConfig } : {}),
+                userContext,
+              }),
+            });
+            if (syncFallbackRes.ok) {
+              const syncData = await syncFallbackRes.json().catch(() => null);
+              const syncText = String(syncData?.text || '');
+              if (syncText) {
+                onChunk(syncText);
+                onDone(syncText);
+                return;
+              }
+            }
+          }
+        } catch {
+          // Fall through to standard error handling if direct retry also fails
         }
       }
 

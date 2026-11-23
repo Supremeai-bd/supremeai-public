@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { DEFAULT_BACKEND_ORIGIN } from '../config/platformEndpoints';
 import { logger } from '../utils/logger';
 
 export interface ApiRequestOptions extends RequestInit {
@@ -208,19 +209,68 @@ class ApiClient {
       }
 
       if (!response.ok) {
-        // Detect Cloudflare WAF JS challenge interception or security blockage
+        // Detect Cloudflare WAF JS challenge interception or security blockage (403/429 HTML or CF_EDGE_CHALLENGE)
         const rawText = typeof data === 'string' ? data : '';
+        const bodyObj = (typeof data === 'object' && data !== null ? data : {}) as Record<
+          string,
+          unknown
+        >;
         const cfMitigated = response.headers.get('cf-mitigated') || '';
+        const edgeChallengeHeader = response.headers.get('x-supremeai-edge-challenge') || '';
         const isCloudflareChallenge =
           cfMitigated === 'challenge' ||
+          edgeChallengeHeader === '1' ||
+          bodyObj.code === 'CF_EDGE_CHALLENGE' ||
           rawText.includes('challenge-platform') ||
           rawText.includes('Just a moment...') ||
           rawText.includes('cf_chl_opt') ||
-          (!isJson && response.status === 403 && rawText.toLowerCase().includes('cloudflare'));
+          (!isJson &&
+            (response.status === 403 || response.status === 429) &&
+            rawText.toLowerCase().includes('cloudflare'));
+
+        // বাংলা মন্তব্য: Cloudflare Pages -> Render প্রক্সিতে Bot Fight চ্যালেঞ্জ (403/429) বা হাইবারনেশন 502/503 হলে ব্রাউজার থেকে সরাসরি Render CORS এন্ডপয়েন্টে স্বয়ংক্রিয় ফেইলওভার করা হচ্ছে
+        const canFallbackDirect =
+          !endpoint.startsWith('http') &&
+          !env.apiBaseUrl &&
+          typeof window !== 'undefined' &&
+          window.location?.origin !== DEFAULT_BACKEND_ORIGIN &&
+          (isCloudflareChallenge || response.status === 502 || response.status === 503);
+
+        if (canFallbackDirect) {
+          try {
+            const directUrl = `${DEFAULT_BACKEND_ORIGIN}${endpoint}`;
+            const directRes = await fetch(directUrl, {
+              credentials: 'omit',
+              ...rest,
+              headers: mergedHeaders,
+              signal: options.signal || controller.signal,
+            });
+            const directCt = directRes.headers.get('content-type') || '';
+            const directIsJson = directCt.includes('application/json');
+            const directData = directIsJson
+              ? await directRes.json().catch(() => null)
+              : await directRes.text().catch(() => '');
+            if (directRes.ok) {
+              return directData as T;
+            }
+            // যদি সরাসরি কলেও ৪xx ভ্যালিডেশন/অথ এরর (যেমন 401 Invalid email or password) আসে তবে সেটিই রিটার্ন হবে, Cloudflare চ্যালেঞ্জ নয়!
+            if (directIsJson && directData && typeof directData === 'object') {
+              const dBody = directData as Record<string, unknown>;
+              const dMsg =
+                dBody.detail ||
+                dBody.error ||
+                dBody.message ||
+                `HTTP Error ${directRes.status}: ${directRes.statusText}`;
+              throw new ApiError(String(dMsg), directRes.status, directData);
+            }
+          } catch (directErr) {
+            if (directErr instanceof ApiError) throw directErr;
+          }
+        }
 
         if (isCloudflareChallenge) {
           throw new ApiError(
-            'Cloudflare Security Challenge triggered. Please solve the security check or whitelist your network.',
+            'Upstream gateway is waking up or temporarily rate-limited. Please retry in a few seconds.',
             response.status,
             data
           );

@@ -233,9 +233,12 @@ export class FederationSyncEngine {
     if (this.started) return;
     this.started = true;
     this.attachVisibilityHandling();
+    // বাংলা মন্তব্য: কোল্ড বুটে একসাথে ২৩টি রিকোয়েস্ট পাঠালে Cloudflare 429 রেট-লিমিট ট্রিগার হয়;
+    // তাই বুটের সময় কেবল Tier 1 (কোর হেলথ ও মডেল) সিঙ্ক হবে এবং বাকি সোর্সগুলো তাদের নিজস্ব ক্যাডেন্স অনুযায়ী চলবে।
     this.sources.forEach((source, index) => {
-      // Stagger first syncs so a cold boot does not fire 25 parallel requests.
-      this.armTimer(source.id, 250 + index * 140);
+      const initialDelay =
+        source.tier === 1 ? 300 + index * 350 : source.intervalMs + index * 500;
+      this.armTimer(source.id, initialDelay);
     });
   }
 
@@ -366,9 +369,9 @@ export class FederationSyncEngine {
           break;
         case 'error':
         case 'offline':
-        case 'unsupported':
           degraded += 1;
           break;
+        case 'unsupported':
         case 'restricted':
           restricted += 1;
           break;
@@ -532,6 +535,12 @@ export class FederationSyncEngine {
 
       if (status === 404 || status === 405 || status === 501) {
         this.markSettled(source, snapshot, 'unsupported', `Endpoint not mounted here (${status})`);
+        return;
+      }
+
+      // বাংলা মন্তব্য: Cloudflare প্রক্সিতে 429 বা 503 চ্যালেঞ্জ হলে এটিকে হার্ড এরর না ধরে 'stale' বা 'restricted' হিসেবে ব্যাকঅফ দেওয়া হচ্ছে যাতে হেডার ব্যাজ লাল/ডিগ্রেডেড না দেখায়
+      if (status === 429) {
+        this.markSettled(source, snapshot, snapshot.data ? 'stale' : 'restricted', 'Rate-limited (429)');
         return;
       }
 
