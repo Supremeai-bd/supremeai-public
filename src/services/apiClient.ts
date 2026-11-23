@@ -217,18 +217,27 @@ class ApiClient {
         >;
         const cfMitigated = response.headers.get('cf-mitigated') || '';
         const edgeChallengeHeader = response.headers.get('x-supremeai-edge-challenge') || '';
+        const rawLower = rawText.toLowerCase();
+        const detailLower = String(bodyObj.detail || bodyObj.error || bodyObj.message || '').toLowerCase();
         const isCloudflareChallenge =
           cfMitigated === 'challenge' ||
           edgeChallengeHeader === '1' ||
           bodyObj.code === 'CF_EDGE_CHALLENGE' ||
+          bodyObj.error_code === 'security_challenge' ||
           rawText.includes('challenge-platform') ||
           rawText.includes('Just a moment...') ||
           rawText.includes('cf_chl_opt') ||
+          rawLower.includes('cloudflare security challenge') ||
+          rawLower.includes('security challenge triggered') ||
+          rawLower.includes('whitelist your network') ||
+          detailLower.includes('cloudflare security challenge') ||
+          detailLower.includes('security challenge triggered') ||
+          detailLower.includes('whitelist your network') ||
           (!isJson &&
             (response.status === 403 || response.status === 429) &&
-            rawText.toLowerCase().includes('cloudflare'));
+            rawLower.includes('cloudflare'));
 
-        // বাংলা মন্তব্য: Cloudflare Pages -> Render প্রক্সিতে Bot Fight চ্যালেঞ্জ (403/429) বা হাইবারনেশন 502/503 হলে ব্রাউজার থেকে সরাসরি Render CORS এন্ডপয়েন্টে স্বয়ংক্রিয় ফেইলওভার করা হচ্ছে
+        // বাংলা মন্তব্য: Cloudflare Pages -> Render প্রক্সিতে Bot Fight চ্যালেঞ্জ (403/429/401/400) বা হাইবারনেশন 502/503 হলে ব্রাউজার থেকে সরাসরি Render CORS এন্ডপয়েন্টে স্বয়ংক্রিয় ফেইলওভার করা হচ্ছে
         const canFallbackDirect =
           !endpoint.startsWith('http') &&
           !env.apiBaseUrl &&

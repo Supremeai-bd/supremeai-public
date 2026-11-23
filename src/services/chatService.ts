@@ -486,7 +486,9 @@ export const chatService = {
         const errorMsg =
           response.status === 500
             ? `Upstream API Gateway returned HTTP 500 (${extractedMsg || 'Internal Server Error'}).`
-            : extractedMsg || `Server error: ${response.status} ${response.statusText}`;
+            : response.status === 429
+              ? (extractedMsg || (language === 'bn' ? 'সার্ভার অতিরিক্ত অনুরোধ পেয়েছে (429 Rate Limit)। কিছুক্ষণ পর পুনরায় চেষ্টা করুন বা সাইন-ইন করুন।' : 'Server is temporarily rate-limited (429). Please retry shortly or sign in.'))
+              : extractedMsg || `Server error: ${response.status} ${response.statusText}`.trim();
 
         if (hasImageAttachment) {
           const classified = classifyVisionHttpError({

@@ -200,9 +200,18 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           )}
 
           {errorMessage && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 dark:text-rose-400 text-xs animate-in fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 dark:text-rose-400 text-xs space-y-1.5 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span className="font-medium">{errorMessage}</span>
+              </div>
+              {(errorMessage.toLowerCase().includes('cloudflare') ||
+                errorMessage.toLowerCase().includes('challenge') ||
+                errorMessage.toLowerCase().includes('whitelist')) && (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 pl-6">
+                  {t.authCfChallengeTip}
+                </p>
+              )}
             </div>
           )}
 
