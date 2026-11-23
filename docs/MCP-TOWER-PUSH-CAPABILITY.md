@@ -1,5 +1,20 @@
 # MCP Tower দিয়ে `supremeai`→`supremeai-public` push করা যায় কি?
 
+> ## 🛑 এই ডকুমেন্টের মূল সিদ্ধান্ত বাতিল — `docs/CORRECTION-TOWER-AND-FREE-TIER.md` পড়ুন
+>
+> **নিচের "সংক্ষিপ্ত উত্তর: না" ভুল।** Tower-এ লেখার পথ **আছে**:
+>
+> - `integrations.tools.ts:49` → **`github.push_file`** (GitHub Contents API `PUT /contents/{path}`)
+> - `integrations.tools.ts:89` → **`github.merge_pr`** (`PUT /pulls/{n}/merge`)
+> - দুটোই `tools/index.ts:157`-এ **সার্ভারে রেজিস্টার্ড**
+>
+> এই ডকুমেন্ট লেখার সময় আমি `src/tools/`-এর ৪৩টি ফাইলের মধ্যে মাত্র ২টি দেখেছিলাম।
+> তাই §১, §২, §৩ এবং "পথ A / পথ B" সুপারিশ — সব **বাতিল**।
+>
+> **নতুন, বেশি জরুরি প্রশ্ন:** টুলটা আছে, কিন্তু **approval গেট নেই** — শুধু `agent`
+> রোল (rank ১) হলেই যেকোনো রেপোতে যেকোনো ফাইল লেখা ও PR merge করা যায়, কোনো
+> allowlist ছাড়াই, আর hint-এ `destructiveHint: false` লেখা। সংশোধনীর §২ দেখুন।
+
 **সংক্ষিপ্ত উত্তর: না।** Tower-এ **কোনো `git push` / branch / commit লেখার পথ নেই** —
 ইচ্ছাকৃতভাবে। কিন্তু এটা ব্যর্থতা নয়: Tower ইতিমধ্যেই আপনার সমস্যার **অর্ধেক**
 সমাধান করে, আর বাকি অর্ধেক GitHub নিজেই দেয় (API-তে) — শুধু সেটা কনফিগ করতে হয়।
@@ -43,11 +58,19 @@ description-এ স্পষ্ট: _"Safe remediation planning gate (plan-only)
 live restart/redeploy until an adapter is wired; returns `executed:false`."_
 অর্থাৎ এটা restart/redeploy/rollback-এর **পরিকল্পনা** করে, shell চালায় না।
 
-**নিশ্চিতভাবে অনুপস্থিত:** `create_pull_request`, `commit_file`, `update_file`,
-`push`, `merge_pr`, `git.*`, `write_file`, `apply_patch` — একটিও নেই।
+~~**নিশ্চিতভাবে অনুপস্থিত:** `create_pull_request`, `commit_file`, `update_file`,
+`push`, `merge_pr`, `git.*`, `write_file`, `apply_patch` — একটিও নেই।~~
 
-👉 **Tower কোনো কোড লিখতে পারে না।** `adapters/github/index.ts`-এ একমাত্র POST হলো
-`/issues`।
+> 🛑 **উপরের লাইনটা ভুল — বাতিল।** `merge_pr` **আছে** (`integrations.tools.ts:89`), আর
+> `push`-এর সমতুল্য `github.push_file`-ও আছে (`:49`)। ভুলটা হয়েছিল কারণ আমি শুধু
+> `github.tools.ts` দেখেছিলাম, `integrations.tools.ts` নয়।
+
+~~👉 **Tower কোনো কোড লিখতে পারে না।** `adapters/github/index.ts`-এ একমাত্র POST হলো
+`/issues`।~~
+
+> 🛑 **এটাও ভুল — বাতিল।** `adapters/github/index.ts`-এ শুধু `/issues` থাকলেও,
+> `integrations.tools.ts`-এর ভেতরে সরাসরি `fetch` দিয়ে `PUT /contents/{path}` এবং
+> `PUT /pulls/{n}/merge` করা হয় — অ্যাডাপ্টার এড়িয়ে।
 
 ## ৩. কেন এটা বাগ নয় — বরং ভালো ডিজাইন
 
@@ -110,9 +133,15 @@ Tower-এর কোনো ভূমিকা ছাড়াই। ⚠️ তব
 এবং **কঠোর গেট**: `repoAccessFor(role) === 'read-write'` + approval token + কেবল
 allow-listed path (`.env*` কখনো নয়)।
 
-⚠️ কিন্তু আমি এটি **সুপারিশ করছি না**। এখন কোনো agent-এর হাতে কোড-লেখার ক্ষমতা
-নেই; সেটা যোগ করলে আপনার "fail-closed" নীতি দুর্বল হবে। এই কাজটা CI/CD-র
+⚠️ ~~কিন্তু আমি এটি **সুপারিশ করছি না**। এখন কোনো agent-এর হাতে কোড-লেখার ক্ষমতা
+নেই;~~ সেটা যোগ করলে আপনার "fail-closed" নীতি দুর্বল হবে। এই কাজটা CI/CD-র
 (পথ B), Tower-এর নয়।
+
+> 🛑 **সংশোধন:** "কোনো agent-এর হাতে কোড-লেখার ক্ষমতা নেই" — **ভুল**। ক্ষমতা আগেই
+> আছে (`github.push_file`, `github.merge_pr`), আর সেটাই সমস্যা: approval গেট বা রেপো
+> allowlist ছাড়া। উপরের সুপারিশটা তাই এখনো প্রযোজ্য, কিন্তু কারণ বদলেছে —
+> "ক্ষমতা নেই তাই Tower-কে pusher বানাবেন না" নয়, বরং **"ক্ষমতা আছে অথচ পাহারাদার
+> নেই, তাই আগে পাহারাদার বসান"**। `docs/CORRECTION-TOWER-AND-FREE-TIER.md` §২ দেখুন।
 
 ---
 
