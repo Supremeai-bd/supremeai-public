@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { onRequest as verify2faOnRequest } from './auth/verify-2fa';
 import { onRequest as totpOnRequest } from './auth/totp/[[path]]';
 import {
@@ -69,6 +69,9 @@ describe('functions/api/auth Edge validation gates', () => {
 
     it('rejects replayed 6-digit TOTP codes within the same 30-second step window', async () => {
       resetEdgeTotpReplayCache();
+      using _fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(new Response(JSON.stringify({ preferences: {} }), { status: 200 }));
       const secret = 'JBSWY3DPEHPK3PXP';
       const currentStep = Math.floor(Date.now() / 1000 / 30);
       const liveCode = await generateEdgeHotp(decodeBase32ToBytes(secret), currentStep, 6);

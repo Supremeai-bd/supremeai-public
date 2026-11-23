@@ -1,6 +1,7 @@
-import { apiClient } from './apiClient';
+import { apiClient, ApiError } from './apiClient';
 import { AuthUser } from '../types';
 import { env } from '../config/env';
+import { DEFAULT_BACKEND_ORIGIN } from '../config/platformEndpoints';
 import { logger } from '../utils/logger';
 
 export interface LoginResponse {
@@ -253,8 +254,12 @@ export const authService = {
     try {
       const data = await apiClient.get<any>('/api/v1/auth/me');
       return normalizeAuthUser(data);
-    } catch {
-      return null;
+    } catch (err: unknown) {
+      // বাংলা মন্তব্য: কেবল 401/403 হলেই সেশন ইনভ্যালিড ধরা হবে; নেটওয়ার্ক টাইমআউট, 429 বা 502/503 হলে থ্রো করা হবে যাতে restoreSession ইউজারকে অটো-লগআউট না করে!
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        return null;
+      }
+      throw err;
     }
   },
 
@@ -319,12 +324,13 @@ export const authService = {
       authService.persistSession(token, data?.refresh_token || data?.refreshToken);
       return token;
     } catch (err: any) {
-      // If refresh endpoint is missing (404) or temporarily unavailable (503),
-      // keep the existing stored access token instead of forcing a logout.
+      // বাংলা মন্তব্য: রিফ্রেশ এন্ডপয়েন্ট অনুপস্থিত (404), রেট-লিমিটেড (429) বা সাময়িক অনুপলব্ধ (502/503/504/0) হলে বিদ্যমান অ্যাক্সেস টোকেন রেখে দেওয়া হবে যাতে ব্রাউজার রিফ্রেশে লগআউট না হয়
       const status = err?.status ?? err?.response?.status;
-      if (status === 404 || status === 503) {
+      if (status !== 401 && status !== 403) {
         try {
-          const existing = localStorage.getItem('supremeai_token');
+          const existing =
+            localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ||
+            localStorage.getItem('supremeai_token');
           if (existing) return existing;
         } catch {
           // ignore storage errors
@@ -386,11 +392,26 @@ export const authService = {
     requestPromise = (async (): Promise<string | null> => {
       try {
         const endpoint = `${env.apiBaseUrl}/api/v1/auth/guest`;
-        const response = await fetch(endpoint, {
+        let response = await fetch(endpoint, {
           method: 'POST',
           headers: { Accept: 'application/json' },
           credentials: 'same-origin',
         });
+        // বাংলা মন্তব্য: প্রক্সি রুটে Cloudflare 403/429 বা 502/503 হলে সরাসরি Render গেটওয়ে থেকে গেস্ট টোকেন আনা হবে
+        if (
+          !response.ok &&
+          !env.apiBaseUrl &&
+          (response.status === 403 ||
+            response.status === 429 ||
+            response.status === 502 ||
+            response.status === 503)
+        ) {
+          response = await fetch(`${DEFAULT_BACKEND_ORIGIN}/api/v1/auth/guest`, {
+            method: 'POST',
+            headers: { Accept: 'application/json' },
+            credentials: 'omit',
+          });
+        }
         if (!response.ok) return null;
 
         const data = await response.json().catch(() => null);
