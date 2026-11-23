@@ -104,7 +104,7 @@ jobs:
           command: pages deploy dist --project-name=${{ vars.CF_PAGES_PROJECT || 'supremeai-studio' }}
 
       - name: Upload Web Bundle Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-web-bundle
           path: supremeai-web-dist.tar.gz
@@ -152,7 +152,7 @@ jobs:
         run: npm run tauri -- build --config src-tauri/tauri.conf.json
 
       - name: Upload Desktop Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-desktop-windows
           path: |
@@ -317,7 +317,7 @@ jobs:
           ls -lh release-apks/
 
       - name: Upload Android APK Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-android-apk
           path: release-apks/*.apk
@@ -349,7 +349,7 @@ jobs:
           npx --yes @vscode/vsce package --no-git-tag-version --out "supremeai-vscode-${VER}.vsix"
 
       - name: Upload VS Code VSIX Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-vscode-vsix
           path: packages/vscode-extension/*.vsix
