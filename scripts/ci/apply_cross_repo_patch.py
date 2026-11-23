@@ -106,6 +106,18 @@ def create_sync_pr(
         print("  [skip] No file diff in target repo after applying patches.")
         return False
 
+    # বাংলা মন্তব্য: স্কোপড অ্যাড — শুধুমাত্র প্যাচ দ্বারা পরিবর্তিত ও নতুন ফাইল স্টেজ করা (Scoped Git Add)
+    status_output = subprocess.check_output(["git", "status", "--porcelain"], cwd=target_dir, text=True)
+    files_to_stage = []
+    for line in status_output.splitlines():
+        if line.strip():
+            filepath = line[3:].strip().strip('"')
+            files_to_stage.append(filepath)
+
+    if not files_to_stage:
+        print("  [skip] No file diff in target repo after applying patches.")
+        return False
+
     slug = "-".join([p.replace(".patch", "").replace(".diff", "") for p in applied_patches[:3]])
     branch_name = f"sync/patch-{slug[:30]}"
 
@@ -113,7 +125,9 @@ def create_sync_pr(
     subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=target_dir, check=True)
     subprocess.run(["git", "config", "user.email", "github-actions[bot]@users.noreply.github.com"], cwd=target_dir, check=True)
     subprocess.run(["git", "checkout", "-B", branch_name], cwd=target_dir, check=True)
-    subprocess.run(["git", "add", "."], cwd=target_dir, check=True)
+
+    print(f"  [git] Staging {len(files_to_stage)} modified file(s)...")
+    subprocess.run(["git", "add", "--"] + files_to_stage, cwd=target_dir, check=True)
 
     commit_msg = f"chore(sync): cross-repo patch sync from {source_repo}\n\nApplied patches:\n" + "\n".join(f"- {p}" for p in applied_patches)
     subprocess.run(["git", "commit", "-m", commit_msg], cwd=target_dir, check=True)
@@ -143,6 +157,22 @@ def create_sync_pr(
         f"> 🛡️ **Loop Guard Active:** Tagged with `auto-sync` label to prevent circular triggers.\n"
     )
 
+    # বাংলা মন্তব্য: রিমোট টার্গেট রিপোতে auto-sync লেবেল নিশ্চিত করা
+    try:
+        subprocess.run(
+            [
+                "gh", "label", "create", "auto-sync",
+                "--description", "Automated cross-repo patch synchronization",
+                "--color", "0e8a16",
+                "--force",
+                "--repo", target_repo,
+            ],
+            cwd=target_dir,
+            capture_output=True,
+        )
+    except Exception:
+        pass
+
     pr_cmd = [
         "gh", "pr", "create",
         "--repo", target_repo,
@@ -150,11 +180,19 @@ def create_sync_pr(
         "--body", pr_body,
         "--head", branch_name,
         "--base", "main",
-        "--label", "auto-sync",
     ]
     try:
         subprocess.run(pr_cmd, cwd=target_dir, check=True)
         print(f"  [success] Successfully created PR in {target_repo}!")
+        # Add auto-sync label defensively
+        try:
+            subprocess.run(
+                ["gh", "pr", "edit", branch_name, "--repo", target_repo, "--add-label", "auto-sync"],
+                cwd=target_dir,
+                capture_output=True,
+            )
+        except Exception:
+            pass
         return True
     except subprocess.CalledProcessError as exc:
         print(f"  [error] Failed to create PR in {target_repo}: {exc}")

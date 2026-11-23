@@ -92,6 +92,9 @@ const UserSettingsView = React.lazy(() =>
 const UserApiKeysView = React.lazy(() =>
   import('./components/user/UserApiKeysView').then((m) => ({ default: m.UserApiKeysView }))
 );
+const BoostLimitView = React.lazy(() =>
+  import('./components/user/BoostLimitView').then((m) => ({ default: m.BoostLimitView }))
+);
 const UserKnowledgeBaseView = React.lazy(() =>
   import('./components/user/UserKnowledgeBaseView').then((m) => ({
     default: m.UserKnowledgeBaseView,
@@ -1692,6 +1695,10 @@ export default function App() {
                           onDeleteWebhook={deleteWebhook}
                           onTestWebhook={testWebhook}
                         />
+                      )}
+
+                      {activeTab === 'boost-limit' && (
+                        <BoostLimitView />
                       )}
 
                       {activeTab === 'user-knowledge' && (

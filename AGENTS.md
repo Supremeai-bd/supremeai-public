@@ -29,8 +29,8 @@
 
 ### 3. Bi-Directional Cross-Repo Patch Protocol (উভয় রিপোতে স্বয়ংক্রিয় প্যাচ ও পিআর নীতি)
 যদি কোনো এজেন্ট `supremeai-public` রিপোতে কাজ করার সময় লক্ষ্য করে যে মূল `supremeai` (Monorepo)-তেও সঙ্গতিপূর্ণ পরিবর্তন (যেমন: Backend Schemas, APIs, MCP Tools) প্রয়োজন:
-1. সে সরাসরি মূল রিপোর জন্য স্ট্যান্ডার্ড `git diff` / `patch` তৈরি করবে।
-2. প্যাচটি `.patches/private/<slug>.patch` ফাইলে সংরক্ষণ করবে।
+1. সে সরাসরি হেল্পার স্ক্রিপ্ট `python scripts/ci/create_cross_repo_patch.py --target private --slug <slug>` ব্যবহার করে স্ট্যান্ডার্ড git diff/patch তৈরি করবে।
+2. প্যাচটি স্বয়ংক্রিয়ভাবে `.patches/private/<slug>.patch` ফাইলে সংরক্ষিত হবে এবং ক্লেইমে 'Touching files:' হিসেবে ঘোষণা করবে।
 3. PR মার্জ হওয়ার সাথে সাথে অটোমেটেড CI স্ক্রিপ্ট (`apply_cross_repo_patch.py`) মূল `Supremeai-bd/supremeai` রিপোতে স্বয়ংক্রিয়ভাবে নতুন ব্রাঞ্চ তৈরি করে প্যাচ অ্যাপ্লাই করবে এবং `auto-sync` লেবেলযুক্ত PR ওপেন করবে।
 4. সার্কুলার লুপ প্রতিরোধে বটের তৈরি PR-এ এই অটোমেশন নিষ্ক্রিয় থাকবে (`github.actor != 'github-actions[bot]'`)।
 
