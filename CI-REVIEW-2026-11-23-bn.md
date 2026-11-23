@@ -1,6 +1,6 @@
 # 🔍 SupremeAI — দুই রেপোর GitHub Actions অডিট রিপোর্ট
 
-**সংস্করণ:** ৩ (ফিক্স-সহ) · **আগের সংস্করণ:** ১২:০০ ও ১৫:৪৫ UTC · **এই সংস্করণ:** ১৬:১৫ UTC, ২০২৬-১১-২৩
+**সংস্করণ:** ৪ (মেইন-রেপো প্যাচ-সহ) · **আগের:** ১২:০০, ১৫:৪৫, ১৬:১৫ UTC · **এই সংস্করণ:** ১৬:২০ UTC, ২০২৬-১১-২৩
 **রেপো:** [`Supremeai-bd/supremeai`](https://github.com/Supremeai-bd/supremeai/actions) · [`Supremeai-bd/supremeai-public`](https://github.com/Supremeai-bd/supremeai-public/actions)
 **ডেটা:** GitHub Actions API — চলমান রান সহ লাইভ স্ন্যাপশট, ওয়ার্কফ্লো ফাইল, PR/Issue হিস্ট্রি, রিলিজ।
 
@@ -63,6 +63,31 @@
 | ৭ | ডকুমেন্টেশন ও OSS প্রস্তুতি | ৬.০ | **৮.৫** ↑ | public পূর্ণ; main-এ SECURITY.md নেই |
 | ৮ | দুই রেপোর সঙ্গতি | ৫.৫ | ৫.৫ | sync বট আছে, কিন্তু পাইপলাইন এখনো দুটো আলাদা দর্শন |
 | | **মোট** | **৫১/৮০ = ৬.৪** | **৬৫/৮০ = ৮.১** | **কম্বাইন্ড: ৭.৩ / ১০ (B)** ↑ ৬.৫ |
+
+---
+
+## 📦 সংস্করণ ৪: `supremeai` (মেইন) রেপোর জন্য রেডি প্যাচ
+
+এই সেশনের ব্রাঞ্চ `supremeai-public`-এ বাঁধা, তাই ওই রেপোতে সরাসরি PR খোলা যায়নি।
+পরিবর্তে **যাচাই করা প্যাচ** এই রেপোর `patches/supremeai-main/` ফোল্ডারে রাখা হলো।
+
+### 🔍 নতুন, গুরুত্বপূর্ণ আবিষ্কার: nightly-এর কারণ *পড়াই যেত না*
+
+Guard Roster টানা ২০+ রান লাল, অথচ আমি লোকালে (shallow clone, একই ৪টি ডিপ,
+এমনকি `gh` unauthenticated) **১০৮/১০৮ পাস** করেছি। কারণ — ব্যর্থতাটা **by design** অদৃশ্য:
+
+| সমস্যা | ফল |
+|---|---|
+| ওই জবে **step summary লেখা হয় না** | আসল কারণ শুধু artifact-এর `guard-roster.log`-এ; ডাউনলোড না করলে অজানা |
+| **পরিবেশ রেকর্ড নেই** | interpreter, `gh` আছে কি নেই, `gh auth`, ডিপ ভার্সন, shallow-ness, `api.github.com` reachability — ৬টির একটিও লগে নেই |
+
+👉 প্যাচ দুটোই যোগ করে: env-capture step + job বাঁচিয়ে রেখে **নামসহ ফেল করা গার্ড step summary-তে** লেখা, তারপর সৎ exit code (`never green on a dark surface`)।
+
+**যাচাই:** fresh `main`-এ `git apply --check` ✅ · YAML ৩৭ job ✅ · `workflow_validity_guard` ✅ · ১০৮/১০৮ গার্ড ✅ · সবুজ ও লাল দুই পাথ পরীক্ষিত ✅
+
+### ⚠️ আরও দুটি জিনিস (কোড নয়, কনফিগ)
+1. **Telegram সিক্রেট** — `redis_quota_monitor.py:685`-এ `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` না থাকলে স্ক্রিপ্ট `SKIPPED` + **exit 0** দেয়। PR #755-এ `exit 3 → exit 0` করার পর এটাই একমাত্র চ্যানেল — অর্থাৎ সিক্রেট না থাকলে **কোটা-সংকট পুরোপুরি অদৃশ্য**।
+2. **Guard roster ম্যানুয়ালি চালানো যায় না** — `if: schedule && cron == 0 3 * * *`, কারণ ওয়ার্কফ্লো ইতিমধ্যে GitHub-এর ২৫-input সীমায় পৌঁছেছে (২৬তম দিলে পুরো ফাইল reject হয়)।
 
 ---
 
