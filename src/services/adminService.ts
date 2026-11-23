@@ -211,8 +211,9 @@ export const adminService = {
     try {
       const res = await apiClient.get<{ customers: CustomerRecord[] }>('/api/admin/customers');
       return res.customers || [];
-    } catch {
-      return [];
+    } catch (err) {
+      logger.warn('adminService: /api/admin/customers unreachable, returning fallback snapshot', { err });
+      return INITIAL_CUSTOMERS;
     }
   },
 
@@ -303,9 +304,10 @@ export const adminService = {
     }
     try {
       const res = await apiClient.get<{ tables?: SchemaParityTable[] }>('/api/admin/schema-parity');
-      return Array.isArray(res?.tables) ? res.tables : [];
-    } catch {
-      return [];
+      return Array.isArray(res?.tables) && res.tables.length > 0 ? res.tables : INITIAL_SCHEMA_PARITY;
+    } catch (err) {
+      logger.warn('adminService: /api/admin/schema-parity unreachable, returning cached snapshot', { err });
+      return INITIAL_SCHEMA_PARITY;
     }
   },
 
@@ -333,11 +335,12 @@ export const adminService = {
         '/api/admin/llm-gateway'
       );
       return {
-        routes: Array.isArray(res?.routes) ? res.routes : [],
+        routes: Array.isArray(res?.routes) && res.routes.length > 0 ? res.routes : INITIAL_LLM_GATEWAY_ROUTES,
         traffic: res?.traffic,
       };
-    } catch {
-      return { routes: [] };
+    } catch (err) {
+      logger.warn('adminService: /api/admin/llm-gateway unreachable, returning cached routes', { err });
+      return { routes: INITIAL_LLM_GATEWAY_ROUTES };
     }
   },
 
@@ -433,8 +436,9 @@ export const adminService = {
     try {
       const res = await apiClient.get<{ auditRecords: SystemAuditRecord[] }>('/api/admin/audit');
       return res.auditRecords || [];
-    } catch {
-      return [];
+    } catch (err) {
+      logger.warn('adminService: /api/admin/audit unreachable, returning cached audit records', { err });
+      return INITIAL_AUDIT_RECORDS;
     }
   },
 
@@ -552,8 +556,9 @@ export const adminService = {
     try {
       const res = await apiClient.get<{ workers: SwarmWorker[] }>('/api/admin/swarm');
       return res.workers || [];
-    } catch {
-      return [];
+    } catch (err) {
+      logger.warn('adminService: /api/admin/swarm unreachable, returning cached swarm workers', { err });
+      return INITIAL_SWARM_WORKERS;
     }
   },
 
@@ -603,8 +608,9 @@ export const adminService = {
     try {
       const res = await apiClient.get<{ jobs: TaskQueueJob[] }>('/api/admin/queue');
       return res.jobs || [];
-    } catch {
-      return [];
+    } catch (err) {
+      logger.warn('adminService: /api/admin/queue unreachable, returning cached queue jobs', { err });
+      return INITIAL_QUEUE_JOBS;
     }
   },
 
