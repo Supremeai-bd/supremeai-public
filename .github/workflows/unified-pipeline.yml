@@ -511,7 +511,7 @@ jobs:
 
   sync-cross-repo-patches:
     name: 'Sync cross-repo patches to supremeai (Auto-PR)'
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
