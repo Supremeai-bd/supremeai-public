@@ -508,3 +508,33 @@ jobs:
           else
             echo "⚠️ $RISK RISK: Contains critical paths. Requires Operator / Admin approval before landing."
           fi
+
+  sync-cross-repo-patches:
+    name: 'Sync cross-repo patches to supremeai (Auto-PR)'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply patches to supremeai
+        if: env.GH_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.SELF_HEAL_PAT || secrets.ORGANIZATION_SYNC_TOKEN }}
+        run: |
+          # বাংলা মন্তব্য: শুধুমাত্র .patches/private ডিরেক্টরিতে প্যাচ ফাইল থাকলেই এক্সিকিউট হবে
+          if [ -d ".patches/private" ] && [ "$(ls -A .patches/private 2>/dev/null)" ]; then
+            git clone "https://x-access-token:${GH_TOKEN}@github.com/Supremeai-bd/supremeai.git" ../supremeai
+            python scripts/ci/apply_cross_repo_patch.py \
+              --patch-dir .patches/private \
+              --target-dir ../supremeai \
+              --target-repo Supremeai-bd/supremeai \
+              --source-repo Supremeai-bd/supremeai-public \
+              --apply --create-pr
+          else
+            echo "No cross-repo patches in .patches/private; skipping."
+          fi
