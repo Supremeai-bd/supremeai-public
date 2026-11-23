@@ -8,5 +8,12 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['{src,functions}/**/*.test.{ts,tsx}'],
     exclude: [...configDefaults.exclude, 'src/shared/productionHardening.test.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary'],
+      thresholds: {
+        lines: 60,
+      },
+    },
   },
 });
