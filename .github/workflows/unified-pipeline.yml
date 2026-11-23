@@ -21,7 +21,6 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'version.json'
-      - '.github/workflows/release-all.yml'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -47,7 +46,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   # বাংলা মন্তব্য: PR-এ নতুন কমিট এলে পুরোনো রান ক্যান্সেল হবে (সময় ও রানার বাঁচাতে),
@@ -358,6 +357,8 @@ jobs:
     needs: [build-web, build-desktop-windows, build-android-tauri-apk, build-vscode-vsix]
     if: github.event_name == 'push' || inputs.publish_release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
