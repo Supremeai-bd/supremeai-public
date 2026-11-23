@@ -4,13 +4,24 @@ import { FeatureFlagItem } from '../../types';
 import { INITIAL_FEATURE_FLAGS } from '../../data/adminExpansionData';
 import { usePlatformStore } from '../../stores/usePlatformStore';
 import { useAdminStore } from '../../stores/useAdminStore';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useDataSource } from '../../hooks/useDataSource';
+import { countFlagConsumers, wiredFlagKeys } from '../../data/featureFlagConsumers';
 
 export const AdminFeatureFlagsView: React.FC = () => {
-  const { config, toggleFeatureFlag } = usePlatformStore();
+  const { config, toggleFeatureFlag, isLoaded } = usePlatformStore();
   const fetchAuditRecords = useAdminStore((s) => s.fetchAuditRecords);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // বাংলা মন্তব্য: আগে এখানে হার্ডকোড করা ছিল "Live Server Sync Active" ও "Server Enforced" —
+  // কোনো যাচাই ছাড়াই। এখন স্টোরের আসল লোড-অবস্থা থেকে উৎস নির্ধারিত হয়।
+  const dataSource = useDataSource({
+    loaded: isLoaded,
+    demoReason:
+      'ফ্ল্যাগের প্রাথমিক তালিকা src/data/adminExpansionData.ts থেকে আসে; সার্ভার কনফিগ লোড হয়নি।',
+  });
 
   const flags: FeatureFlagItem[] = INITIAL_FEATURE_FLAGS.map((item) => ({
     ...item,
@@ -25,8 +36,15 @@ export const AdminFeatureFlagsView: React.FC = () => {
     await toggleFeatureFlag(key, nextEnabled);
     await fetchAuditRecords();
     const flag = flags.find((f) => f.key === key);
+    // বাংলা মন্তব্য: আগে এখানে লেখা ছিল "... server-wide." — সেটা মিথ্যা ছিল।
+    // সত্যি: ব্যাকএন্ডে POST যায় (adminService.updateFeatureFlag), কিন্তু ফ্ল্যাগটা
+    // UI-তে গেট করে মাত্র এক জায়গায় (ChatInput → multimodal vision)। তাই যা সত্যিই
+    // ঘটে সেটাই বলা হচ্ছে, বাড়িয়ে নয়।
+    const consumers = countFlagConsumers(key);
     setToastMessage(
-      `Feature Flag "${flag?.name || key}" has been ${nextEnabled ? 'ENABLED' : 'DISABLED'} server-wide.`
+      consumers === 0
+        ? `Flag "${flag?.name || key}" ${nextEnabled ? 'ENABLED' : 'DISABLED'} হয়েছে ও সংরক্ষিত হচ্ছে — তবে এই ফ্ল্যাগটা এখনো কোনো UI ফিচার গেট করে না।`
+        : `Flag "${flag?.name || key}" ${nextEnabled ? 'ENABLED' : 'DISABLED'} হয়েছে — এটি ${consumers}টি UI জায়গায় প্রভাব ফেলে।`
     );
     setTimeout(() => setToastMessage(null), 3500);
   };
@@ -60,8 +78,9 @@ export const AdminFeatureFlagsView: React.FC = () => {
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 pb-5">
         <div>
-          <div className="text-[11px] font-mono uppercase tracking-wider text-cyan-500 mb-1">
-            Platform Config · Server Enforced
+          <div className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-wider text-cyan-500 mb-1">
+            <span>Platform Config</span>
+            <DataSourceBadge source={dataSource.source} reason={dataSource.reason} ageMs={dataSource.ageMs} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
             Dynamic Platform Feature Flags
@@ -72,7 +91,9 @@ export const AdminFeatureFlagsView: React.FC = () => {
           </p>
         </div>
 
-        <div className="text-xs font-mono text-emerald-500">Live Server Sync Active</div>
+        <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
+          {wiredFlagKeys().length}/{flags.length} flag কোনো UI ফিচার গেট করে
+        </div>
       </div>
 
       {toastMessage && (
