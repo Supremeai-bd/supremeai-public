@@ -526,8 +526,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SELF_HEAL_PAT || secrets.ORGANIZATION_SYNC_TOKEN }}
         run: |
-          # বাংলা মন্তব্য: শুধুমাত্র .patches/private ডিরেক্টরিতে প্যাচ ফাইল থাকলেই এক্সিকিউট হবে
-          if [ -d ".patches/private" ] && [ "$(ls -A .patches/private 2>/dev/null)" ]; then
+          # বাংলা মন্তব্য: শুধুমাত্র .patches/private ডিরেক্টরিতে .patch/.diff ফাইল থাকলেই এক্সিকিউট হবে
+          PATCH_COUNT=$(find .patches/private -maxdepth 1 -name '*.patch' -o -name '*.diff' 2>/dev/null | wc -l)
+          if [ "$PATCH_COUNT" -gt 0 ]; then
+            echo "Found $PATCH_COUNT patch file(s) in .patches/private. Syncing to supremeai..."
             git clone "https://x-access-token:${GH_TOKEN}@github.com/Supremeai-bd/supremeai.git" ../supremeai
             python scripts/ci/apply_cross_repo_patch.py \
               --patch-dir .patches/private \
@@ -536,5 +538,5 @@ jobs:
               --source-repo Supremeai-bd/supremeai-public \
               --apply --create-pr
           else
-            echo "No cross-repo patches in .patches/private; skipping."
+            echo "::notice title=Cross-Repo Sync::No cross-repo patches (*.patch, *.diff) in .patches/private; clean state."
           fi
