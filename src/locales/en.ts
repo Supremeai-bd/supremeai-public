@@ -190,6 +190,7 @@ export const EN_DICT = {
   authMaintenanceNotice:
     'Scheduled maintenance is currently active. Only administrator accounts can access the workspace.',
   authSignupsPausedNotice: 'New workspace signups are currently paused by the administrator.',
+  authCfChallengeTip: 'Edge security challenge encountered. Please retry or open in an Incognito/Private browser window.',
   authFullNameLabel: 'Full Name',
   authWorkEmailLabel: 'Work Email Address',
   authPasswordLabel: 'Password',

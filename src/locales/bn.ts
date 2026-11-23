@@ -188,6 +188,7 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   authMaintenanceNotice:
     'বর্তমানে রক্ষণাবেক্ষণের কাজ চলছে। শুধুমাত্র অ্যাডমিন অ্যাকাউন্ট এখন প্রবেশ করতে পারবে।',
   authSignupsPausedNotice: 'অ্যাডমিনিস্ট্রেটর সাময়িকভাবে নতুন সাইন-আপ বন্ধ রেখেছেন।',
+  authCfChallengeTip: 'নেটওয়ার্ক বা ব্রাউজার এক্সটেনশন সাময়িক ব্লক করেছে। পুনরায় চেষ্টা করুন বা ব্রাউজারের ইনকগনিটো/প্রাইভেট উইন্ডো ব্যবহার করুন।',
   authFullNameLabel: 'পুরো নাম',
   authWorkEmailLabel: 'ইমেইল ঠিকানা',
   authPasswordLabel: 'পাসওয়ার্ড',
