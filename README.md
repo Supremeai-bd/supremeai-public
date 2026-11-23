@@ -2,7 +2,11 @@
 
 SupremeAI Studio shares a React and TypeScript frontend across the web app, Tauri desktop app, and Tauri Android app. The local web server uses Express and Vite; the deployed web app uses Cloudflare Pages Functions.
 
-[![CI](https://github.com/Supremeai-bd/supremeai-public/actions/workflows/unified-pipeline.yml/badge.svg)](https://github.com/Supremeai-bd/supremeai-public/actions/workflows/unified-pipeline.yml) [Releases](https://github.com/Supremeai-bd/supremeai-public/releases)
+[![CI](https://github.com/Supremeai-bd/supremeai-public/actions/workflows/unified-pipeline.yml/badge.svg)](https://github.com/Supremeai-bd/supremeai-public/actions/workflows/unified-pipeline.yml)
+[![CodeQL](https://github.com/Supremeai-bd/supremeai-public/actions/workflows/codeql.yml/badge.svg)](https://github.com/Supremeai-bd/supremeai-public/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/Supremeai-bd/supremeai-public?label=release&color=blue)](https://github.com/Supremeai-bd/supremeai-public/releases)
+[![License](https://img.shields.io/github/license/Supremeai-bd/supremeai-public?color=blue)](LICENSE)
+[Releases](https://github.com/Supremeai-bd/supremeai-public/releases) · [Security Policy](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 ---
 

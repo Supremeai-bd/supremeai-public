@@ -46,3 +46,6 @@ src-tauri/gen/android/*.jks
 # VS Code extension build & packaged vsix artifacts
 packages/vscode-extension/out/
 *.vsix
+
+# Test coverage output
+coverage/

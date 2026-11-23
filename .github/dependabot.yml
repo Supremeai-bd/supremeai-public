@@ -44,9 +44,48 @@ updates:
       interval: 'weekly'
       day: 'monday'
     open-pull-requests-limit: 3
+    groups:
+      vscode-tooling:
+        patterns:
+          - '@types/vscode'
+          - '@vscode/*'
+          - 'typescript'
+          - 'esbuild'
+        update-types: ['minor', 'patch']
     labels:
       - 'dependencies'
       - 'vscode-extension'
+
+  # বাংলা: আগে এই দুটি প্যাকেজ ট্রি Dependabot-এর আওতায়ই ছিল না —
+  # অর্থাৎ admin ড্যাশবোর্ড ও shared contracts-এ সিকিউরিটি আপডেট কখনো আসত না।
+  # Admin dashboard (আলাদা package tree, নিজের lockfile)
+  - package-ecosystem: 'npm'
+    directory: '/admin'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 3
+    groups:
+      admin-react:
+        patterns:
+          - 'react'
+          - 'react-dom'
+          - '@types/react*'
+        update-types: ['minor', 'patch']
+    labels:
+      - 'dependencies'
+      - 'admin'
+
+  # Shared contracts (@supremeai/contracts)
+  - package-ecosystem: 'npm'
+    directory: '/packages/contracts'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 3
+    labels:
+      - 'dependencies'
+      - 'contracts'
 
   # Rust / Tauri crates
   - package-ecosystem: 'cargo'

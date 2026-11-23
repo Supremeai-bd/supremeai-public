@@ -80,7 +80,10 @@ jobs:
           set -euo pipefail
           npm ci
           npm run version:sync
-          npm test
+          # বাংলা মন্তব্য: আগে `npm test` চলত কিন্তু কভারেজ কখনো মাপা হতো না, ফলে
+          # vitest.config.ts-এর thresholds কখনো কার্যকর হয়নি (মিথ্যা নিরাপত্তা)।
+          # এখন সত্যিকারের কভারেজ গেট — থ্রেশহোল্ডের নিচে নামলে CI লাল হবে।
+          npm run test:coverage
           npm run typecheck:edge
           npm run build:web
           tar -czf supremeai-web-dist.tar.gz dist/

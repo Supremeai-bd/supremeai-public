@@ -1,1 +1,40 @@
-* @Supremeai-bd
+# CODEOWNERS — SupremeAI Studio
+# ---------------------------------------------------------------------------
+# বাংলা: আগের ফাইলে ছিল `* @Supremeai-bd`। কিন্তু GitHub CODEOWNERS-এ @mention
+# শুধু **ব্যবহারকারী** বা **টিম** (@org/team-name) সমর্থন করে — কোনো organization
+# নিজে owner হতে পারে না। ফলে নিয়মটি নীরবে অকার্যকর ছিল: PR-এ কেউ অটো
+# রিভিউ-রিকোয়েস্ট পেত না। এখন প্রকৃত রক্ষণাবেক্ষণকারীদের নাম দেওয়া হলো।
+#
+# টিম বানালে `@user` → `@Supremeai-bd/team-slug` করে নিন।
+# ---------------------------------------------------------------------------
+
+# ডিফল্ট মালিক
+* @paykaribazaronline @SaifulHaqueNiloy
+
+# CI/CD, রিলিজ পাইপলাইন, ডিপেন্ডেন্সি পলিসি
+/.github/ @paykaribazaronline @SaifulHaqueNiloy
+/dependabot.yml @paykaribazaronline
+/.github/dependabot.yml @paykaribazaronline
+
+# সিকিউরিটি — auth, session, TOTP, সিক্রেট হ্যান্ডলিং (উভয়েই রিভিউ দেবেন)
+SECURITY.md @paykaribazaronline @SaifulHaqueNiloy
+/src/server/routes/auth.ts @paykaribazaronline @SaifulHaqueNiloy
+/src/server/routes/authTotp.ts @paykaribazaronline @SaifulHaqueNiloy
+/src/server/routes/gitOauth.ts @paykaribazaronline @SaifulHaqueNiloy
+/src/server/totp.ts @paykaribazaronline @SaifulHaqueNiloy
+/src/services/authService.ts @paykaribazaronline @SaifulHaqueNiloy
+/src/shared/serverSecurity.ts @paykaribazaronline @SaifulHaqueNiloy
+/src/shared/gmailSessionCrypto.ts @paykaribazaronline @SaifulHaqueNiloy
+
+# এজ / Cloudflare Functions (প্রোডাকশন ট্রাফিক পাথ)
+/functions/ @paykaribazaronline @SaifulHaqueNiloy
+
+# ডেটাবেস স্কিমা ও মাইগ্রেশন
+/supabase/ @paykaribazaronline @SaifulHaqueNiloy
+
+# ডেস্কটপ/মোবাইল রিলিজ (Tauri, Rust)
+/src-tauri/ @paykaribazaronline
+
+# রিলিজ ও ভার্সন সিঙ্ক
+/version.json @paykaribazaronline
+/scripts/sync-versions.mjs @paykaribazaronline
