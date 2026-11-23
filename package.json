@@ -22,7 +22,7 @@
     "tauri:android:init": "tauri android init",
     "tauri:android:dev": "tauri android dev",
     "tauri:android:build": "npm run build:app && tauri android build --apk",
-    "test:security": "tsx --test src/shared/productionHardening.test.ts",
+    "test:security": "tsx --test src/shared/productionHardening.test.ts src/shared/smartPrGuard.test.ts",
     "version:sync": "node scripts/sync-versions.mjs",
     "test": "npm run test:security && vitest run",
     "typecheck:edge": "tsc -p tsconfig.edge.json",
