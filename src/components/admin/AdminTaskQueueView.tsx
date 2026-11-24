@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { RotateCcw, Eye, Trash2 } from 'lucide-react';
 import { TaskQueueJob } from '../../types';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
 
 interface AdminTaskQueueViewProps {
   jobs: TaskQueueJob[];
@@ -18,6 +20,12 @@ export const AdminTaskQueueView: React.FC<AdminTaskQueueViewProps> = ({
   const [selectedQueue, setSelectedQueue] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [inspectJob, setInspectJob] = useState<TaskQueueJob | null>(null);
+
+  // বাংলা মন্তব্য: কিউ টেলিমেট্রির উৎস-সত্য — লাইভ সার্ভার সিঙ্ক ছাড়া "Redis লাইভ" দাবি মিথ্যা।
+  const dataSource = useAdminCollectionSource(
+    'queue',
+    'টাস্ক কিউ ডেটা এখনো লাইভ সিঙ্ক হয়নি — Redis/BullMQ টেলিমেট্রি localStorage ক্যাশ থেকে দেখানো হচ্ছে।'
+  );
 
   const activeCount = jobs.filter((j) => j.status === 'active').length;
   const waitingCount = jobs.filter((j) => j.status === 'waiting').length;
@@ -43,6 +51,11 @@ export const AdminTaskQueueView: React.FC<AdminTaskQueueViewProps> = ({
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-900">
               Redis / BullMQ In-Memory Engine
             </span>
+            <DataSourceBadge
+              source={dataSource.source}
+              reason={dataSource.reason}
+              ageMs={dataSource.ageMs}
+            />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Monitor real-time task queues, inspect job payloads, manage dead-letter queues (DLQ),

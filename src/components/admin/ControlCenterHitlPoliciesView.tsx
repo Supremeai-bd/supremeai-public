@@ -16,10 +16,17 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { controlCenterService } from '../../services/controlCenterService';
 import { toast } from '../../stores/useToastStore';
 import { ControlCenterSafetyBar } from './ControlCenterSafetyGateModal';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useControlCenterDomainSource } from '../../hooks/useControlCenterDomainSource';
 
 type SubTab = 'hitl' | 'dag' | 'policies' | 'takeover';
 
 export const ControlCenterHitlPoliciesView: React.FC = () => {
+  // বাংলা মন্তব্য: HITL কিউ লাইভ সার্ভার থেকে এসেছে কি না — ব্যাজ সত্য বলে।
+  const dataSource = useControlCenterDomainSource(
+    'hitl',
+    'HITL কিউ এখনো লাইভ সিঙ্ক হয়নি।'
+  );
   const {
     hitlTickets,
     remediationPlans,
@@ -98,6 +105,11 @@ export const ControlCenterHitlPoliciesView: React.FC = () => {
           <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
             HITL Approvals, Remediation & Policies
           </h1>
+          <DataSourceBadge
+            source={dataSource.source}
+            reason={dataSource.reason}
+            ageMs={dataSource.ageMs}
+          />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Human-in-the-loop inbox, topological DAG remediation plans, MCP allowlist rules, and
             live session takeover.

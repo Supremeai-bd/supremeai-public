@@ -26,6 +26,8 @@ import { useAdminStore } from '../../stores/useAdminStore';
 import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
 import { useI18n } from '../../utils/i18n';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useDataSource } from '../../hooks/useDataSource';
 
 type AdminSubTab = 'providers' | 'infisical';
 
@@ -60,6 +62,15 @@ export const AdminProviderKeysView: React.FC = () => {
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  // বাংলা মন্তব্য: প্রোভাইডার লিস্টের লাইভ-সিঙ্ক সত্য — ব্যাজের জন্য।
+  const [sourceMeta, setSourceMeta] = useState<{ at?: number; error?: string }>({});
+  const providerSource = useDataSource({
+    loaded: Boolean(sourceMeta.at),
+    lastUpdatedMs: sourceMeta.at,
+    error: sourceMeta.error ?? null,
+    demoReason:
+      'প্রোভাইডার/ভল্ট ডেটা এখনো লাইভ সিঙ্ক হয়নি — src/data/adminExpansionData সিড ডেটা দেখানো হচ্ছে।',
+  });
   const [isSyncingVault, setIsSyncingVault] = useState(false);
   const [isProbingAll, setIsProbingAll] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -119,6 +130,12 @@ export const AdminProviderKeysView: React.FC = () => {
           lastSyncedAt: vaultRes.lastSyncedAt || new Date().toISOString(),
         });
       }
+      setSourceMeta({ at: Date.now() });
+    } catch (err) {
+      // বাংলা মন্তব্য: ব্যর্থতা নীরবে গিলে ফেলা হত — এখন ব্যাজ DEGRADED দেখাবে।
+      setSourceMeta({
+        error: err instanceof Error ? err.message : 'Provider vault fetch failed.',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -421,9 +438,16 @@ export const AdminProviderKeysView: React.FC = () => {
             <Lock className="w-3.5 h-3.5" />
             <span>INFISICAL SECRETS VAULT · MULTI-PROVIDER FAILOVER</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {t.apkPageTitle}
-          </h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+              {t.apkPageTitle}
+            </h1>
+            <DataSourceBadge
+              source={providerSource.source}
+              reason={providerSource.reason}
+              ageMs={providerSource.ageMs}
+            />
+          </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Add, edit, probe, prioritize, and remove upstream AI provider keys with live latency
             metrics across every Infisical Vault secret.

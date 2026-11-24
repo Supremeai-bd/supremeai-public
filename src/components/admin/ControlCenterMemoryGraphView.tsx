@@ -18,10 +18,17 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { controlCenterService } from '../../services/controlCenterService';
 import { toast } from '../../stores/useToastStore';
 import { ControlCenterSafetyBar } from './ControlCenterSafetyGateModal';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useControlCenterDomainSource } from '../../hooks/useControlCenterDomainSource';
 
 type SubTab = 'memory' | 'qdrant' | 'ast';
 
 export const ControlCenterMemoryGraphView: React.FC = () => {
+  // বাংলা মন্তব্য: মেমরি/ভেক্টর/AST ডেটা লাইভ সার্ভার থেকে এসেছে কি না — ব্যাজ সত্য বলে।
+  const dataSource = useControlCenterDomainSource(
+    'memory',
+    'মেমরি গভর্নেন্স ও AST ডেটা এখনো লাইভ সিঙ্ক হয়নি।'
+  );
   const {
     memoryEntries,
     memoryProvenance,
@@ -132,6 +139,11 @@ export const ControlCenterMemoryGraphView: React.FC = () => {
             <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               Memory Governance, Vector DB & AST Graph
             </h1>
+            <DataSourceBadge
+              source={dataSource.source}
+              reason={dataSource.reason}
+              ageMs={dataSource.ageMs}
+            />
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               3-tier episodic/semantic/procedural memory curation, Qdrant cluster telemetry, and
               Supremeai-bd/supremeai AST explorer.

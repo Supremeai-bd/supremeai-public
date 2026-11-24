@@ -23,6 +23,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { McpTowerService, SwarmWorker, TaskQueueJob } from '../../types';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
 import type {
   AutoHealerIncident,
   CronTaskItem,
@@ -248,6 +250,12 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
   const [isLiveStream, setIsLiveStream] = useState(true);
   const [lastTickAt, setLastTickAt] = useState<Date>(() => new Date());
   const [ringBuffer, setRingBuffer] = useState<Record<string, TelemetrySample[]>>({});
+
+  // বাংলা মন্তব্য: সার্ভিস রেজিস্ট্রি লাইভ সিঙ্ক হয়েছে কি না — ব্যাজ সত্য বলে।
+  const dataSource = useAdminCollectionSource(
+    'mcpServices',
+    'সার্ভিস রেজিস্ট্রি এখনো লাইভ সিঙ্ক হয়নি — localStorage ক্যাশ/ফলব্যাক দেখানো হচ্ছে।'
+  );
 
   // Merge live healthSnapshot.services with MCP Tower services registry so ALL services appear
   const unifiedServices = useMemo<UnifiedServiceNode[]>(() => {
@@ -1137,6 +1145,11 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
               </span>
               {isLiveStream ? 'LIVE' : 'PAUSED'}
             </span>
+            <DataSourceBadge
+              source={dataSource.source}
+              reason={dataSource.reason}
+              ageMs={dataSource.ageMs}
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">

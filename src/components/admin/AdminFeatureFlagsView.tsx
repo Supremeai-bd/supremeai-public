@@ -187,7 +187,19 @@ export const AdminFeatureFlagsView: React.FC = () => {
                   {flag.enabled ? 'ACTIVE' : 'DISABLED'}
                 </strong>
               </span>
-              <span className="text-slate-400">Enforced on server</span>
+              {/* বাংলা মন্তব্য: আগে এখানে প্রতিটি ফ্ল্যাগের নিচে হার্ডকোড ছিল "Enforced on server" —
+                  যা মিথ্যা ছিল (২৫টির মধ্যে মাত্র ১টি UI গেট করে)। এখন সত্য: কত জায়গায়
+                  এই ফ্ল্যাগ আসলে পড়া হয় (featureFlagConsumers SSOT)। */}
+              <span className="text-slate-400">
+                UI wiring:{' '}
+                <strong
+                  className={
+                    countFlagConsumers(flag.key) > 0 ? 'text-cyan-500' : 'text-slate-500'
+                  }
+                >
+                  {countFlagConsumers(flag.key)} place{countFlagConsumers(flag.key) === 1 ? '' : 's'}
+                </strong>
+              </span>
             </div>
           </div>
         ))}

@@ -1419,7 +1419,8 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   ovRealtimeTelemetry: 'রিয়েল-টাইম ব্যাকএন্ড গেটওয়ে ও ক্লাস্টার লেটেন্সি টেলিমেট্রি',
   ovRebootAll: 'সব রিবুট করুন',
   commonSave: 'সংরক্ষণ',
-  ovServerEnforcedHint: 'সার্ভার-এনফোর্সড কন্ট্রোল যা সব কাস্টমার ওয়ার্কস্পেসে সাথে সাথে প্রযোজ্য।',
+  ovServerEnforcedHint:
+    'প্ল্যাটফর্ম কনফিগ API-তে সংরক্ষিত হয় (মেইনটেন্যান্স মোড, ব্যানার, সাইনআপ, ডিফল্ট মডেল)। প্রয়োগ নির্ভর করে প্রতিটি কনজিউমারের ওয়্যারিংয়ের উপর — প্রতি-ফ্ল্যাগ সত্যের জন্য Feature Flags ভিউ দেখুন।',
   ovPageTitle: 'SupremeAI সেন্ট্রাল কন্ট্রোল সেন্টার',
   ovSynthesizeDag: 'DAG প্ল্যান সিন্থেসাইজ করুন',
   commonUpdate: 'আপডেট',
@@ -1438,4 +1439,22 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   taskApprovalSkipBtn: 'বাতিল করুন',
   taskApprovalStepsLabel: 'সম্পন্ন ধাপসমূহ',
   taskApprovalFallbackBtn: 'সাধারণ চ্যাটে চালান',
+  // JARVIS মোড — ভয়েস + অটোনমাস টাস্ক এক্সিকিউশনের সেতু
+  jarvisBtn: 'JARVIS',
+  jarvisOnBtn: 'JARVIS চালু',
+  jarvisEnableTooltip:
+    'জার্ভিস মোড চালু করুন — অটোনমাস টাস্ক এক্সিকিউশন ভয়েসে ঘোষিত হবে (Ctrl+Alt+J)',
+  jarvisDisableTooltip: 'জার্ভিস মোড বন্ধ করুন (Ctrl+Alt+J)',
+  jarvisOverlayLabel: 'জার্ভিস ন্যারেশন প্যানেল',
+  jarvisStatusStandby: 'স্ট্যান্ডবাই',
+  jarvisStatusExecuting: 'টাস্ক চলছে',
+  jarvisStatusApproval: 'অনুমোদনের অপেক্ষায়',
+  jarvisMuteLabel: 'ঘোষণা মিউট করুন',
+  jarvisUnmuteLabel: 'ঘোষণা চালু করুন',
+  jarvisCollapseLabel: 'জার্ভিস প্যানেল ছোট করুন',
+  jarvisExpandLabel: 'জার্ভিস প্যানেল বড় করুন',
+  jarvisDisableLabel: 'জার্ভিস মোড বন্ধ করুন',
+  jarvisEmptyHint: 'অটোনমাস টাস্ক চলার সময় ঘোষণাগুলো এখানে দেখা যাবে।',
+  jarvisStepsTitle: 'লাইভ এক্সিকিউশন ধাপ',
+  jarvisShortcutHint: 'শর্টকাট',
 };

@@ -13,10 +13,17 @@ import { controlCenterService } from '../../services/controlCenterService';
 import { toast } from '../../stores/useToastStore';
 import { ControlCenterSafetyBar } from './ControlCenterSafetyGateModal';
 import { PlatformDownloadsCard } from '../common/PlatformDownloadsCard';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useControlCenterDomainSource } from '../../hooks/useControlCenterDomainSource';
 
 type SubTab = 'provenance' | 'preflight' | 'pipelines';
 
 export const ControlCenterReleaseGateView: React.FC = () => {
+  // বাংলা মন্তব্য: রিলিজ গেট ডেটা লাইভ সার্ভার থেকে এসেছে কি না — ব্যাজ সত্য বলে।
+  const dataSource = useControlCenterDomainSource(
+    'releaseGate',
+    'রিলিজ গেট ডেটা এখনো লাইভ সিঙ্ক হয়নি।'
+  );
   const {
     latestGithubCommit,
     releases,
@@ -66,6 +73,11 @@ export const ControlCenterReleaseGateView: React.FC = () => {
           <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
             Release Gate, Render Preflight & CI/CD
           </h1>
+          <DataSourceBadge
+            source={dataSource.source}
+            reason={dataSource.reason}
+            ageMs={dataSource.ageMs}
+          />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             GitHub commit SHA provenance vs. Render deployments, build-minute guards, Harness
             pipelines, and safe rollbacks.

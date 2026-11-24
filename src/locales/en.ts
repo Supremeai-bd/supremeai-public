@@ -1442,7 +1442,8 @@ export const EN_DICT = {
   ovRealtimeTelemetry: 'Real-Time Backend Gateway & Cluster Latency Telemetry',
   ovRebootAll: 'Reboot All',
   commonSave: 'Save',
-  ovServerEnforcedHint: 'Server-enforced controls affecting all customer workspaces immediately.',
+  ovServerEnforcedHint:
+    'Saved to the platform config API (maintenance mode, banners, signups, default model). Enforcement depends on each consumer wiring — see the Feature Flags view for per-flag truth.',
   ovPageTitle: 'SupremeAI Central Control Center',
   ovSynthesizeDag: 'Synthesize DAG Plan',
   commonUpdate: 'Update',
@@ -1461,6 +1462,24 @@ export const EN_DICT = {
   taskApprovalSkipBtn: 'Skip Actions',
   taskApprovalStepsLabel: 'Executed steps',
   taskApprovalFallbackBtn: 'Run in standard chat',
+  // JARVIS mode — voice + autonomous task execution bridge
+  jarvisBtn: 'JARVIS',
+  jarvisOnBtn: 'JARVIS On',
+  jarvisEnableTooltip:
+    'Enable JARVIS mode — autonomous task execution narrated aloud (Ctrl+Alt+J)',
+  jarvisDisableTooltip: 'Disable JARVIS mode (Ctrl+Alt+J)',
+  jarvisOverlayLabel: 'JARVIS narration panel',
+  jarvisStatusStandby: 'Standby',
+  jarvisStatusExecuting: 'Executing task',
+  jarvisStatusApproval: 'Awaiting approval',
+  jarvisMuteLabel: 'Mute narration',
+  jarvisUnmuteLabel: 'Unmute narration',
+  jarvisCollapseLabel: 'Minimize JARVIS panel',
+  jarvisExpandLabel: 'Expand JARVIS panel',
+  jarvisDisableLabel: 'Turn off JARVIS mode',
+  jarvisEmptyHint: 'Narrations appear here while an autonomous task runs.',
+  jarvisStepsTitle: 'Live execution steps',
+  jarvisShortcutHint: 'Shortcut',
 };
 
 export type TranslationKeys = keyof typeof EN_DICT;

@@ -68,6 +68,7 @@ import {
 } from '../utils/imageAttachmentUtils';
 import { logger } from '../utils/logger';
 import { executeAutonomousTask } from '../services/agentExecutionService';
+import { jarvisService } from '../services/jarvisService';
 import {
   shouldRouteToAutonomousAgent,
   type AgentToolAction,
@@ -626,6 +627,9 @@ export const useChatStore = create<ChatState>((set, get) => {
         pendingTaskApproval: null,
         lastPlanSummary: precomputedIntent?.planSummary || null,
       });
+      // বাংলা মন্তব্য: প্রতিটি নতুন মেসেজে ন্যারেশন ডিডুপ রিসেট — আগের মেসেজে বলা
+      // ধাপের নাম নতুন মেসেজে আটকে থাকবে না।
+      jarvisService.resetDedup();
 
       const authStateSnapshot = useAuthStore.getState();
       const customerStateSnapshot = useCustomerStore.getState();
@@ -893,6 +897,9 @@ export const useChatStore = create<ChatState>((set, get) => {
           recordedAgentSteps.push(step);
         }
         set({ streamingAgentSteps: [...recordedAgentSteps] });
+        // বাংলা মন্তব্য: JARVIS মোড চালু থাকলে চলমান ধাপ ভয়েসে ঘোষিত হয়। সার্ভিস নিজেই
+        // মোড-গার্ড ও ডিডুপ করে (running অবস্থায় একবার), তাই এখানে কোনো শর্ত লাগে না।
+        jarvisService.notifyStep(step, { language: preferredLanguage === 'bn' ? 'bn' : 'en' });
       };
 
       const tr = getTranslation(preferredLanguage);
@@ -974,6 +981,10 @@ export const useChatStore = create<ChatState>((set, get) => {
           workspaceFileCount: wsFilesSnapshot.length,
         })
       ) {
+        jarvisService.notifyTaskAccepted(
+          (precomputedIntent?.inferredLanguage as 'en' | 'bn' | undefined) ||
+            (preferredLanguage === 'bn' ? 'bn' : 'en')
+        );
         const plannerStepId = 'step_agent_planner';
         pushAgentStep({
           id: plannerStepId,
@@ -1002,6 +1013,14 @@ export const useChatStore = create<ChatState>((set, get) => {
 
         if (controller.signal.aborted) {
           return;
+        }
+
+        if (agentRes.status === 'fallback_chat') {
+          // বাংলা মন্তব্য: JARVIS মোডে ব্যর্থতাও স্পষ্টভাবে ঘোষিত হয় — নীরব ব্যর্থতা নয়।
+          jarvisService.notifyOutcome('fallback_chat', {
+            language: preferredLanguage === 'bn' ? 'bn' : 'en',
+            reason: agentRes.reason,
+          });
         }
 
         if (agentRes.status === 'completed' || agentRes.status === 'needs_approval') {
@@ -1058,6 +1077,11 @@ export const useChatStore = create<ChatState>((set, get) => {
           };
 
           applyImmediateActions(actions);
+
+          jarvisService.notifyOutcome(agentRes.status, {
+            language: preferredLanguage === 'bn' ? 'bn' : 'en',
+            actionCount: actions.length,
+          });
 
           if (agentRes.status === 'needs_approval') {
             set({

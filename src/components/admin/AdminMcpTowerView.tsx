@@ -23,6 +23,8 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { ControlCenterSafetyBar } from './ControlCenterSafetyGateModal';
 import TowerIllustration from './TowerIllustration';
 import { useI18n } from '../../utils/i18n';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
 
 interface AdminMcpTowerViewProps {
   services: McpTowerService[];
@@ -40,6 +42,12 @@ export const AdminMcpTowerView: React.FC<AdminMcpTowerViewProps> = ({
   isProbing = false,
 }) => {
   const { t } = useI18n();
+
+  // বাংলা মন্তব্য: MCP Tower-এর সার্ভিস লিস্ট লাইভ সিঙ্ক হয়েছে কি না — ব্যাজ সত্য বলে।
+  const dataSource = useAdminCollectionSource(
+    'mcpServices',
+    'MCP সার্ভিস লিস্ট এখনো লাইভ সিঙ্ক হয়নি — localStorage ক্যাশ/ফলব্যাক দেখানো হচ্ছে।'
+  );
   const { mcpTools, mcpToolsProvenance, isLoadingTools, lastToolResult, loadMcpTools, runMcpTool } =
     useControlCenterStore();
   const authUser = useAuthStore((s) => s.authUser);
@@ -172,6 +180,11 @@ export const AdminMcpTowerView: React.FC<AdminMcpTowerViewProps> = ({
                   <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 font-sans">
                     {t.mtPageTitle}
                   </h1>
+                  <DataSourceBadge
+                    source={dataSource.source}
+                    reason={dataSource.reason}
+                    ageMs={dataSource.ageMs}
+                  />
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${
                       issuesCount > 0

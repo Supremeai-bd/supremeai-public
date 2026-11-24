@@ -446,10 +446,39 @@ export function normalizeComputeBrowserPayload(
   };
 }
 
+/** বাংলা মন্তব্য: Control Center-এর লাইভ-ডেটা ডোমেইন — প্রতিটির আলাদা provenance ট্র্যাক হয়। */
+export type ControlCenterDomain =
+  | 'overview'
+  | 'diagnostics'
+  | 'mcpTools'
+  | 'releaseGate'
+  | 'hitl'
+  | 'memory'
+  | 'bridge'
+  | 'compute'
+  | 'finOps'
+  | 'serviceHealth';
+
+export interface DomainProvenanceEntry {
+  /** শেষ সফল লাইভ সিঙ্ক (epoch ms) */
+  at: number;
+  /** শেষ ব্যর্থতার বার্তা — থাকলে ব্যাজ DEGRADED দেখাবে, মিথ্যা LIVE নয় */
+  error?: string;
+}
+
 interface ControlCenterState {
   safetyMode: ControlPlaneSafetyMode;
   mcpEndpoint: string;
   backendGateway: string;
+
+  /**
+   * বাংলা মন্তব্য: প্রতিটি ডোমেইনের লাইভ সার্ভার-সিঙ্ক সত্য — ব্যাজের একমাত্র উৎস।
+   * success → { at } (age সহ LIVE), failure → { error } (DEGRADED),
+   * এন্ট্রি নেই → এখনো লাইভ সিঙ্ক হয়নি (UNKNOWN)। localStorage/ফলব্যাক ডেটা কখনো
+   * "live" গণ্য হয় না।
+   */
+  domainProvenance: Partial<Record<ControlCenterDomain, DomainProvenanceEntry>>;
+
   isLoadingOverview: boolean;
   isDiagnosing: boolean;
   latestGithubCommit: {
@@ -580,6 +609,7 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
   mcpEndpoint: '',
   backendGateway: '',
   isLoadingOverview: false,
+  domainProvenance: {},
   isDiagnosing: false,
   latestGithubCommit: null,
   latestDiagnose: null,
@@ -676,8 +706,10 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
             : state.unclaimedBridgeCount,
         trafficSummary: data.trafficSummary || state.trafficSummary,
       }));
-    } catch {
-      // Keep prior state cleanly
+      markDomain('overview', true);
+    } catch (err: unknown) {
+      // Keep prior state cleanly — but honestly: badge shows DEGRADED
+      markDomain('overview', false, err instanceof Error ? err.message : 'overview fetch failed');
     } finally {
       set({ isLoadingOverview: false });
     }
@@ -689,9 +721,11 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
       const report = await controlCenterService.fetchEcosystemDiagnostics(fresh);
       if (report && Array.isArray(report.findings)) {
         set({ ecosystemDiagnostics: report });
+        markDomain('diagnostics', true);
       }
-    } catch {
-      // Keep previous diagnostics snapshot
+    } catch (err: unknown) {
+      // Keep previous diagnostics snapshot — badge shows DEGRADED
+      markDomain('diagnostics', false, err instanceof Error ? err.message : 'diagnostics fetch failed');
     } finally {
       set({ isLoadingDiagnostics: false });
     }
@@ -734,7 +768,9 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
         mcpTools: Array.isArray(res?.tools) ? res.tools : get().mcpTools,
         mcpToolsProvenance: normalizeProvenance(res?.provenance, 'local-snapshot'),
       });
+      markDomain('mcpTools', true);
     } catch (err: unknown) {
+      markDomain('mcpTools', false, err instanceof Error ? err.message : 'MCP registry unreachable');
       toast.error(
         'MCP Discovery Failed',
         err instanceof Error ? err.message : 'Unable to reach MCP registry.'
@@ -796,7 +832,9 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
         releases: Array.isArray(res?.releases) ? res.releases : state.releases,
         pipelines: Array.isArray(res?.pipelines) ? res.pipelines : state.pipelines,
       }));
+      markDomain('releaseGate', true);
     } catch (err: unknown) {
+      markDomain('releaseGate', false, err instanceof Error ? err.message : 'release verification fetch failed');
       toast.error(
         'Release Gate Error',
         err instanceof Error ? err.message : 'Failed to load release verification.'
@@ -825,7 +863,9 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
           pendingHitlCount: tickets.filter((t) => t.status === 'pending').length,
         };
       });
+      markDomain('hitl', true);
     } catch (err: unknown) {
+      markDomain('hitl', false, err instanceof Error ? err.message : 'HITL queue fetch failed');
       toast.error(
         'HITL Queue Error',
         err instanceof Error ? err.message : 'Failed to load HITL approvals.'
@@ -883,9 +923,11 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
         memoryNotice: normalized.notice,
         memoryError: null,
       });
+      markDomain('memory', true);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Unable to load Memory, Qdrant & AST telemetry.';
+      markDomain('memory', false, message);
       const state = get();
       const fallback = normalizeMemoryGraphPayload(
         {},
@@ -982,7 +1024,9 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
           unclaimedBridgeCount: workOrders.filter((w) => w.status === 'unclaimed').length,
         };
       });
+      markDomain('bridge', true);
     } catch (err: unknown) {
+      markDomain('bridge', false, err instanceof Error ? err.message : 'bridge queue fetch failed');
       toast.error(
         'Agent Bridge Error',
         err instanceof Error ? err.message : 'Failed to load bridge work queue.'
@@ -1009,9 +1053,11 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
         computeNotice: normalized.notice,
         computeError: null,
       });
+      markDomain('compute', true);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Unable to load Kaggle GPU & Browser fleet telemetry.';
+      markDomain('compute', false, message);
       const state = get();
       const fallback = normalizeComputeBrowserPayload(
         {},
@@ -1073,7 +1119,9 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
         telegramLogs: Array.isArray(res?.telegramLogs) ? res.telegramLogs : state.telegramLogs,
         cronTasks: Array.isArray(res?.cronTasks) ? res.cronTasks : state.cronTasks,
       }));
+      markDomain('finOps', true);
     } catch (err: unknown) {
+      markDomain('finOps', false, err instanceof Error ? err.message : 'FinOps fetch failed');
       toast.error(
         'FinOps Telemetry Error',
         err instanceof Error ? err.message : 'Failed to load FinOps data.'
@@ -1091,7 +1139,9 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
         healthSnapshot: res?.snapshot?.services ? res.snapshot : state.healthSnapshot,
         trafficSummary: res?.traffic ?? state.trafficSummary,
       }));
+      markDomain('serviceHealth', true);
     } catch (err: unknown) {
+      markDomain('serviceHealth', false, err instanceof Error ? err.message : 'service health probe failed');
       toast.error(
         'Health Monitor Error',
         err instanceof Error ? err.message : 'Unable to probe services.'
@@ -1171,3 +1221,17 @@ export const useControlCenterStore = create<ControlCenterState>((set, get) => ({
     }
   },
 }));
+
+/** বাংলা মন্তব্য: ডোমেইন provenance মার্কার — লোড অ্যাকশনগুলো থেকে ডাকা হয়। সফল লাইভ
+ * সিঙ্কে `at` সেট হয়; ব্যর্থতায় `error` সেট হয় (আগের `at` অটুট থাকে, যাতে পুরনো ডেটা
+ * হাওয়ায় না যায় বরং DEGRADED হিসেবে স্বীকার করা হয়)। */
+function markDomain(domain: ControlCenterDomain, ok: boolean, error?: string): void {
+  useControlCenterStore.setState((state) => ({
+    domainProvenance: {
+      ...state.domainProvenance,
+      [domain]: ok
+        ? { at: Date.now() }
+        : { at: state.domainProvenance[domain]?.at ?? 0, error: error || 'fetch failed' },
+    },
+  }));
+}

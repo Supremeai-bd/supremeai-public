@@ -55,6 +55,9 @@ interface ChatInputProps {
   onOpenLiveVoice?: () => void;
   isLiveVoiceOpen?: boolean;
   voiceStatus?: LiveSessionStatus;
+  /** বাংলা মন্তব্য: JARVIS মোড — ভয়েস + অটোনমাস টাস্ক এক্সিকিউশনের সেতু */
+  jarvisEnabled?: boolean;
+  onToggleJarvis?: () => void;
 }
 
 const TIER_RANK: Record<PlanTier, number> = {
@@ -74,6 +77,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onOpenLiveVoice,
   isLiveVoiceOpen = false,
   voiceStatus = 'idle',
+  jarvisEnabled = false,
+  onToggleJarvis,
 }) => {
   const [inputText, setInputText] = useState('');
   const [showModelMenu, setShowModelMenu] = useState(false);
@@ -899,6 +904,31 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   </>
                 )}
               </div>
+            )}
+
+            {/* JARVIS Mode: voice-narrated autonomous task execution */}
+            {onToggleJarvis && (
+              <button
+                type="button"
+                onClick={onToggleJarvis}
+                aria-label={jarvisEnabled ? t.jarvisDisableTooltip : t.jarvisEnableTooltip}
+                aria-pressed={jarvisEnabled}
+                title={jarvisEnabled ? t.jarvisDisableTooltip : t.jarvisEnableTooltip}
+                data-testid="jarvis-toggle"
+                className={`inline-flex items-center gap-1 px-2.5 py-1 @[520px]/input:py-1.5 rounded-full border text-[11px] @[520px]/input:text-xs font-medium transition-all cursor-pointer shrink-0 ${
+                  jarvisEnabled
+                    ? 'theme-btn-primary border-transparent'
+                    : 'theme-accent-active hover:brightness-105'
+                }`}
+              >
+                <Bot
+                  className={`w-3.5 h-3.5 shrink-0 ${jarvisEnabled ? 'animate-pulse' : ''}`}
+                  aria-hidden="true"
+                />
+                <span className="hidden @[440px]/input:inline whitespace-nowrap">
+                  {jarvisEnabled ? t.jarvisOnBtn : t.jarvisBtn}
+                </span>
+              </button>
             )}
 
             {/* Unified Voice & Microphone Mode Button */}
