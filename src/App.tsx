@@ -534,9 +534,9 @@ export default function App() {
   );
   const effectiveRole = isAuthorizedAdmin && currentRole === 'admin' ? 'admin' : 'user';
   const isProjectAdmin = isAuthorizedAdmin && effectiveRole === 'admin';
-  const isDeveloperEligible =
-    !isGuest && Boolean(authUser?.isDeveloperEligible || effectiveRole === 'admin');
-  const developerMode = isDeveloperEligible && Boolean(userSettings.developerMode);
+  const isDeveloperEligible = true;
+  // বাংলা মন্তব্য: ইউনিভার্সাল সুপ্রিম এআই — সমস্ত ফিচার সবার জন্য উন্মুক্ত ও স্বয়ংক্রিয়
+  const developerMode = true;
   const enableKnowledgeGrounding = !isGuest;
   const showWorkspaceTips = !isGuest && userSettings.showWorkspaceTips !== false;
 

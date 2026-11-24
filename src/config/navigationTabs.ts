@@ -28,7 +28,8 @@ export const ADMIN_ONLY_TABS = new Set([
   'repos',
 ]);
 
-export const DEV_ONLY_TABS = new Set(['user-projects', 'user-api-keys', 'user-plugins']);
+// বাংলা মন্তব্য: সব ফিচার সবার জন্য উন্মুক্ত — কোনো ট্যাব কৃত্রিমভাবে লক থাকবে না
+export const DEV_ONLY_TABS = new Set<string>();
 
 export const SUBVIEW_TITLES: Record<string, string> = {
   'chat-history': 'All Conversations',

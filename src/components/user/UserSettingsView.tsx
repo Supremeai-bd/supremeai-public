@@ -486,77 +486,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
       ============================================================ */}
       {activeSubTab === 'general' && (
         <div className="space-y-6">
-          {/* Workspace Mode & Developer Access Card */}
-          {currentRole === 'user' &&
-            (isDeveloperEligible ? (
-              <div className="p-5 rounded-2xl bg-gradient-to-r from-cyan-50/80 to-slate-50/80 dark:from-slate-900 dark:to-slate-900/90 border border-cyan-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-xs">
-                    <Code2 className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-                    <span className="font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
-                      {t.workspaceExperienceLabel}
-                    </span>
-                    <span aria-hidden="true" className="text-slate-400">
-                      ·
-                    </span>
-                    <span className="font-semibold text-slate-900 dark:text-white">
-                      {devModeActive ? t.developerStudioLabel : t.standardWorkspaceLabel}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-300">
-                    {devModeActive ? t.workspaceExpDevDesc : t.workspaceExpStdDesc}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2.5 shrink-0">
-                  {onToggleDeveloperEligibility && (
-                    <button
-                      type="button"
-                      onClick={() => onToggleDeveloperEligibility(false)}
-                      className="text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer whitespace-nowrap"
-                    >
-                      {t.hideDeveloperToolsBtn}
-                    </button>
-                  )}
-                  {onToggleDeveloperMode && (
-                    <button
-                      type="button"
-                      onClick={onToggleDeveloperMode}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-100 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0"
-                    >
-                      <span>
-                        {devModeActive ? t.switchToStandardMode : t.switchToDeveloperMode}
-                      </span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              onToggleDeveloperEligibility && (
-                <div className="p-4 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-                  <div className="flex items-start gap-2.5">
-                    <Terminal className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-                    <div>
-                      <div className="text-xs font-semibold text-slate-900 dark:text-white">
-                        {t.needDevAccessTitle}
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        {t.needDevAccessDesc}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onToggleDeveloperEligibility(true)}
-                    className="px-3.5 py-1.5 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:border-cyan-500 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    {t.enableDeveloperAccessBtn}
-                  </button>
-                </div>
-              )
-            ))}
-
           {/* Role Workspace Switcher Card - Only visible when Admin User ID is matched */}
           {Boolean(isAdminEligible) && (
             <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-50/80 to-indigo-50/80 dark:from-slate-900 dark:to-slate-900/90 border border-blue-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
@@ -795,9 +724,8 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
               </p>
             </div>
 
-            {/* Smart Auto Model Routing + Fallback Model (Developer Mode only) */}
-            {devModeActive && (
-              <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 space-y-3">
+            {/* Smart Auto Model Routing + Fallback Model */}
+            <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 space-y-3">
                 <label className="flex items-center justify-between gap-4 cursor-pointer">
                   <div>
                     <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -837,7 +765,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                   </select>
                 </div>
               </div>
-            )}
 
             {/* Custom Instructions & Persona Section */}
             <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 space-y-2.5">
