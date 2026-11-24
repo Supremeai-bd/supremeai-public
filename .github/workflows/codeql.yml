@@ -1,10 +1,16 @@
 name: 'CodeQL Security Analysis'
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'version.json'
+      - '*.txt'
   schedule:
     # Weekly baseline scan so newly disclosed patterns surface even without a push
     - cron: '0 3 * * 1'
