@@ -12,6 +12,7 @@ import {
   buildScheduleEvaluationPrompt,
   extractHtmlTitle,
   extractReadablePageSnippet,
+  type ScheduleRunStage,
 } from '../../../src/shared/scheduleExecution';
 
 interface StoredSchedule {
@@ -23,6 +24,8 @@ interface StoredSchedule {
   enabled?: boolean;
   lastRunAt?: string | null;
   lastRunStatus?: string;
+  /** Audit 2026-11-24 (item 1.6): fetched ≠ analyzed — see ScheduleRunStage. */
+  lastRunStage?: ScheduleRunStage;
   lastRunSummary?: string;
   lastRunAiReport?: string;
   updatedAt?: string;
@@ -216,6 +219,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       const targetUrl = String(body.targetUrl || target?.targetUrl || '').trim();
       const now = new Date().toISOString();
       let runStatus: 'ok' | 'error' = 'error';
+      let runStage: ScheduleRunStage = 'failed';
       let runSummary = 'Restricted or invalid target URL';
       let runAiReport: string | undefined;
 
@@ -227,7 +231,11 @@ export async function onRequest(context: PagesContext): Promise<Response> {
           const rawBody = await probe.text().catch(() => '');
           const pageTitle = extractHtmlTitle(rawBody, String(target?.domain || 'web'));
           runStatus = probe.ok ? 'ok' : 'error';
-          runSummary = `HTTP ${probe.status} · ${pageTitle} · ${latencyMs}ms`;
+          runStage = probe.ok ? 'fetched' : 'failed';
+          // Audit 2026-11-24 (item 1.6): distinguish fetch success from analysis.
+          runSummary = probe.ok
+            ? `Fetched HTTP ${probe.status} · ${pageTitle} · ${latencyMs}ms (no AI evaluation yet)`
+            : `Fetch failed with HTTP ${probe.status} · ${latencyMs}ms`;
 
           if (probe.ok) {
             const evaluated = await evaluateEdgeScheduleWithAi({
@@ -241,6 +249,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
               rawBody,
             });
             if (evaluated?.headline) {
+              runStage = 'analyzed';
               runSummary = `${evaluated.headline} (${latencyMs}ms)`;
             }
             if (evaluated?.report) {
@@ -249,6 +258,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
           }
         } catch (err: unknown) {
           runStatus = 'error';
+          runStage = 'failed';
           runSummary = err instanceof Error ? err.message : 'Fetch failed';
         }
       }
@@ -257,6 +267,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         ...target,
         lastRunAt: now,
         lastRunStatus: runStatus,
+        lastRunStage: runStage,
         lastRunSummary: runSummary.slice(0, 240),
         ...(runAiReport ? { lastRunAiReport: runAiReport } : {}),
         updatedAt: now,

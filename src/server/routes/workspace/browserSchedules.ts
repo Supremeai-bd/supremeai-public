@@ -8,6 +8,7 @@ import {
   buildScheduleEvaluationPrompt,
   extractHtmlTitle,
   extractReadablePageSnippet,
+  type ScheduleRunStage,
 } from '../../../shared/scheduleExecution';
 
 /**
@@ -48,6 +49,12 @@ interface StoredScheduleRecord {
   enabled: boolean;
   lastRunAt?: string | null;
   lastRunStatus?: 'idle' | 'ok' | 'error';
+  /**
+   * Audit 2026-11-24 (item 1.6): an HTTP 200 is NOT a completed instruction.
+   * The run stage records what actually happened: fetched (page retrieved,
+   * no AI evaluation), analyzed (AI evaluation completed), failed.
+   */
+  lastRunStage?: ScheduleRunStage;
   lastRunSummary?: string;
   lastRunAiReport?: string;
   ownerEmail?: string;
@@ -177,6 +184,7 @@ export function registerWorkspaceBrowserSchedulesRoutes(
   ): Promise<StoredScheduleRecord> => {
     const nowIso = new Date().toISOString();
     let status: 'ok' | 'error' = 'error';
+    let stage: ScheduleRunStage = 'failed';
     let summary = 'Skipped invalid target URL';
     let aiReport: string | undefined;
 
@@ -199,7 +207,11 @@ export function registerWorkspaceBrowserSchedulesRoutes(
       const rawBody = await resp.text().catch(() => '');
       const pageTitle = extractHtmlTitle(rawBody, record.domain);
       status = resp.ok ? 'ok' : 'error';
-      summary = `HTTP ${resp.status} · ${pageTitle} · ${latencyMs}ms`;
+      stage = resp.ok ? 'fetched' : 'failed';
+      // Audit 2026-11-24 (item 1.6): say what actually happened, not just HTTP.
+      summary = resp.ok
+        ? `Fetched HTTP ${resp.status} · ${pageTitle} · ${latencyMs}ms (no AI evaluation yet)`
+        : `Fetch failed with HTTP ${resp.status} · ${latencyMs}ms`;
 
       if (resp.ok) {
         const evaluated = await evaluateFetchedScheduleWithAi({
@@ -209,6 +221,7 @@ export function registerWorkspaceBrowserSchedulesRoutes(
           rawBody,
         });
         if (evaluated?.headline) {
+          stage = 'analyzed';
           summary = `${evaluated.headline} (${latencyMs}ms)`;
         }
         if (evaluated?.report) {
@@ -217,6 +230,7 @@ export function registerWorkspaceBrowserSchedulesRoutes(
       }
     } catch (err: unknown) {
       status = 'error';
+      stage = 'failed';
       summary = err instanceof Error ? err.message : 'Request failed';
     }
 
@@ -224,6 +238,7 @@ export function registerWorkspaceBrowserSchedulesRoutes(
       ...record,
       lastRunAt: nowIso,
       lastRunStatus: status,
+      lastRunStage: stage,
       lastRunSummary: summary.slice(0, 240),
       ...(aiReport ? { lastRunAiReport: aiReport } : {}),
       updatedAt: nowIso,
@@ -375,6 +390,7 @@ export function registerWorkspaceBrowserSchedulesRoutes(
         ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
         ...(body.lastRunAt !== undefined ? { lastRunAt: body.lastRunAt } : {}),
         ...(body.lastRunStatus ? { lastRunStatus: body.lastRunStatus } : {}),
+        ...(body.lastRunStage ? { lastRunStage: body.lastRunStage } : {}),
         ...(typeof body.lastRunSummary === 'string'
           ? { lastRunSummary: body.lastRunSummary.slice(0, 500) }
           : {}),
