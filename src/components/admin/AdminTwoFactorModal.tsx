@@ -1,16 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   KeyRound,
   AlertCircle,
   X,
-  QrCode,
-  RefreshCw,
   Lock,
 } from 'lucide-react';
 import { TotpInputForm } from './two-factor/TotpInputForm';
 import { TrustedBrowserCheckbox } from './two-factor/TrustedBrowserCheckbox';
-import { authService } from '../../services/authService';
+import { authService, isAuthorizedAdminEmail } from '../../services/authService';
 
 interface AdminTwoFactorModalProps {
   isOpen: boolean;
@@ -30,65 +28,26 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
   const [totpDigits, setTotpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [trustBrowser, setTrustBrowser] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [isLoadingStatus, setIsLoadingStatus] = useState(true);
-  const [isEnrolled, setIsEnrolled] = useState<boolean>(true);
-  const [setupData, setSetupData] = useState<{
-    qrDataUrl: string;
-    otpauthUrl: string;
-  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState(getUtcTotpSecondsRemaining);
 
-  const loadEnrollmentState = useCallback(async () => {
-    if (!userEmail) return;
-    setIsLoadingStatus(true);
-    setError(null);
-    setTotpDigits(['', '', '', '', '', '']);
-
-    try {
-      const status = await authService.getTotpStatus(userEmail);
-      if (status.enrolled) {
-        setIsEnrolled(true);
-        setSetupData(null);
-      } else {
-        setIsEnrolled(false);
-        const setup = await authService.setupTotp({ userEmail });
-        let qrDataUrl = setup.qrDataUrl;
-        if (!qrDataUrl && setup.otpauthUrl) {
-          try {
-            const QRCode = (await import('qrcode')).default;
-            qrDataUrl = await QRCode.toDataURL(setup.otpauthUrl, {
-              margin: 1,
-              width: 200,
-              color: { dark: '#0891b2', light: '#ffffff' },
-            });
-          } catch {
-            // fallback gracefully
-          }
-        }
-        setSetupData({
-          qrDataUrl: qrDataUrl || '',
-          otpauthUrl: setup.otpauthUrl,
-        });
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Unable to check Authenticator TOTP status.');
-    } finally {
-      setIsLoadingStatus(false);
-    }
-  }, [userEmail]);
-
   useEffect(() => {
     if (!isOpen) return;
-    loadEnrollmentState();
+    setError(null);
+    setTotpDigits(['', '', '', '', '', '']);
     setSecondsRemaining(getUtcTotpSecondsRemaining());
+
     const timer = setInterval(() => {
       setSecondsRemaining(getUtcTotpSecondsRemaining());
     }, 1000);
     return () => clearInterval(timer);
-  }, [isOpen, loadEnrollmentState]);
+  }, [isOpen]);
 
+  // Fail-closed gate: if user is not the authorized admin, reject immediately
   if (!isOpen) return null;
+  if (!userEmail || !isAuthorizedAdminEmail(userEmail)) {
+    return null;
+  }
 
   const handleDigitChange = (index: number, value: string) => {
     const digit = value.replace(/\D/g, '').slice(-1);
@@ -133,31 +92,22 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
     setError(null);
 
     try {
-      const data = isEnrolled
-        ? await authService.verify2FA({
-            token: fullCode,
-            method: 'totp',
-            trustFor7Days: trustBrowser,
-            userEmail,
-          })
-        : await authService.confirmTotp({
-            userEmail,
-            token: fullCode,
-            trustFor7Days: trustBrowser,
-          });
+      // বাংলা মন্তব্য: ফ্রন্টএন্ডে কখনো কোনো সিক্রেট টোকেন বা কিউআর কোড থাকবে না; শুধু অথোরাইজড এডমিনের কোড সার্ভারে যাচাই হবে।
+      const data = await authService.verify2FA({
+        token: fullCode,
+        method: 'totp',
+        trustFor7Days: trustBrowser,
+        userEmail,
+      });
 
       if (!data.verified) {
-        throw new Error('2-Step Verification failed.');
+        throw new Error('2-Step Verification failed. Check your Authenticator code.');
       }
 
       onSuccess(data.trustedUntil);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Verification failed.';
-      if (msg.toLowerCase().includes('not enrolled')) {
-        await loadEnrollmentState();
-      } else {
-        setError(msg);
-      }
+      setError(msg);
     } finally {
       setIsVerifying(false);
     }
@@ -174,7 +124,7 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                {isEnrolled ? 'Admin TOTP Verification' : 'Pair Authenticator App'}
+                Admin 2-Step Verification
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Identity: <span className="font-mono text-cyan-500">{userEmail}</span>
@@ -191,11 +141,11 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
           </button>
         </div>
 
-        {/* Real TOTP Only Badge */}
+        {/* Security Invariant Badge: RFC 6238 Zero-Knowledge */}
         <div className="mt-3 flex items-center justify-between px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-[11px] text-cyan-700 dark:text-cyan-300">
           <span className="inline-flex items-center gap-1.5 font-medium">
             <KeyRound className="w-3.5 h-3.5 shrink-0" />
-            <span>RFC 6238 Authenticator Only</span>
+            <span>RFC 6238 Authenticator</span>
           </span>
           <span className="font-mono text-[10px] uppercase tracking-wider">SHA-1 · 6-Digit</span>
         </div>
@@ -208,57 +158,32 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
           </div>
         )}
 
-        {/* Loading or TOTP Enrollment QR + Verification */}
-        {isLoadingStatus ? (
-          <div className="py-10 flex flex-col items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <RefreshCw className="w-5 h-5 animate-spin text-cyan-500" />
-            <span>Checking Authenticator enrollment...</span>
-          </div>
-        ) : (
-          <div className="mt-4 space-y-4">
-            {!isEnrolled && setupData && (
-              <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 space-y-3">
-                <div className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-300">
-                  <QrCode className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
-                  <p className="leading-relaxed">
-                    Scan this QR code with <strong>Google Authenticator</strong>,{' '}
-                    <strong>Authy</strong>, or <strong>1Password</strong>, then enter the live
-                    6-digit code below.
-                  </p>
-                </div>
+        {/* Instructions */}
+        <div className="mt-4 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60">
+          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed text-center">
+            Enter the 6-digit Authenticator code from your device to unlock Admin Command.
+          </p>
+        </div>
 
-                {setupData.qrDataUrl ? (
-                  <div className="flex justify-center py-1">
-                    <img
-                      src={setupData.qrDataUrl}
-                      alt="TOTP Authenticator QR Code"
-                      className="w-40 h-40 rounded-xl border border-slate-200 dark:border-slate-700 bg-white p-1.5 shadow-sm"
-                    />
-                  </div>
-                ) : null}
+        {/* 6-Digit Input Form */}
+        <div className="mt-4">
+          <TotpInputForm
+            digits={totpDigits}
+            onChangeDigit={handleDigitChange}
+            onPasteDigits={handlePasteDigits}
+            onKeyDown={handleKeyDown}
+            onSubmit={handleVerifyTotp}
+            isVerifying={isVerifying}
+            secondsRemaining={secondsRemaining}
+            submitLabel="Verify & Access Admin Command"
+          />
+        </div>
 
-                {/* Hardened Security Notice: Manual setup key suppressed to prevent shoulder-surfing and token exfiltration */}
-                <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-                  <Lock className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
-                  <span>Optical Scan Only · Manual keys hidden to prevent credential leaks</span>
-                </div>
-              </div>
-            )}
-
-            <TotpInputForm
-              digits={totpDigits}
-              onChangeDigit={handleDigitChange}
-              onPasteDigits={handlePasteDigits}
-              onKeyDown={handleKeyDown}
-              onSubmit={handleVerifyTotp}
-              isVerifying={isVerifying}
-              secondsRemaining={secondsRemaining}
-              submitLabel={
-                isEnrolled ? 'Verify & Access Admin Command' : 'Activate TOTP & Enter Admin'
-              }
-            />
-          </div>
-        )}
+        {/* Zero-Knowledge Security Note */}
+        <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+          <Lock className="w-3.5 h-3.5 text-cyan-500/70" />
+          <span>Zero-Knowledge Architecture · No secrets exposed on client</span>
+        </div>
 
         {/* 7-Day Trusted Browser Checkbox */}
         <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
