@@ -27,6 +27,7 @@ import { Sidebar } from './components/Sidebar';
 import { ChatThread } from './components/ChatThread';
 import { ChatEmptyState } from './components/chat/ChatEmptyState';
 import { ChatInput } from './components/ChatInput';
+import { GuestOnboardingCard } from './components/chat/GuestOnboardingCard';
 import { useLiveVoiceSession } from './hooks/useLiveVoiceSession';
 import {
   jarvisService,
@@ -1637,6 +1638,26 @@ export default function App() {
                         userName={authUser?.name || (isGuest ? 'Guest' : undefined)}
                         developerMode={developerMode}
                       />
+                      {/* বাংলা মন্তব্য: গেস্ট গ্লাস অনবোর্ডিং কার্ড (Blueprint §4) —
+                          ইনপুটের ঠিক উপরে; প্রথম টাইপ/মেসেজে ফেড-আউট। */}
+                      {isGuest && (
+                        <div className="w-full px-2 mt-3">
+                          <GuestOnboardingCard
+                            visible
+                            onTryVoice={() => handleToggleJarvis()}
+                            onTryCode={() =>
+                              window.dispatchEvent(
+                                new CustomEvent('supremeai-insert-chat-prompt', {
+                                  detail: {
+                                    text: 'Generate a full-stack starter app with authentication, a dashboard and tests.',
+                                    focus: true,
+                                  },
+                                })
+                              )
+                            }
+                          />
+                        </div>
+                      )}
                       {pendingClarification && (
                         <div className="w-full px-2 mb-3">
                           <IntentClarificationCard

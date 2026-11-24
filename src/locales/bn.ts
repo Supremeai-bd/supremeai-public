@@ -1477,4 +1477,9 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   tabTeam: 'টিম',
   aiMemoryLabel: 'AI মেমরি',
   aiMemoryResetBtn: 'মেমরি রিসেট',
+  onboardingNewHere: 'নতুন এসেছেন?',
+  onboardingHint:
+    'শুধু টাইপ করুন বা বলুন — সঠিক মডেল ও টুল সুপ্রিম এআই নিজেই বেছে নেবে। লাইভ ডেমো দেখুন:',
+  onboardingVoiceCta: '৩D ভয়েস অ্যাসিস্ট্যান্টে কথা বলুন',
+  onboardingCodeCta: 'ফুল-স্ট্যাক কোড জেনারেট করুন',
 };
