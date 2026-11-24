@@ -1500,6 +1500,11 @@ export const EN_DICT = {
   tabTeam: 'Team',
   aiMemoryLabel: 'AI Memory',
   aiMemoryResetBtn: 'Reset Memory',
+  onboardingNewHere: 'New here?',
+  onboardingHint:
+    'Just type or speak — SupremeAI picks the right model and tools for you. Try a live demo:',
+  onboardingVoiceCta: 'Talk to the 3D Voice Assistant',
+  onboardingCodeCta: 'Generate full-stack code',
 };
 
 export type TranslationKeys = keyof typeof EN_DICT;

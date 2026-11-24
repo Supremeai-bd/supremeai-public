@@ -8,7 +8,8 @@ import type {
   ThemeMode,
 } from '../stores/useThemeStore';
 
-export type SyncPlatform = 'web' | 'desktop' | 'android' | 'ios';
+/** বাংলা মন্তব্য: ৪-পর্দা লাইভ সিঙ্ক (Master Blueprint, পিলার ২) — এখন 'vsix'-সহ পাঁচটি সারফেস। */
+export type SyncPlatform = 'web' | 'desktop' | 'android' | 'ios' | 'vsix';
 export type SyncDomain =
   'chats' | 'theme' | 'roles' | 'projects' | 'knowledge' | 'plugins' | 'voice_avatar';
 
@@ -47,8 +48,26 @@ const SYNC_LAST_AT_KEY = 'supremeai.sync.last_at.v1';
 
 let revisionCounter = 0;
 
+/**
+ * বাংলা মন্তব্য: VS Code (VSIX) ওয়েবভিউ শনাক্তকরণ — এক্সটেনশনের ভেতরে
+ * ``acquireVsCodeApi`` থাকে এবং UA-তে সাধারণত ``vscode/code-web`` থাকে।
+ */
+function isVsCodeWebview(): boolean {
+  try {
+    if (
+      typeof (window as unknown as { acquireVsCodeApi?: unknown }).acquireVsCodeApi === 'function'
+    ) {
+      return true;
+    }
+    return typeof navigator !== 'undefined' && /vscode|code-web/i.test(navigator.userAgent);
+  } catch {
+    return false;
+  }
+}
+
 export function getSyncPlatform(): SyncPlatform {
   if (isDesktopTauri()) return 'desktop';
+  if (isVsCodeWebview()) return 'vsix';
   if (typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent)) return 'android';
   if (typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent))
     return 'ios';
