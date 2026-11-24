@@ -12,7 +12,16 @@ import {
   extractCapturedCookieHeader,
   processProxiedHtml,
 } from '../../../src/shared/browserProxyHtml';
-import { applyCorsHeaders, isRestrictedEdgeHost, safeEdgeFetch } from '../../_lib/edgeHelpers';
+import {
+  applyCorsHeaders,
+  isRestrictedEdgeHost,
+  safeEdgeFetch,
+  verifyUpstreamSession,
+} from '../../_lib/edgeHelpers';
+import {
+  createSlidingWindowRateLimiter,
+  extractClientIp,
+} from '../../../src/shared/requestGuard';
 
 interface PagesContext {
   request: Request;
@@ -31,6 +40,14 @@ interface ProxyRequestPayload {
   mode?: 'navigate' | 'rpc';
 }
 
+// Audit 2026-11-24 (item 1.1): the proxy renders arbitrary third-party pages
+// server-side, so it needs both a REAL session check and an abuse budget.
+const proxyRateLimit = createSlidingWindowRateLimiter({
+  maxEvents: 40,
+  windowMs: 60_000,
+  maxTrackedKeys: 4000,
+});
+
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env = {} } = context;
   const incomingUrl = new URL(request.url);
@@ -45,6 +62,8 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   const jsonHeaders = new Headers({ 'Content-Type': 'application/json; charset=utf-8' });
   applyCorsHeaders(jsonHeaders, requestOrigin, incomingUrl.origin, env);
 
+  const upstreamOrigin = (env.SUPREMEAI_BACKEND_URL || DEFAULT_UPSTREAM_ORIGIN).replace(/\/+$/, '');
+
   const authHeader = (request.headers.get('Authorization') || '').trim();
   const keyHeader = (request.headers.get('X-SupremeAI-Key') || '').trim();
   const cookieHeader = request.headers.get('Cookie') || '';
@@ -57,6 +76,35 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     return new Response(
       JSON.stringify({ error: 'Authentication is required to use the workspace browser proxy.' }),
       { status: 401, headers: jsonHeaders }
+    );
+  }
+
+  // Audit 2026-11-24 (item 1.1): presence of a header/cookie is not proof of
+  // authentication. Validate the session against the backend before proxying.
+  const session = await verifyUpstreamSession(request, upstreamOrigin);
+  if (!session.valid) {
+    return new Response(
+      JSON.stringify({
+        error: 'Session could not be verified. Sign in again to use the workspace browser proxy.',
+        code: 'session_unverified',
+      }),
+      { status: 401, headers: jsonHeaders }
+    );
+  }
+
+  // Abuse budget: 40 proxied requests per minute per client IP.
+  const clientIp = extractClientIp(request.headers);
+  const limit = proxyRateLimit(clientIp);
+  if (!limit.allowed) {
+    return new Response(
+      JSON.stringify({
+        error: 'Browser proxy rate limit reached. Please wait before retrying.',
+        retryAfterSec: limit.retryAfterSec,
+      }),
+      {
+        status: 429,
+        headers: { ...Object.fromEntries(jsonHeaders.entries()), 'Retry-After': String(limit.retryAfterSec) },
+      }
     );
   }
 
@@ -100,7 +148,6 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   }
 
   const isLocalRelative = rawTarget.startsWith('/') && !rawTarget.startsWith('//');
-  const upstreamOrigin = (env.SUPREMEAI_BACKEND_URL || DEFAULT_UPSTREAM_ORIGIN).replace(/\/+$/, '');
 
   let parsed: URL;
   try {
