@@ -950,12 +950,11 @@ export default function App() {
       return;
     }
 
-    // When Voice Mode is active, both voice and text inputs trigger spoken voice responses
-    if (isLiveVoiceOpen && attCount === 0 && trimmed) {
-      // বাংলা মন্তব্য: JARVIS ব্রিজ — এর আগে ভয়েস মোডের প্রম্পট সবসময় live সার্ভিসে
-      // রাউট হত, ফলে autonomous agent executor কখনোই চলত না। এখন টাস্ক-সদৃশ
-      // প্রম্পট আসল এক্সিকিউটরে যায় এবং প্রতিটি ধাপ ভয়েসে ঘোষিত হয় (jarvisService
-      // chatStore-এর agent lifecycle থেকেই ন্যারেশন করে)।
+    // When Voice Mode or JARVIS Mode is active, inputs trigger spoken voice responses
+    if ((isLiveVoiceOpen || jarvisEnabled) && attCount === 0 && trimmed) {
+      // বাংলা মন্তব্য: JARVIS ব্রিজ — ভয়েস/টেক্সট প্রম্পট যদি টাস্ক-সদৃশ হয়, তবে
+      // সরাসরি autonomous agent executor-এ যায় এবং প্রতিটি ধাপ ভয়েসে ঘোষিত হয়।
+      // এক্সিকিউশন শেষে অ্যাসিস্ট্যান্টের সমাপনী উত্তরও Edge Neural TTS-এ পাঠ করে শোনানো হয়।
       if (jarvisEnabled) {
         const looksLikeTask = shouldRouteToAutonomousAgent({
           promptText: trimmed,
@@ -976,10 +975,12 @@ export default function App() {
           return;
         }
       }
-      appendVoiceTurn(trimmed, '');
-      const routed = liveVoice.sendTextPrompt(trimmed, { recordUserTranscript: false });
-      if (routed) {
-        return;
+      if (isLiveVoiceOpen) {
+        appendVoiceTurn(trimmed, '');
+        const routed = liveVoice.sendTextPrompt(trimmed, { recordUserTranscript: false });
+        if (routed) {
+          return;
+        }
       }
       // Fallback: generate via standard chat model and speak the response aloud via TTS
       await sendMessage(trimmed, undefined, knowledgeDocs, undefined, undefined, intent);
