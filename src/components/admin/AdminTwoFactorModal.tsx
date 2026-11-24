@@ -4,18 +4,13 @@ import {
   KeyRound,
   AlertCircle,
   X,
-  Copy,
-  Check,
   QrCode,
   RefreshCw,
-  ChevronDown,
-  Eye,
-  EyeOff,
+  Lock,
 } from 'lucide-react';
 import { TotpInputForm } from './two-factor/TotpInputForm';
 import { TrustedBrowserCheckbox } from './two-factor/TrustedBrowserCheckbox';
 import { authService } from '../../services/authService';
-import { logger } from '../../utils/logger';
 
 interface AdminTwoFactorModalProps {
   isOpen: boolean;
@@ -38,13 +33,9 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
   const [isEnrolled, setIsEnrolled] = useState<boolean>(true);
   const [setupData, setSetupData] = useState<{
-    secret: string;
     qrDataUrl: string;
     otpauthUrl: string;
   } | null>(null);
-  const [copiedSecret, setCopiedSecret] = useState(false);
-  const [showManualKey, setShowManualKey] = useState(false);
-  const [revealKey, setRevealKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState(getUtcTotpSecondsRemaining);
 
@@ -76,7 +67,6 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
           }
         }
         setSetupData({
-          secret: setup.secret,
           qrDataUrl: qrDataUrl || '',
           otpauthUrl: setup.otpauthUrl,
         });
@@ -128,17 +118,6 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
     if (e.key === 'Backspace' && !totpDigits[index] && index > 0) {
       const prevInput = document.getElementById(`totp-cell-${index - 1}`);
       prevInput?.focus();
-    }
-  };
-
-  const handleCopySecret = async () => {
-    if (!setupData?.secret) return;
-    try {
-      await navigator.clipboard.writeText(setupData.secret);
-      setCopiedSecret(true);
-      setTimeout(() => setCopiedSecret(false), 1800);
-    } catch (error) {
-      logger.debug('AdminTwoFactorModal: suppressed non-fatal error', error);
     }
   };
 
@@ -258,57 +237,10 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
                   </div>
                 ) : null}
 
-                {/* Collapsible Manual Setup Key — masked by default to protect against shoulder surfing */}
-                <div className="pt-1 border-t border-slate-200/80 dark:border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setShowManualKey((v) => !v)}
-                    className="w-full flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors py-1 cursor-pointer"
-                  >
-                    <span>Can't scan QR code? Manual setup</span>
-                    <ChevronDown
-                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                        showManualKey ? 'rotate-180' : ''
-                      }`}
-                    />
-                  </button>
-
-                  {showManualKey && (
-                    <div className="mt-2 flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-0.5">
-                          Manual Setup Key
-                        </div>
-                        <code className="text-xs font-mono text-slate-800 dark:text-cyan-300 tracking-wider break-all select-all">
-                          {revealKey ? setupData.secret : '•••• •••• •••• •••• •••• ••••'}
-                        </code>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setRevealKey((v) => !v)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-slate-100 dark:hover:bg-slate-850 transition-colors cursor-pointer"
-                          title={revealKey ? 'Hide key' : 'Reveal key'}
-                          aria-label={revealKey ? 'Hide key' : 'Reveal key'}
-                        >
-                          {revealKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCopySecret}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-slate-100 dark:hover:bg-slate-850 transition-colors cursor-pointer"
-                          title="Copy setup key to clipboard"
-                          aria-label="Copy setup key to clipboard"
-                        >
-                          {copiedSecret ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-500" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                {/* Hardened Security Notice: Manual setup key suppressed to prevent shoulder-surfing and token exfiltration */}
+                <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                  <Lock className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+                  <span>Optical Scan Only · Manual keys hidden to prevent credential leaks</span>
                 </div>
               </div>
             )}
