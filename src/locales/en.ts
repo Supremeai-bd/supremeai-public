@@ -1480,6 +1480,26 @@ export const EN_DICT = {
   jarvisEmptyHint: 'Narrations appear here while an autonomous task runs.',
   jarvisStepsTitle: 'Live execution steps',
   jarvisShortcutHint: 'Shortcut',
+  // Consolidated Sidebar Hubs & Auto Capabilities
+  workspaceHub: 'Projects & Tools',
+  accountBillingHub: 'Plan, Keys & Team',
+  subviewWorkspaceHub: 'Projects, Knowledge & Auto Tools',
+  subviewAccountBillingHub: 'Plan, Boost, API Keys & Team',
+  historyViewBtn: 'All',
+  autoToolsBadge: 'Auto On-Demand',
+  autoToolsAlwaysOnNote:
+    'All built-in tools, skills, and grounding connectors activate automatically on demand — no manual pre-toggling needed.',
+  autoRoutingActiveNote:
+    'Auto Mode is always active — SupremeAI picks the optimal model, web grounding, knowledge docs, thinking depth, and skills automatically per task.',
+  tabProjects: 'Projects',
+  tabKnowledge: 'Knowledge & RAG',
+  tabAutoSkills: 'Auto Skills & Plugins',
+  tabPlanUsage: 'Plan & Usage',
+  tabBoostLimit: 'Boost Limit (+150K)',
+  tabApiKeysProviders: 'API Keys & Providers',
+  tabTeam: 'Team',
+  aiMemoryLabel: 'AI Memory',
+  aiMemoryResetBtn: 'Reset Memory',
 };
 
 export type TranslationKeys = keyof typeof EN_DICT;

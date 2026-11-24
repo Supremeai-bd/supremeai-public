@@ -1457,4 +1457,24 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   jarvisEmptyHint: 'অটোনমাস টাস্ক চলার সময় ঘোষণাগুলো এখানে দেখা যাবে।',
   jarvisStepsTitle: 'লাইভ এক্সিকিউশন ধাপ',
   jarvisShortcutHint: 'শর্টকাট',
+  // একীভূত সাইডবার হাব ও স্বয়ংক্রিয় অন-ডিমান্ড টুলস
+  workspaceHub: 'প্রজেক্ট ও টুলস',
+  accountBillingHub: 'প্ল্যান, কী ও টিম',
+  subviewWorkspaceHub: 'প্রজেক্ট, নলেজ ও অটো টুলস',
+  subviewAccountBillingHub: 'প্ল্যান, বুস্ট, API কী ও টিম',
+  historyViewBtn: 'সবগুলো',
+  autoToolsBadge: 'চাহিদামতো স্বয়ংক্রিয়',
+  autoToolsAlwaysOnNote:
+    'সব বিল্ট-ইন টুল, স্কিল এবং কানেক্টর কাজের প্রয়োজন অনুযায়ী নিজে থেকেই স্বয়ংক্রিয়ভাবে চালু হয় — আগে থেকে আলাদা করে চালু করার দরকার নেই।',
+  autoRoutingActiveNote:
+    'অটো মোড সর্বদা সক্রিয় — প্রতিটি কাজের ধরন বুঝে SupremeAI নিজে থেকেই সেরা মডেল, ওয়েব সার্চ, ডকুমেন্ট ও স্কিল ব্যবহার করে।',
+  tabProjects: 'প্রজেক্টস',
+  tabKnowledge: 'নলেজ ও RAG',
+  tabAutoSkills: 'অটো স্কিল ও প্লাগইন',
+  tabPlanUsage: 'প্ল্যান ও ব্যবহার',
+  tabBoostLimit: 'বুস্ট লিমিট (+150K)',
+  tabApiKeysProviders: 'API কী ও প্রোভাইডার',
+  tabTeam: 'টিম',
+  aiMemoryLabel: 'AI মেমরি',
+  aiMemoryResetBtn: 'মেমরি রিসেট',
 };

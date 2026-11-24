@@ -20,13 +20,12 @@ import {
   Search,
   ChevronRight,
 } from 'lucide-react';
-import { WorkspaceTipBar, WorkspaceMicroSurvey } from './components/chat/WorkspaceTipsAndSurvey';
+import { WorkspaceMicroSurvey } from './components/chat/WorkspaceTipsAndSurvey';
 import { shareService } from './services/shareService';
 import { decodeArtifactSharePayload } from './utils/previewShare';
 import { Sidebar } from './components/Sidebar';
 import { ChatThread } from './components/ChatThread';
 import { ChatEmptyState } from './components/chat/ChatEmptyState';
-import { ChatBreadcrumb } from './components/chat/ChatBreadcrumb';
 import { ChatInput } from './components/ChatInput';
 import { useLiveVoiceSession } from './hooks/useLiveVoiceSession';
 import {
@@ -76,9 +75,6 @@ const ChatHistoryView = React.lazy(() =>
 const LiveVoicePanel = React.lazy(() =>
   import('./components/chat/LiveVoicePanel').then((m) => ({ default: m.LiveVoicePanel }))
 );
-const JarvisOverlay = React.lazy(() =>
-  import('./components/chat/JarvisOverlay').then((m) => ({ default: m.JarvisOverlay }))
-);
 const WorkspaceDock = React.lazy(() =>
   import('./components/workspace/WorkspaceDock').then((m) => ({ default: m.WorkspaceDock }))
 );
@@ -93,9 +89,6 @@ const ModelMatrix = React.lazy(() =>
 );
 const RepoHub = React.lazy(() =>
   import('./components/RepoHub').then((m) => ({ default: m.RepoHub }))
-);
-const FederationSyncView = React.lazy(() =>
-  import('./components/sync/FederationSyncView').then((m) => ({ default: m.FederationSyncView }))
 );
 const UserProjectsView = React.lazy(() =>
   import('./components/user/UserProjectsView').then((m) => ({ default: m.UserProjectsView }))
@@ -254,9 +247,7 @@ import { usePlatformStore } from './stores/usePlatformStore';
 import { useControlCenterStore } from './stores/useControlCenterStore';
 import { useTabRouter } from './hooks/useTabRouter';
 import { useMcpTelemetry } from './hooks/useMcpTelemetry';
-import { useFederationBootstrap } from './hooks/useFederationSync';
 import { useAutoUpdater } from './hooks/useAutoUpdater';
-import { SyncStatusPill } from './components/sync/SyncStatusPill';
 import { useOsThemeSync } from './hooks/useOsThemeSync';
 import { LiveScreenBackdrop } from './components/theme/LiveScreenBackdrop';
 import { AdminConsoleNav } from './components/admin/AdminConsoleNav';
@@ -269,7 +260,6 @@ import { getCronMinuteKey, matchesCronAtDate } from './shared/cronMatcher';
 
 export default function App() {
   useOsThemeSync();
-  useFederationBootstrap();
   useAutoUpdater();
 
   useEffect(() => {
@@ -598,7 +588,6 @@ export default function App() {
     memory: userMemory,
   });
   const enableKnowledgeGrounding = !isGuest;
-  const showWorkspaceTips = !isGuest && userSettings.showWorkspaceTips !== false;
 
   const openAuthModal = (reason?: string) => {
     setAuthModal({ open: true, reason });
@@ -724,12 +713,16 @@ export default function App() {
     }
   }, [authUser, effectiveRole, currentRole, activeTab, setActiveTab, setRole]);
 
-  // Route & dock safety guard for Guest, Standard, and Developer workspaces
+  // Route & dock safety guard for Guest, Standard, and Admin workspaces
   useEffect(() => {
+    // বাংলা মন্তব্য: লাইভ ডেটা ফ্যাব্রিক (live-sync) গেস্ট, সাধারণ ইউজার বা অ্যাডমিন—কারও জন্যই প্রয়োজন নেই।
+    if (activeTab === 'live-sync') {
+      setActiveTab('chat', true);
+      return;
+    }
     if (isGuest) {
       if (isDockOpen && !isSharedArtifactView && !hasGeneratedWorkspace) setDockOpen(false);
-      // বাংলা মন্তব্য: গেস্ট মোডে chat এবং live-sync (লাইভ ডেটা ফ্যাব্রিক) ট্যাব উন্মুক্ত থাকবে।
-      if (activeTab !== 'chat' && activeTab !== 'live-sync') {
+      if (activeTab !== 'chat') {
         const label = SUBVIEW_TITLES[activeTab] || 'Workspace Features';
         setActiveTab('chat', true);
         setAuthModal({ open: true, reason: label });
@@ -795,7 +788,11 @@ export default function App() {
   }, [isGuest, t.wsScheduleRunHistoryToast]);
 
   const handleSelectTab = (tab: string) => {
-    if (isGuest && tab !== 'chat' && tab !== 'live-sync') {
+    if (tab === 'live-sync') {
+      setActiveTab('chat');
+      return;
+    }
+    if (isGuest && tab !== 'chat') {
       openAuthModal(SUBVIEW_TITLES[tab] || 'Settings & Workspace Features');
       if (typeof window !== 'undefined' && window.innerWidth < 768) {
         setSidebarOpen(false);
@@ -1384,26 +1381,14 @@ export default function App() {
           {activeTab === 'chat' && (
             <div className="flex-1 min-h-0 min-w-0 flex overflow-hidden relative">
               <main className="@container/chat flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden relative bg-transparent">
-                {/* Streamlined Top Chat Controls + Breadcrumb Navigation */}
+                {/* Streamlined Top Chat Controls */}
                 <div
-                  className={`relative z-20 px-3 sm:px-4 pt-3 flex items-center justify-between gap-2 flex-wrap pointer-events-none shrink-0 ${
+                  className={`relative z-20 px-3 sm:px-4 pt-3 flex items-center justify-end gap-2 flex-wrap pointer-events-none shrink-0 ${
                     !sidebarOpen ? 'pl-14' : ''
                   }`}
                 >
-                  <div className="min-w-0 max-w-full flex items-center">
-                    <ChatBreadcrumb
-                      sessions={sessions}
-                      currentSession={currentSession}
-                      projects={userProjects}
-                      generatingTitleIds={generatingTitleIds}
-                      onSelectSession={selectSession}
-                      onOpenHistory={() => handleSelectTab('chat-history')}
-                      onNewSession={createNewSession}
-                    />
-                  </div>
                   <div className="pointer-events-auto flex items-center gap-1.5 flex-wrap justify-end shrink-0 ml-auto">
                     <PWAInstallButton />
-                    <SyncStatusPill onOpen={() => setActiveTab('live-sync')} compact />
                     {isGuest && (
                       <button
                         type="button"
@@ -1690,31 +1675,6 @@ export default function App() {
                           onToggleJarvis={() => handleToggleJarvis()}
                         />
                       </div>
-                      <WorkspaceTipBar
-                        visible={showWorkspaceTips && effectiveRole === 'user'}
-                        onAction={(actionType) => {
-                          if (actionType === 'open-settings') {
-                            handleSelectTab('user-settings');
-                          } else if (actionType === 'open-knowledge') {
-                            handleSelectTab('user-knowledge');
-                          } else if (actionType === 'open-recipes') {
-                            setIsPromptModalOpen(true);
-                          } else if (actionType === 'prefill-research') {
-                            window.dispatchEvent(
-                              new CustomEvent('supremeai-insert-chat-prompt', {
-                                detail: { text: t.starterResearchPrompt, focus: true },
-                              })
-                            );
-                          }
-                        }}
-                        onMuteTips={() => {
-                          updateSettings({ showWorkspaceTips: false });
-                          toast.info(
-                            'Tips Hidden',
-                            'Re-enable Workspace Discovery Tips anytime in Settings.'
-                          );
-                        }}
-                      />
                     </div>
                   </div>
                 ) : (
@@ -1790,19 +1750,6 @@ export default function App() {
                 </Suspense>
               )}
 
-              {/* বাংলা মন্তব্য: JARVIS HUD — মোড চালু থাকলে অবস্থা, কমান্ড বার ও ঘোষণা দৃশ্যমান */}
-              {jarvisEnabled && (
-                <Suspense fallback={null}>
-                  <JarvisOverlay
-                    onDisable={() => handleToggleJarvis(false)}
-                    isVoicePanelOpen={isLiveVoiceOpen}
-                    onQuickCommand={(cmd) =>
-                      void handleSendMessageWrapper(cmd, undefined, undefined, true, true)
-                    }
-                  />
-                </Suspense>
-              )}
-
               {(!isGuest || isSharedArtifactView || hasGeneratedWorkspace) && (
                 <Suspense fallback={null}>
                   <WorkspaceDock developerMode={developerMode} isGuest={isGuest} />
@@ -1865,7 +1812,6 @@ export default function App() {
 
                 <div className="flex items-center gap-2 shrink-0">
                   <PWAInstallButton />
-                  <SyncStatusPill onOpen={() => setActiveTab('live-sync')} />
                   <button
                     type="button"
                     onClick={() => setActiveTab('chat')}
@@ -2181,8 +2127,6 @@ export default function App() {
                       )}
 
                       {activeTab === 'repos' && <RepoHub />}
-
-                      {activeTab === 'live-sync' && <FederationSyncView />}
                     </Suspense>
                   </ErrorBoundary>
                 </div>

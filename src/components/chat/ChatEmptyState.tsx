@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Brain, Cpu, Zap } from 'lucide-react';
 import { RolePersona, ModelDetail } from '../../types';
 import { useThemeStore } from '../../stores/useThemeStore';
 import { useCustomerStore } from '../../stores/useCustomerStore';
@@ -110,46 +109,6 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
         <span>{activeRole.name}</span>
         <span aria-hidden="true">·</span>
         <span className="theme-accent-text font-medium">SupremeAI Studio</span>
-      </motion.div>
-
-      {/* Unboxed hairline grid highlighting Smart AI automatic capabilities */}
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.22, duration: 0.4 }}
-        className="w-full max-w-2xl mt-6 pt-4 border-t border-slate-200/60 dark:border-slate-800/70"
-      >
-        <div className="grid grid-cols-1 @[560px]/chat:grid-cols-3 gap-4 sm:gap-5 text-left">
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-semibold chat-theme-text">
-              <Brain className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-              <span>{t.smartHighThinkingTitle}</span>
-            </div>
-            <p className="text-[11px] leading-relaxed chat-theme-text-muted">
-              {t.smartHighThinkingDesc}
-            </p>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-semibold chat-theme-text">
-              <Cpu className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
-              <span>{t.smartModelIntelligenceTitle}</span>
-            </div>
-            <p className="text-[11px] leading-relaxed chat-theme-text-muted">
-              {t.smartModelIntelligenceDesc}
-            </p>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-semibold chat-theme-text">
-              <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span>{t.smartLowLatencyTitle}</span>
-            </div>
-            <p className="text-[11px] leading-relaxed chat-theme-text-muted">
-              {t.smartLowLatencyDesc}
-            </p>
-          </div>
-        </div>
       </motion.div>
     </div>
   );

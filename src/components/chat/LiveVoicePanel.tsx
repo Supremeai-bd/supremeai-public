@@ -141,7 +141,7 @@ export const LiveVoicePanel: React.FC<LiveVoicePanelProps> = ({
       data-testid="live-voice-panel"
       aria-label="3D Real-time Voice Companion"
       data-expression={expression}
-      className={`${expressionClass} hidden sm:flex sm:w-[230px] md:w-[300px] lg:w-[350px] xl:w-[390px] shrink-0 h-full bg-transparent border-0 flex-col overflow-hidden relative select-none`}
+      className={`${expressionClass} fixed inset-y-0 right-0 z-40 w-[min(86vw,300px)] bg-slate-950/85 backdrop-blur-xl sm:static sm:z-auto sm:w-[230px] md:w-[300px] lg:w-[350px] xl:w-[390px] sm:bg-transparent sm:backdrop-blur-none shrink-0 h-full border-0 flex flex-col overflow-hidden select-none`}
     >
       <div className="flex-1 w-full h-full min-h-[240px] relative bg-transparent overflow-hidden">
         <LiveVoiceAvatarCanvas
