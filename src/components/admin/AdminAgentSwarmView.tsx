@@ -3,6 +3,8 @@ import { Bot, Play, Pause, Terminal } from 'lucide-react';
 import { SwarmWorker } from '../../types';
 import { toast } from '../../stores/useToastStore';
 import { useI18n } from '../../utils/i18n';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
 
 interface AdminAgentSwarmViewProps {
   workers: SwarmWorker[];
@@ -17,6 +19,13 @@ export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
   const { t } = useI18n();
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(workers[0]?.id ?? null);
   const [isSwarmRunning, setIsSwarmRunning] = useState<boolean>(true);
+
+  // বাংলা মন্তব্য: সোয়ার্ম ডেটা লাইভ সার্ভার থেকে এসেছে নাকি localStorage fallback —
+  // আগে এটা জানার কোনো উপায় ছিল না; এখন ব্যাজ সত্য বলে (fetchAdminSync সফল হলেই LIVE)।
+  const dataSource = useAdminCollectionSource(
+    'swarm',
+    'সোয়ার্ম ওয়ার্কার তালিকা এখনো লাইভ সিঙ্ক হয়নি — localStorage ক্যাশ খালি বা পুরনো।'
+  );
 
   const selectedWorker = workers.find((w) => w.id === selectedWorkerId) || workers[0] || null;
 
@@ -48,6 +57,11 @@ export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-900">
               continuous_agent_loop.py
             </span>
+            <DataSourceBadge
+              source={dataSource.source}
+              reason={dataSource.reason}
+              ageMs={dataSource.ageMs}
+            />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Orchestrate background autonomous agents: solver daemon, AST code verifier, ecosystem

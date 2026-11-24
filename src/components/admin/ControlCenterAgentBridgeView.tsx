@@ -4,10 +4,17 @@ import { useControlCenterStore } from '../../stores/useControlCenterStore';
 import { controlCenterService } from '../../services/controlCenterService';
 import { toast } from '../../stores/useToastStore';
 import { ControlCenterSafetyBar } from './ControlCenterSafetyGateModal';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useControlCenterDomainSource } from '../../hooks/useControlCenterDomainSource';
 
 type SubTab = 'agents' | 'bridge' | 'healer';
 
 export const ControlCenterAgentBridgeView: React.FC = () => {
+  // বাংলা মন্তব্য: এক্সটার্নাল এজেন্ট/ব্রিজ ডেটা লাইভ সার্ভার থেকে এসেছে কি না।
+  const dataSource = useControlCenterDomainSource(
+    'bridge',
+    'এক্সটার্নাল এজেন্ট ও ব্রিজ ওয়ার্ক-অর্ডার এখনো লাইভ সিঙ্ক হয়নি।'
+  );
   const {
     externalAgents,
     bridgeWorkOrders,
@@ -51,6 +58,11 @@ export const ControlCenterAgentBridgeView: React.FC = () => {
           <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
             External Agents, Bridge Work & Auto-Healer
           </h1>
+          <DataSourceBadge
+            source={dataSource.source}
+            reason={dataSource.reason}
+            ageMs={dataSource.ageMs}
+          />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Federated agent leases, open Bridge Work Orders, heartbeats, and self-healing circuit
             states.

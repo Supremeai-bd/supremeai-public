@@ -29,8 +29,16 @@ import { useControlCenterStore } from '../../stores/useControlCenterStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { ControlCenterSafetyBar } from './ControlCenterSafetyGateModal';
 import type { McpServiceHealthMetric } from '../../types/controlCenter';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useControlCenterDomainSource } from '../../hooks/useControlCenterDomainSource';
 
 export const ControlCenterHealthMonitorView: React.FC = () => {
+  // বাংলা মন্তব্য: হেলথ স্ন্যাপশট লাইভ /api/admin/control-plane/service-health থেকে
+  // এসেছে কি না — ব্যাজ সত্য বলে; ব্যর্থতা হলে DEGRADED, সিঙ্ক না হলে UNKNOWN।
+  const dataSource = useControlCenterDomainSource(
+    'serviceHealth',
+    'হেলথ মনিটর স্ন্যাপশট এখনো লাইভ সিঙ্ক হয়নি।'
+  );
   const {
     healthSnapshot,
     isLoadingHealth,
@@ -169,6 +177,11 @@ export const ControlCenterHealthMonitorView: React.FC = () => {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
             MCP Resource & Latency Health Monitor
           </h1>
+          <DataSourceBadge
+            source={dataSource.source}
+            reason={dataSource.reason}
+            ageMs={dataSource.ageMs}
+          />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Real-time CPU, memory, and HTTP round-trip latency across all services registered in MCP
             Tower and local Studio runtime.

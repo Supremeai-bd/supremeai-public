@@ -17,6 +17,7 @@ import {
 import type { CustomerRecord, McpTowerService } from '../../types';
 import type { McpHealthMonitorSnapshot } from '../../types/controlCenter';
 import { usageService, type DailyUsageMetric } from '../../services/usageService';
+import { DataSourceBadge } from '../common/DataSourceBadge';
 import {
   detectTokenAnomalies,
   ANOMALY_SENSITIVITY_PRESETS,
@@ -1009,6 +1010,15 @@ export const AdminD3TelemetryWidgets: React.FC<AdminD3TelemetryWidgetsProps> = (
             </span>
             <span aria-hidden="true">·</span>
             <span>{metricsSource === 'api' ? 'Live Usage API' : 'Customer Ledger Rollup'}</span>
+            <DataSourceBadge
+              source={metricsSource === 'api' ? 'live' : 'demo'}
+              reason={
+                metricsSource === 'api'
+                  ? 'usageService.getUsageMetrics লাইভ API থেকে সফল রেসপন্স।'
+                  : 'লাইভ Usage API খালি/ব্যর্থ — কাস্টমার লেজার রোলআপ থেকে গণনা করা ডেমো ডেটা।'
+              }
+              ageMs={lastSyncedAt.getTime() ? Date.now() - lastSyncedAt.getTime() : undefined}
+            />
             {tokenAnomalyAnalysis.peakAnomaly && (
               <>
                 <span aria-hidden="true">·</span>

@@ -14,10 +14,17 @@ import { useControlCenterStore } from '../../stores/useControlCenterStore';
 import { controlCenterService } from '../../services/controlCenterService';
 import { toast } from '../../stores/useToastStore';
 import { ControlCenterSafetyBar } from './ControlCenterSafetyGateModal';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useControlCenterDomainSource } from '../../hooks/useControlCenterDomainSource';
 
 type SubTab = 'kaggle' | 'devtools' | 'crawlers';
 
 export const ControlCenterComputeFleetView: React.FC = () => {
+  // বাংলা মন্তব্য: Kaggle/DevTools/Crawler টেলিমেট্রি লাইভ সার্ভার থেকে এসেছে কি না।
+  const dataSource = useControlCenterDomainSource(
+    'compute',
+    'কম্পিউট ফ্লিট টেলিমেট্রি এখনো লাইভ সিঙ্ক হয়নি — রেসিলিয়েন্ট লোকাল স্ন্যাপশট দেখানো হচ্ছে।'
+  );
   const {
     kaggleRuns,
     devToolsAudits,
@@ -77,6 +84,11 @@ export const ControlCenterComputeFleetView: React.FC = () => {
             <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               Compute Fleet, Headless Browser & Crawlers
             </h1>
+            <DataSourceBadge
+              source={dataSource.source}
+              reason={dataSource.reason}
+              ageMs={dataSource.ageMs}
+            />
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Kaggle GPU kernel dispatch, Chrome CDP DevTools Core Web Vitals audits, and
               MicroVM/Firecrawl scrapers.

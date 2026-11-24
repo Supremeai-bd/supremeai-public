@@ -21,6 +21,8 @@ import { useControlCenterStore } from '../../stores/useControlCenterStore';
 import { adminService } from '../../services/adminService';
 import { EXTERNAL_URLS } from '../../config/externalUrls';
 import { federationFindings, buildMarkdownAuditReport, surfaces } from '../../data/mcpAuditData';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
 
 interface AdminSystemAuditViewProps {
   auditRecords: SystemAuditRecord[];
@@ -28,6 +30,13 @@ interface AdminSystemAuditViewProps {
 
 export const AdminSystemAuditView: React.FC<AdminSystemAuditViewProps> = ({ auditRecords }) => {
   const { t } = useI18n();
+
+  // বাংলা মন্তব্য: অডিট ট্রেল লাইভ সার্ভার থেকে এসেছে কি না — ব্যাজ সত্য বলে।
+  // Federation সাব-ট্যাব স্ট্যাটিক (src/data/mcpAuditData) — রিজনে সেটাও উল্লেখ থাকে।
+  const dataSource = useAdminCollectionSource(
+    'audit',
+    'অডিট রেকর্ড এখনো লাইভ সিঙ্ক হয়নি — localStorage ক্যাশ দেখানো হচ্ছে; Federation সাব-ট্যাব স্ট্যাটিক ডেমো (src/data/mcpAuditData)।'
+  );
   const [activeTab, setActiveTab] = useState<'trail' | 'federation'>('trail');
   const [searchTerm, setSearchTerm] = useState('');
   const latestGithubCommit = useControlCenterStore((s) => s.latestGithubCommit);
@@ -200,6 +209,11 @@ export const AdminSystemAuditView: React.FC<AdminSystemAuditViewProps> = ({ audi
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900">
               {t.immutableAuditBadge}
             </span>
+            <DataSourceBadge
+              source={dataSource.source}
+              reason={dataSource.reason}
+              ageMs={dataSource.ageMs}
+            />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Track administrative actions, verify GitHub release parity, and monitor MCP Federation &

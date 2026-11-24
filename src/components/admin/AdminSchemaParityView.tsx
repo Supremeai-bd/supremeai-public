@@ -15,6 +15,8 @@ import {
 import { SchemaParityTable } from '../../types';
 import { adminService } from '../../services/adminService';
 import { useI18n } from '../../utils/i18n';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
 
 interface TableDetailItem {
   name: string;
@@ -52,6 +54,12 @@ export const AdminSchemaParityView: React.FC<AdminSchemaParityViewProps> = ({
   onRunParitySync,
 }) => {
   const { t } = useI18n();
+
+  // বাংলা মন্তব্য: স্কিমা প্যারিটি ডেটা লাইভ Supabase ইন্ট্রোস্পেকশন থেকে এসেছে কি না।
+  const dataSource = useAdminCollectionSource(
+    'schema',
+    'স্কিমা প্যারিটি টেবিল এখনো লাইভ সিঙ্ক হয়নি — localStorage ক্যাশ/ফলব্যাক ডেটা দেখানো হচ্ছে।'
+  );
   const [tableList, setTableList] = useState<TableDetailItem[]>(() =>
     mapSchemaTables(initialTables)
   );
@@ -102,6 +110,11 @@ export const AdminSchemaParityView: React.FC<AdminSchemaParityViewProps> = ({
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
               PostgreSQL / pgvector
             </span>
+            <DataSourceBadge
+              source={dataSource.source}
+              reason={dataSource.reason}
+              ageMs={dataSource.ageMs}
+            />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Compare local migrations, staging schema, and live production tables with row-level

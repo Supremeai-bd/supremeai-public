@@ -3,6 +3,8 @@ import { Route, ToggleLeft, ToggleRight, Cpu } from 'lucide-react';
 import { LlmGatewayRoute, GatewayProviderLatency } from '../../types';
 import { apiKeyService } from '../../services/apiKeyService';
 import { useI18n } from '../../utils/i18n';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
 
 interface AdminLlmGatewayViewProps {
   routes: LlmGatewayRoute[];
@@ -15,6 +17,12 @@ export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
   onToggleFailover,
 }) => {
   const { t } = useI18n();
+
+  // বাংলা মন্তব্য: গেটওয়ে রাউট লাইভ সার্ভার থেকে এসেছে কি না — ব্যাজ সত্য বলে।
+  const dataSource = useAdminCollectionSource(
+    'gateway',
+    'LLM গেটওয়ে রাউট এখনো লাইভ সিঙ্ক হয়নি — localStorage ক্যাশ/ফলব্যাক ডেটা দেখানো হচ্ছে।'
+  );
   const [providerLatencies, setProviderLatencies] = useState<GatewayProviderLatency[]>([]);
 
   useEffect(() => {
@@ -83,6 +91,11 @@ export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900">
               {t.llmGatewayBadge}
             </span>
+            <DataSourceBadge
+              source={dataSource.source}
+              reason={dataSource.reason}
+              ageMs={dataSource.ageMs}
+            />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{t.llmGatewaySubtitle}</p>
         </div>

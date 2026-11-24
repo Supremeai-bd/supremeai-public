@@ -29,6 +29,12 @@ import { ChatEmptyState } from './components/chat/ChatEmptyState';
 import { ChatBreadcrumb } from './components/chat/ChatBreadcrumb';
 import { ChatInput } from './components/ChatInput';
 import { useLiveVoiceSession } from './hooks/useLiveVoiceSession';
+import {
+  jarvisService,
+  isJarvisModeEnabled,
+  subscribeJarvisMode,
+} from './services/jarvisService';
+import { shouldRouteToAutonomousAgent } from './shared/agentTypes';
 import { isAuthorizedAdminEmail } from './services/authService';
 import { useHitlApproval } from './hooks/useHitlApproval';
 import { ToastContainer } from './components/common/ToastContainer';
@@ -61,6 +67,9 @@ const ChatHistoryView = React.lazy(() =>
 );
 const LiveVoicePanel = React.lazy(() =>
   import('./components/chat/LiveVoicePanel').then((m) => ({ default: m.LiveVoicePanel }))
+);
+const JarvisOverlay = React.lazy(() =>
+  import('./components/chat/JarvisOverlay').then((m) => ({ default: m.JarvisOverlay }))
 );
 const WorkspaceDock = React.lazy(() =>
   import('./components/workspace/WorkspaceDock').then((m) => ({ default: m.WorkspaceDock }))
@@ -455,6 +464,27 @@ export default function App() {
     typeof window !== 'undefined' ? window.innerWidth >= 900 : true
   );
   const [isLiveVoiceOpen, setIsLiveVoiceOpen] = useState<boolean>(false);
+
+  // বাংলা মন্তব্য: JARVIS মোড — ভয়েস + অটোনমাস টাস্ক এক্সিকিউশনের সেতু।
+  // মোড-স্টেট jarvisService (localStorage-backed) থেকে আসে; ইভেন্টে সিঙ্ক হয়।
+  const [jarvisEnabled, setJarvisEnabled] = useState<boolean>(() => isJarvisModeEnabled());
+  useEffect(() => subscribeJarvisMode(setJarvisEnabled), []);
+  const toggleJarvis = () => {
+    const next = !isJarvisModeEnabled();
+    jarvisService.setEnabled(next, { announce: true });
+  };
+  // Ctrl+Alt+J — যেকোনো সময় JARVIS টগল (ডেস্কটপ গ্লোবাল শর্টকাটের সাথে সামঞ্জস্যপূর্ণ প্যাটার্ন)
+  useEffect(() => {
+    const onJarvisShortcut = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && (e.key === 'j' || e.key === 'J')) {
+        e.preventDefault();
+        toggleJarvis();
+      }
+    };
+    window.addEventListener('keydown', onJarvisShortcut);
+    return () => window.removeEventListener('keydown', onJarvisShortcut);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const liveVoiceSystemInstruction =
     customInstruction.trim() ||
     userSettings.customInstructions?.trim() ||
@@ -922,6 +952,30 @@ export default function App() {
 
     // When Voice Mode is active, both voice and text inputs trigger spoken voice responses
     if (isLiveVoiceOpen && attCount === 0 && trimmed) {
+      // বাংলা মন্তব্য: JARVIS ব্রিজ — এর আগে ভয়েস মোডের প্রম্পট সবসময় live সার্ভিসে
+      // রাউট হত, ফলে autonomous agent executor কখনোই চলত না। এখন টাস্ক-সদৃশ
+      // প্রম্পট আসল এক্সিকিউটরে যায় এবং প্রতিটি ধাপ ভয়েসে ঘোষিত হয় (jarvisService
+      // chatStore-এর agent lifecycle থেকেই ন্যারেশন করে)।
+      if (jarvisEnabled) {
+        const looksLikeTask = shouldRouteToAutonomousAgent({
+          promptText: trimmed,
+          intent,
+          hasAttachments: false,
+          deepResearch: false,
+          workspaceFileCount: useWorkspaceStore.getState().projectFiles.length,
+        });
+        if (looksLikeTask) {
+          await sendMessage(trimmed, undefined, knowledgeDocs, undefined, undefined, intent);
+          const updatedSession = useChatStore
+            .getState()
+            .sessions.find((s) => s.id === activeSessionId);
+          const lastMsg = updatedSession?.messages?.[updatedSession.messages.length - 1];
+          if (lastMsg?.role === 'assistant' && lastMsg.content) {
+            liveVoice.speakFallbackText(lastMsg.content);
+          }
+          return;
+        }
+      }
       appendVoiceTurn(trimmed, '');
       const routed = liveVoice.sendTextPrompt(trimmed, { recordUserTranscript: false });
       if (routed) {
@@ -1449,6 +1503,8 @@ export default function App() {
                           onOpenLiveVoice={() => setIsLiveVoiceOpen((v) => !v)}
                           isLiveVoiceOpen={isLiveVoiceOpen}
                           voiceStatus={liveVoice.status}
+                          jarvisEnabled={jarvisEnabled}
+                          onToggleJarvis={toggleJarvis}
                         />
                       </div>
                       <WorkspaceTipBar
@@ -1529,6 +1585,8 @@ export default function App() {
                       onOpenLiveVoice={() => setIsLiveVoiceOpen((v) => !v)}
                       isLiveVoiceOpen={isLiveVoiceOpen}
                       voiceStatus={liveVoice.status}
+                      jarvisEnabled={jarvisEnabled}
+                      onToggleJarvis={toggleJarvis}
                     />
                   </div>
                 )}
@@ -1547,6 +1605,13 @@ export default function App() {
                     voicePitch={liveVoice.voicePitch}
                     onChangeVoicePitch={liveVoice.setVoicePitch}
                   />
+                </Suspense>
+              )}
+
+              {/* বাংলা মন্তব্য: JARVIS HUD — মোড চালু থাকলে অবস্থা ও ঘোষণা সবসময় দৃশ্যমান */}
+              {jarvisEnabled && (
+                <Suspense fallback={null}>
+                  <JarvisOverlay onDisable={() => jarvisService.setEnabled(false)} />
                 </Suspense>
               )}
 

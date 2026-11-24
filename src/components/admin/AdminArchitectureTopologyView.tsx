@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { env } from '../../config/env';
 import { useI18n } from '../../utils/i18n';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useDataSource } from '../../hooks/useDataSource';
 import {
   Server,
   FolderGit2,
@@ -444,10 +446,23 @@ export const AdminArchitectureTopologyView: React.FC = () => {
   const { t } = useI18n();
   const [viewMode, setViewMode] = useState<TopologyViewMode>('full-ecosystem');
   const [healthMap, setHealthMap] = useState<Record<string, NodeHealth>>({});
+  // বাংলা মন্তব্য: প্রোব-ফলাফলের সারসংক্ষেপ — ব্যাজ এটাই দেখায় (মিথ্যা "Live" নয়)।
+  const [probeMeta, setProbeMeta] = useState<{ at?: number; error?: string; okCount?: number }>(
+    {}
+  );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isProbing, setIsProbing] = useState<boolean>(false);
   const [lastProbeTime, setLastProbeTime] = useState<number>(Date.now());
   const [simulatedFailureIds, setSimulatedFailureIds] = useState<Set<string>>(new Set());
+
+  // বাংলা মন্তব্য: টপোলজির হেলথ আসলে রিয়েল প্রোব (gateway /api/health + MCP endpoint)
+  // থেকে আসে — তাই ব্যাজও প্রোব-ফলাফলের উপর ভিত্তি করে, লেবেল থেকে নয়।
+  const dataSource = useDataSource({
+    loaded: Boolean(probeMeta.at),
+    lastUpdatedMs: probeMeta.at,
+    error: probeMeta.error ?? null,
+    demoReason: 'টপোলজি প্রোব এখনো চলেনি।',
+  });
 
   const probeAllServices = async () => {
     setIsProbing(true);
@@ -709,6 +724,13 @@ export const AdminArchitectureTopologyView: React.FC = () => {
     });
 
     setHealthMap(next);
+    // বাংলা মন্তব্য: কয়টি নোড সত্যিই প্রোব সফল হয়েছে — সব ব্যর্থ হলে ব্যাজ DEGRADED।
+    const okCount = Object.values(next).filter((h) => h.status === 'healthy').length;
+    setProbeMeta({
+      at: now,
+      okCount,
+      error: okCount === 0 ? 'সব প্রোব ব্যর্থ — কোনো নোডে পৌঁছানো যায়নি।' : undefined,
+    });
     setIsProbing(false);
   };
 
@@ -772,8 +794,15 @@ export const AdminArchitectureTopologyView: React.FC = () => {
             <h2 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
               {t.topologyTitle}
               <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono font-normal">
-                Live Dynamic Map
+                {typeof probeMeta.okCount === 'number'
+                  ? `${probeMeta.okCount} probes OK`
+                  : 'Live Probes'}
               </span>
+              <DataSourceBadge
+                source={dataSource.source}
+                reason={dataSource.reason}
+                ageMs={dataSource.ageMs}
+              />
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-1">

@@ -33,6 +33,8 @@ import { AdminD3TelemetryWidgets } from './AdminD3TelemetryWidgets';
 import { AdminLiveServicesCommandMatrix } from './AdminLiveServicesCommandMatrix';
 import { AdminProviderPoolsOverviewCard } from './AdminProviderPoolsOverviewCard';
 import { useI18n } from '../../utils/i18n';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useControlCenterDomainSource } from '../../hooks/useControlCenterDomainSource';
 
 interface AdminOverviewViewProps {
   customers: CustomerRecord[];
@@ -52,7 +54,14 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
   onOpenDangerConfirm,
 }) => {
   const { t } = useI18n();
-  const { config, isSaving, updateConfig, updateModelPolicy } = usePlatformStore();
+
+  // বাংলা মন্তব্য: ওভারভিউ ডেটা (commit provenance, HITL count, traffic) লাইভ কন্ট্রোল-প্লেন
+  // থেকে এসেছে কি না — ব্যাজ সত্য বলে। SUPREMEAI_MODELS মডেল কার্ড স্ট্যাটিক (src/data/models)।
+  const dataSource = useControlCenterDomainSource(
+    'overview',
+    'কন্ট্রোল-প্লেন ওভারভিউ এখনো লাইভ সিঙ্ক হয়নি; মডেল কার্ডগুলো স্ট্যাটিক ক্যাটালগ (src/data/models)।'
+  );
+  const { config, isLoaded, isSaving, updateConfig, updateModelPolicy } = usePlatformStore();
   const authUser = useAuthStore((s) => s.authUser);
   const {
     latestGithubCommit,
@@ -160,6 +169,12 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#f8faff] text-balance">
                 {t.ovPageTitle}
               </h1>
+              <DataSourceBadge
+                source={dataSource.source}
+                reason={dataSource.reason}
+                ageMs={dataSource.ageMs}
+                className="border-white/30 bg-white/10 text-white/90 [&_span:last-child]:text-white/80"
+              />
               <p className="text-[13px] text-[#c2cfe5] leading-relaxed">
                 Unified orchestration over MCP Tower, GitHub release provenance, HITL governance,
                 memory, and cluster health.
@@ -607,7 +622,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
                 <p className="text-[11px] text-slate-400">{t.ovServerEnforcedHint}</p>
               </div>
               <span className="text-[11px] font-mono text-slate-400">
-                {isSaving ? 'Saving...' : 'Synced'}
+                {isSaving ? 'Saving…' : isLoaded ? 'Synced' : 'Local defaults'}
               </span>
             </div>
 

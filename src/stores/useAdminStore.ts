@@ -29,6 +29,18 @@ interface BlockedIpRecord {
   date: string;
 }
 
+/** বাংলা মন্তব্য: কোন কালেকশন কবে লাইভ সার্ভার থেকে সফলভাবে এসেছে — ব্যাজের সত্যের উৎস। */
+export type AdminCollectionKey =
+  | 'customers'
+  | 'blockedIps'
+  | 'audit'
+  | 'swarm'
+  | 'queue'
+  | 'schema'
+  | 'gateway'
+  | 'security'
+  | 'mcpServices';
+
 interface AdminState {
   mcpServices: McpTowerService[];
   isProbingCluster: boolean;
@@ -40,6 +52,15 @@ interface AdminState {
   blockedIps: BlockedIpRecord[];
   auditRecords: SystemAuditRecord[];
   customers: CustomerRecord[];
+
+  /**
+   * বাংলা মন্তব্য: প্রতিটি কালেকশন শেষ কবে লাইভ সার্ভার API থেকে সফলভাবে লোড হয়েছে
+   * (epoch ms)। localStorage fallback ডেটা এখানে গণ্য নয় — ভিউগুলো DataSourceBadge
+   * এর মাধ্যমে এই সত্য প্রকাশ করে, আগের মতো নিঃশর্ত "LIVE" দাবি নয়।
+   */
+  serverSyncedAt: Partial<Record<AdminCollectionKey, number>>;
+  /** শেষ সার্ভার সিঙ্ক ব্যর্থ হলে তার বার্তা (null = জানা ব্যর্থতা নেই) */
+  lastSyncError: string | null;
 
   // MCP & Central Sync Operations
   fetchMcpServices: (options?: { force?: boolean }) => Promise<void>;
@@ -105,16 +126,26 @@ export const useAdminStore = create<AdminState>((set, get) => {
     blockedIps: initialBlockedIps,
     auditRecords: initialAuditRecords,
     customers: initialCustomers,
+    serverSyncedAt: {},
+    lastSyncError: null,
 
     fetchMcpServices: async (options) => {
       try {
         const services = await adminService.fetchMcpServices(options);
         if (services && services.length > 0) {
           localStorage.setItem(MCP_SERVICES_KEY, JSON.stringify(services));
-          set({ mcpServices: services });
+          set((state) => ({
+            mcpServices: services,
+            serverSyncedAt: { ...state.serverSyncedAt, mcpServices: Date.now() },
+            lastSyncError: null,
+          }));
         }
       } catch (err) {
         logger.warn('MCP tower fetch failed, using cached/mock telemetry:', err);
+        set({
+          lastSyncError:
+            err instanceof Error ? err.message : 'MCP tower fetch failed (using cached data).',
+        });
       }
     },
 
@@ -123,10 +154,18 @@ export const useAdminStore = create<AdminState>((set, get) => {
         const records = await adminService.fetchAuditRecords();
         if (records && records.length > 0) {
           localStorage.setItem(AUDIT_KEY, JSON.stringify(records));
-          set({ auditRecords: records });
+          set((state) => ({
+            auditRecords: records,
+            serverSyncedAt: { ...state.serverSyncedAt, audit: Date.now() },
+            lastSyncError: null,
+          }));
         }
       } catch (error) {
         logger.debug('useAdminStore: suppressed non-fatal error', error);
+        set({
+          lastSyncError:
+            error instanceof Error ? error.message : 'Audit records fetch failed.',
+        });
       }
     },
 
@@ -187,6 +226,63 @@ export const useAdminStore = create<AdminState>((set, get) => {
           localStorage.setItem(SECURITY_KEY, JSON.stringify(securityEventsRes.value));
           set({ securityEvents: securityEventsRes.value });
         }
+
+        // বাংলা মন্তব্য: শুধুমাত্র সত্যিই সার্ভার থেকে আসা কালেকশনগুলোই "live" গণ্য হবে —
+        // ব্যর্থ/অবৈধ রেসপন্সের টাইমস্ট্যাম্প মুছে দেওয়া হয়, ফলে ব্যাজ মিথ্যা বলতে পারে না।
+        const nowMs = Date.now();
+        const syncErrors: string[] = [];
+        const markServerSynced = (key: AdminCollectionKey, ok: boolean, reason?: string) => {
+          if (ok) return { [key]: nowMs } as Partial<Record<AdminCollectionKey, number>>;
+          if (reason) syncErrors.push(`${key}: ${reason}`);
+          return {} as Partial<Record<AdminCollectionKey, number>>;
+        };
+        const collectedSync = {
+          ...markServerSynced(
+            'customers',
+            customersRes.status === 'fulfilled' && Array.isArray(customersRes.value),
+            customersRes.status === 'rejected' ? String(customersRes.reason) : undefined
+          ),
+          ...markServerSynced(
+            'blockedIps',
+            blockedIpsRes.status === 'fulfilled' && Array.isArray(blockedIpsRes.value),
+            blockedIpsRes.status === 'rejected' ? String(blockedIpsRes.reason) : undefined
+          ),
+          ...markServerSynced(
+            'audit',
+            auditRecordsRes.status === 'fulfilled' && Array.isArray(auditRecordsRes.value),
+            auditRecordsRes.status === 'rejected' ? String(auditRecordsRes.reason) : undefined
+          ),
+          ...markServerSynced(
+            'swarm',
+            swarmWorkersRes.status === 'fulfilled' && Array.isArray(swarmWorkersRes.value),
+            swarmWorkersRes.status === 'rejected' ? String(swarmWorkersRes.reason) : undefined
+          ),
+          ...markServerSynced(
+            'queue',
+            queueJobsRes.status === 'fulfilled' && Array.isArray(queueJobsRes.value),
+            queueJobsRes.status === 'rejected' ? String(queueJobsRes.reason) : undefined
+          ),
+          ...markServerSynced(
+            'schema',
+            schemaTablesRes.status === 'fulfilled' && Array.isArray(schemaTablesRes.value),
+            schemaTablesRes.status === 'rejected' ? String(schemaTablesRes.reason) : undefined
+          ),
+          ...markServerSynced(
+            'gateway',
+            gatewayPayloadRes.status === 'fulfilled' &&
+              Array.isArray(gatewayPayloadRes.value?.routes),
+            gatewayPayloadRes.status === 'rejected' ? String(gatewayPayloadRes.reason) : undefined
+          ),
+          ...markServerSynced(
+            'security',
+            securityEventsRes.status === 'fulfilled' && Array.isArray(securityEventsRes.value),
+            securityEventsRes.status === 'rejected' ? String(securityEventsRes.reason) : undefined
+          ),
+        };
+        set((state) => ({
+          serverSyncedAt: { ...state.serverSyncedAt, ...collectedSync },
+          lastSyncError: syncErrors.length > 0 ? syncErrors.join('; ') : null,
+        }));
       } catch (err) {
         logger.warn('Admin central sync failed, keeping local cache:', err);
       }
@@ -259,7 +355,11 @@ export const useAdminStore = create<AdminState>((set, get) => {
         const services = await adminService.probeMcpCluster();
         if (services && services.length > 0) {
           localStorage.setItem(MCP_SERVICES_KEY, JSON.stringify(services));
-          set({ mcpServices: services });
+          set((state) => ({
+            mcpServices: services,
+            serverSyncedAt: { ...state.serverSyncedAt, mcpServices: Date.now() },
+            lastSyncError: null,
+          }));
           toast.info('Cluster Health Probed', 'Active ping latency and memory stats updated.');
         }
       } catch (err) {

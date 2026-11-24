@@ -3,6 +3,8 @@ import { ShieldAlert, Ban, Trash2 } from 'lucide-react';
 import { SecurityEventLog } from '../../types';
 import { adminService } from '../../services/adminService';
 import { useI18n } from '../../utils/i18n';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
 
 interface AdminSecurityViewProps {
   securityEvents: SecurityEventLog[];
@@ -18,6 +20,12 @@ export const AdminSecurityView: React.FC<AdminSecurityViewProps> = ({
   blockedIps,
 }) => {
   const { t } = useI18n();
+
+  // বাংলা মন্তব্য: সিকিউরিটি ইভেন্ট লাইভ সার্ভার থেকে এসেছে কি না — ব্যাজ সত্য বলে।
+  const dataSource = useAdminCollectionSource(
+    'security',
+    'সিকিউরিটি ইভেন্ট এখনো লাইভ সিঙ্ক হয়নি — localStorage ক্যাশ/ফলব্যাক ডেটা দেখানো হচ্ছে।'
+  );
   const [newIp, setNewIp] = useState('');
   const [newReason, setNewReason] = useState('');
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
@@ -75,6 +83,11 @@ export const AdminSecurityView: React.FC<AdminSecurityViewProps> = ({
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900">
               {t.securityBadge}
             </span>
+            <DataSourceBadge
+              source={dataSource.source}
+              reason={dataSource.reason}
+              ageMs={dataSource.ageMs}
+            />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Audit adversarial prompt injection attempts, inspect unauthorized traffic anomalies,

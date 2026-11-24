@@ -3,6 +3,8 @@ import { Search, Download, Plus, X, Edit2, Trash2, UserCheck } from 'lucide-reac
 import { CustomerRecord } from '../../types';
 import { PLAN_CATALOG, getPlanSpec } from '../../config/plans';
 import { useI18n } from '../../utils/i18n';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
 
 interface AdminCustomersViewProps {
   customers: CustomerRecord[];
@@ -20,6 +22,12 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({
   onImpersonateCustomer,
 }) => {
   const { t } = useI18n();
+
+  // বাংলা মন্তব্য: কাস্টমার ডিরেক্টরি লাইভ সার্ভার থেকে এসেছে কি না — ব্যাজ সত্য বলে।
+  const dataSource = useAdminCollectionSource(
+    'customers',
+    'কাস্টমার রেকর্ড এখনো লাইভ সিঙ্ক হয়নি — localStorage ক্যাশ/ফলব্যাক ডেটা দেখানো হচ্ছে।'
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [tierFilter, setTierFilter] = useState<'all' | 'Paid' | 'Enterprise' | 'Free'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'past_due' | 'suspended'>(
@@ -142,6 +150,12 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
             {t.customerDirectoryTitle}
           </h1>
+          <span className="sr-only">{dataSource.reason}</span>
+          <DataSourceBadge
+            source={dataSource.source}
+            reason={dataSource.reason}
+            ageMs={dataSource.ageMs}
+          />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {t.customerDirectorySubtitle}
           </p>

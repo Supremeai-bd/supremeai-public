@@ -12,10 +12,17 @@ import { useControlCenterStore } from '../../stores/useControlCenterStore';
 import { controlCenterService } from '../../services/controlCenterService';
 import { toast } from '../../stores/useToastStore';
 import { ControlCenterSafetyBar } from './ControlCenterSafetyGateModal';
+import { DataSourceBadge } from '../common/DataSourceBadge';
+import { useControlCenterDomainSource } from '../../hooks/useControlCenterDomainSource';
 
 type SubTab = 'telegram' | 'finops' | 'cron';
 
 export const ControlCenterFinOpsOmnichannelView: React.FC = () => {
+  // বাংলা মন্তব্য: FinOps/Telegram/Cron ডেটা লাইভ সার্ভার থেকে এসেছে কি না।
+  const dataSource = useControlCenterDomainSource(
+    'finOps',
+    'FinOps ও অমনিচ্যানেল ডেটা এখনো লাইভ সিঙ্ক হয়নি।'
+  );
   const {
     finOpsMesh,
     telegramLogs,
@@ -80,6 +87,11 @@ export const ControlCenterFinOpsOmnichannelView: React.FC = () => {
           <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
             FinOps Mesh, Telegram Ops & Cron Scheduler
           </h1>
+          <DataSourceBadge
+            source={dataSource.source}
+            reason={dataSource.reason}
+            ageMs={dataSource.ageMs}
+          />
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Zero-cost infrastructure spend guard, bidirectional Telegram command console, and
             keepwarm/parity/GC crons.
