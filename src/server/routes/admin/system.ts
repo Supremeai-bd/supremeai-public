@@ -1,5 +1,11 @@
 import type { Express, Request, Response } from 'express';
 import { getRealGatewayTrafficSummary } from '../../mcpHealthCollector';
+import { isSafeGitHubRepoSlug } from '../../../shared/serverSecurity';
+import {
+  extractCiErrorSnippet,
+  type GitHubFailedJobSummary,
+  type GitHubRunAnnotation,
+} from '../../../utils/githubPipelineMetrics';
 
 /**
  * Admin System — schema parity + LLM gateway + GitHub pipeline
@@ -398,6 +404,10 @@ export function registerAdminSystemRoutes(app: Express, ctx: AdminSystemContext)
       typeof req.query.repo === 'string' && req.query.repo.trim()
         ? req.query.repo.trim()
         : 'Supremeai-bd/supremeai';
+    if (!isSafeGitHubRepoSlug(repo)) {
+      res.status(400).json({ error: 'Invalid GitHub repository slug.' });
+      return;
+    }
     const { headers, hasToken } = getGithubAuthHeaders();
     try {
       const ghRes = await fetch(`https://api.github.com/repos/${repo}/actions/runs?per_page=10`, {
@@ -424,7 +434,12 @@ export function registerAdminSystemRoutes(app: Express, ctx: AdminSystemContext)
           status: (rr.status as string) || 'completed',
           conclusion: (rr.conclusion as string | null) ?? null,
           head_branch: (rr.head_branch as string) || 'main',
+          head_sha: (rr.head_sha as string | null) ?? null,
           created_at: rr.created_at,
+          run_started_at: rr.run_started_at ?? null,
+          updated_at: rr.updated_at ?? null,
+          run_number: rr.run_number ?? null,
+          event: rr.event ?? null,
           html_url: rr.html_url,
         };
       });
@@ -443,6 +458,10 @@ export function registerAdminSystemRoutes(app: Express, ctx: AdminSystemContext)
       typeof req.query.repo === 'string' && req.query.repo.trim()
         ? req.query.repo.trim()
         : 'Supremeai-bd/supremeai';
+    if (!isSafeGitHubRepoSlug(repo)) {
+      res.status(400).json({ error: 'Invalid GitHub repository slug.' });
+      return;
+    }
     const { headers, hasToken } = getGithubAuthHeaders();
     try {
       const ghRes = await fetch(
@@ -479,6 +498,187 @@ export function registerAdminSystemRoutes(app: Express, ctx: AdminSystemContext)
         pulls: [],
         tokenConfigured: hasToken,
         warning: err instanceof Error ? err.message : 'GitHub API unreachable',
+      });
+    }
+  });
+
+  // বাংলা মন্তব্য: ব্যর্থ ডিপ্লয়মেন্ট রানের নির্দিষ্ট stderr ও অ্যানোটেশন স্নিপেট সংগ্রহের এন্ডপয়েন্ট।
+  app.get('/api/admin/github/runs/:id/logs', async (req: Request, res: Response) => {
+    const runId = String(req.params.id || '').trim();
+    const repo =
+      typeof req.query.repo === 'string' && req.query.repo.trim()
+        ? req.query.repo.trim()
+        : 'Supremeai-bd/supremeai';
+
+    if (!/^\d{1,20}$/.test(runId)) {
+      res.status(400).json({ error: 'Valid numeric GitHub workflow run ID is required.' });
+      return;
+    }
+    if (!isSafeGitHubRepoSlug(repo)) {
+      res.status(400).json({ error: 'Invalid GitHub repository slug.' });
+      return;
+    }
+
+    const { headers, hasToken } = getGithubAuthHeaders();
+    try {
+      const jobsRes = await fetch(
+        `https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs?per_page=30`,
+        {
+          headers,
+          signal: AbortSignal.timeout(6000),
+        },
+      );
+
+      if (!jobsRes.ok) {
+        res.json({
+          runId,
+          repo,
+          available: false,
+          reason:
+            jobsRes.status === 401 || jobsRes.status === 403
+              ? `GitHub API returned HTTP ${jobsRes.status} (${hasToken ? 'check GITHUB_TOKEN actions:read permission' : 'configure GITHUB_TOKEN on server'}).`
+              : `GitHub jobs API returned HTTP ${jobsRes.status}.`,
+          failedJobs: [],
+          annotations: [],
+          stderrSnippet: '',
+          truncated: false,
+        });
+        return;
+      }
+
+      const jobsPayload = (await jobsRes.json().catch(() => ({}))) as {
+        jobs?: Array<Record<string, unknown>>;
+      };
+      const allJobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
+      const failedConclusions = new Set([
+        'failure',
+        'timed_out',
+        'startup_failure',
+        'action_required',
+        'stale',
+      ]);
+      const failedRawJobs = allJobs.filter((j) =>
+        failedConclusions.has(String(j.conclusion || '').toLowerCase()),
+      );
+      const targetJobs =
+        failedRawJobs.length > 0
+          ? failedRawJobs
+          : allJobs.filter((j) => String(j.conclusion || '').toLowerCase() !== 'success');
+
+      const failedJobs: GitHubFailedJobSummary[] = targetJobs.slice(0, 5).map((j) => {
+        const steps = Array.isArray(j.steps) ? (j.steps as Array<Record<string, unknown>>) : [];
+        const failedSteps = steps
+          .filter((s) => failedConclusions.has(String(s.conclusion || '').toLowerCase()))
+          .map((s) => ({
+            name: String(s.name || 'Failed step'),
+            number: Number(s.number || 0),
+            conclusion: (s.conclusion as string | null) ?? null,
+          }));
+        return {
+          id: Number(j.id || 0),
+          name: String(j.name || 'Workflow job'),
+          conclusion: (j.conclusion as string | null) ?? null,
+          html_url: typeof j.html_url === 'string' ? j.html_url : null,
+          failedSteps,
+        };
+      });
+
+      const inspectedJobs = failedJobs.filter((j) => j.id > 0).slice(0, 2);
+      const annotations: GitHubRunAnnotation[] = [];
+      const snippetParts: string[] = [];
+      let truncated = false;
+      let logStatusReason: string | undefined;
+
+      await Promise.all(
+        inspectedJobs.map(async (job) => {
+          const [annRes, logRes] = await Promise.allSettled([
+            fetch(
+              `https://api.github.com/repos/${repo}/check-runs/${job.id}/annotations?per_page=15`,
+              {
+                headers,
+                signal: AbortSignal.timeout(5000),
+              },
+            ),
+            fetch(`https://api.github.com/repos/${repo}/actions/jobs/${job.id}/logs`, {
+              headers,
+              signal: AbortSignal.timeout(7000),
+            }),
+          ]);
+
+          if (annRes.status === 'fulfilled' && annRes.value.ok) {
+            const annJson = (await annRes.value.json().catch(() => [])) as Array<
+              Record<string, unknown>
+            >;
+            if (Array.isArray(annJson)) {
+              for (const item of annJson) {
+                const msg = String(item.message || '').trim();
+                if (!msg) continue;
+                annotations.push({
+                  path: String(item.path || ''),
+                  startLine: Number(item.start_line || 0),
+                  annotationLevel: String(item.annotation_level || 'failure'),
+                  title: typeof item.title === 'string' && item.title ? item.title : null,
+                  message: msg,
+                });
+              }
+            }
+          }
+
+          if (logRes.status === 'fulfilled') {
+            if (logRes.value.ok) {
+              const rawText = await logRes.value.text();
+              const bounded = rawText.length > 300_000 ? rawText.slice(-300_000) : rawText;
+              const extracted = extractCiErrorSnippet(bounded, 40, 5000);
+              if (extracted.truncated || rawText.length > 300_000) {
+                truncated = true;
+              }
+              if (extracted.snippet) {
+                const header = inspectedJobs.length > 1 ? `=== ${job.name} ===\n` : '';
+                snippetParts.push(`${header}${extracted.snippet}`);
+              }
+            } else if (!logStatusReason) {
+              logStatusReason =
+                logRes.value.status === 410
+                  ? 'Raw job logs have expired on GitHub.'
+                  : `Raw job log download returned HTTP ${logRes.value.status}${
+                      logRes.value.status === 401 || logRes.value.status === 403
+                        ? hasToken
+                          ? ' (token may lack actions:read scope)'
+                          : ' (configure GITHUB_TOKEN on server)'
+                        : ''
+                    }.`;
+            }
+          }
+        }),
+      );
+
+      const stderrSnippet = snippetParts.join('\n\n');
+      const available = Boolean(stderrSnippet || annotations.length > 0);
+      res.json({
+        runId,
+        repo,
+        available,
+        reason: available
+          ? logStatusReason
+          : logStatusReason ||
+            (failedJobs.length > 0
+              ? 'No stderr lines or annotations were exposed by GitHub for this run.'
+              : 'No failed job details found for this workflow run.'),
+        failedJobs,
+        annotations: annotations.slice(0, 12),
+        stderrSnippet,
+        truncated,
+      });
+    } catch (err: unknown) {
+      res.json({
+        runId,
+        repo,
+        available: false,
+        reason: err instanceof Error ? err.message : 'Unable to fetch GitHub job logs.',
+        failedJobs: [],
+        annotations: [],
+        stderrSnippet: '',
+        truncated: false,
       });
     }
   });

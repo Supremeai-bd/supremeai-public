@@ -9,6 +9,7 @@ import {
   fetchWithTimeout,
   timingSafeEqualStrings,
 } from '../../_lib/edgeHelpers';
+import { extractCiErrorSnippet } from '../../../src/utils/githubPipelineMetrics';
 
 // বাংলা মন্তব্য: ফ্রন্টএন্ডের SchemaParityTable এবং LlmGatewayRoute ইন্টারফেসের সাথে শতভাগ সামঞ্জস্যপূর্ণ এজ প্যারিটি ডেটা।
 const DEFAULT_SCHEMA_TABLES = [
@@ -268,6 +269,154 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       } catch {
         return jsonEdgeResponse(
           { runs: [], tokenConfigured: Boolean(token) },
+          200,
+          request,
+          undefined,
+          env
+        );
+      }
+    }
+
+    const logMatch = path.match(/^\/api\/admin\/github\/runs\/(\d{1,20})\/logs$/);
+    if (logMatch && request.method === 'GET') {
+      const runId = logMatch[1];
+      try {
+        const jobsRes = await fetchWithTimeout(
+          `https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs?per_page=30`,
+          { headers: ghHeaders },
+          6000
+        );
+        if (!jobsRes.ok) {
+          return jsonEdgeResponse(
+            {
+              runId,
+              repo,
+              available: false,
+              reason: `GitHub jobs API returned HTTP ${jobsRes.status}.`,
+              failedJobs: [],
+              annotations: [],
+              stderrSnippet: '',
+              truncated: false,
+            },
+            200,
+            request,
+            undefined,
+            env
+          );
+        }
+        const jobsPayload = (await jobsRes.json().catch(() => ({}))) as {
+          jobs?: Array<Record<string, unknown>>;
+        };
+        const allJobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
+        const failedSet = new Set([
+          'failure',
+          'timed_out',
+          'startup_failure',
+          'action_required',
+          'stale',
+        ]);
+        const failedJobs = allJobs
+          .filter((j) => failedSet.has(String(j.conclusion || '').toLowerCase()))
+          .slice(0, 5)
+          .map((j) => ({
+            id: Number(j.id || 0),
+            name: String(j.name || 'Workflow job'),
+            conclusion: (j.conclusion as string | null) ?? null,
+            html_url: typeof j.html_url === 'string' ? j.html_url : null,
+            failedSteps: (Array.isArray(j.steps) ? (j.steps as Array<Record<string, unknown>>) : [])
+              .filter((s) => failedSet.has(String(s.conclusion || '').toLowerCase()))
+              .map((s) => ({
+                name: String(s.name || 'Failed step'),
+                number: Number(s.number || 0),
+                conclusion: (s.conclusion as string | null) ?? null,
+              })),
+          }));
+
+        const annotations: Array<{
+          path: string;
+          startLine: number;
+          annotationLevel: string;
+          title: string | null;
+          message: string;
+        }> = [];
+        const snippetParts: string[] = [];
+        let truncated = false;
+        let reason: string | undefined;
+
+        for (const job of failedJobs.filter((j) => j.id > 0).slice(0, 2)) {
+          const [annRes, logRes] = await Promise.allSettled([
+            fetchWithTimeout(
+              `https://api.github.com/repos/${repo}/check-runs/${job.id}/annotations?per_page=15`,
+              { headers: ghHeaders },
+              5000
+            ),
+            fetchWithTimeout(
+              `https://api.github.com/repos/${repo}/actions/jobs/${job.id}/logs`,
+              { headers: ghHeaders },
+              7000
+            ),
+          ]);
+          if (annRes.status === 'fulfilled' && annRes.value.ok) {
+            const annJson = (await annRes.value.json().catch(() => [])) as Array<
+              Record<string, unknown>
+            >;
+            if (Array.isArray(annJson)) {
+              for (const item of annJson) {
+                const msg = String(item.message || '').trim();
+                if (!msg) continue;
+                annotations.push({
+                  path: String(item.path || ''),
+                  startLine: Number(item.start_line || 0),
+                  annotationLevel: String(item.annotation_level || 'failure'),
+                  title: typeof item.title === 'string' && item.title ? item.title : null,
+                  message: msg,
+                });
+              }
+            }
+          }
+          if (logRes.status === 'fulfilled') {
+            if (logRes.value.ok) {
+              const rawText = await logRes.value.text();
+              const bounded = rawText.length > 300_000 ? rawText.slice(-300_000) : rawText;
+              const extracted = extractCiErrorSnippet(bounded, 40, 5000);
+              if (extracted.truncated || rawText.length > 300_000) truncated = true;
+              if (extracted.snippet) snippetParts.push(extracted.snippet);
+            } else if (!reason) {
+              reason = `Raw job log download returned HTTP ${logRes.value.status}.`;
+            }
+          }
+        }
+
+        const stderrSnippet = snippetParts.join('\n\n');
+        const available = Boolean(stderrSnippet || annotations.length > 0);
+        return jsonEdgeResponse(
+          {
+            runId,
+            repo,
+            available,
+            reason,
+            failedJobs,
+            annotations: annotations.slice(0, 12),
+            stderrSnippet,
+            truncated,
+          },
+          200,
+          request,
+          undefined,
+          env
+        );
+      } catch {
+        return jsonEdgeResponse(
+          {
+            runId,
+            repo,
+            available: false,
+            reason: 'Unable to fetch GitHub job logs.',
+            failedJobs: [],
+            annotations: [],
+            stderrSnippet: '',
+            truncated: false,
+          },
           200,
           request,
           undefined,

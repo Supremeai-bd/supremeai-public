@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import type { GitHubRunErrorLogsResponse } from '../utils/githubPipelineMetrics';
 import {
   McpTowerService,
   PlatformConfig,
@@ -377,6 +378,15 @@ export const adminService = {
     repo: string
   ): Promise<{ runs: any[]; tokenConfigured?: boolean; warning?: string }> {
     return apiClient.get(`/api/admin/github/runs?repo=${encodeURIComponent(repo)}`);
+  },
+
+  async fetchGitHubRunErrorLogs(
+    repo: string,
+    runId: number | string
+  ): Promise<GitHubRunErrorLogsResponse> {
+    return apiClient.get(
+      `/api/admin/github/runs/${encodeURIComponent(String(runId))}/logs?repo=${encodeURIComponent(repo)}`
+    );
   },
 
   async fetchGitHubPulls(
