@@ -248,30 +248,130 @@ export function isRestrictedEdgeHost(hostname: string): boolean {
   if (!host) return true;
   if (
     host === 'localhost' ||
-    host === '0.0.0.0' ||
-    host === '::' ||
-    host === '::1' ||
-    host === '169.254.169.254' ||
     host === 'metadata.google.internal' ||
     host === 'metadata' ||
     host.endsWith('.local') ||
     host.endsWith('.internal') ||
-    host.endsWith('.localhost') ||
-    host.startsWith('127.') ||
-    host.startsWith('10.') ||
-    host.startsWith('192.168.') ||
-    host.startsWith('169.254.') ||
-    host.startsWith('0.') ||
-    host.startsWith('fc') ||
-    host.startsWith('fd') ||
-    host.startsWith('fe80:') ||
-    host.startsWith('::ffff:') ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
-    /^100\.(6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])\./.test(host)
+    host.endsWith('.localhost')
   ) {
     return true;
   }
+  // Audit 2026-11-24 (item 3.1): parse IP literals properly instead of the old
+  // blanket startsWith('fc')/'fd')/'fe80:' checks, which wrongly blocked public
+  // domains like fcbarcelona.com / fdroid.org while missing shorthand IPv4
+  // literals ("127.1", "2130706433"). ULA fc00::/7, link-local fe80::/10,
+  // multicast ff00::/8, NAT64 64:ff9b::/96 and IPv4-mapped forms are handled by
+  // the literal parser below; DNS-rebinding resolution checks remain a
+  // deployment-level concern (the Edge runtime cannot resolve DNS).
+  const literal = isPrivateOrReservedIpLiteral(host);
+  if (literal !== null) return literal;
   return false;
+}
+
+/** Checks a dotted-quad / shorthand / integer IPv4 value against private ranges. */
+function isPrivateIpv4Value(value: number): boolean {
+  const a = (value >>> 24) & 0xff;
+  const b = (value >>> 16) & 0xff;
+  if (a === 0) return true; // 0.0.0.0/8 "this network"
+  if (a === 10) return true; // 10.0.0.0/8
+  if (a === 127) return true; // loopback
+  if (a === 169 && b === 254) return true; // link-local / cloud metadata
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 benchmark
+  if (a === 192 && b === 0) return true; // 192.0.0.0/24 + 192.0.2.0/24 TEST-NET
+  if (a >= 224) return true; // multicast & reserved
+  return false;
+}
+
+/** inet_aton-style parse: "10.0.0.1", "127.1", "2130706433" -> 32-bit value. */
+function inetAtonShorthand(input: string): number | null {
+  const parts = input.split('.');
+  if (parts.length < 1 || parts.length > 4) return null;
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (!/^\d{1,10}$/.test(part)) return null;
+    const n = parseInt(part, 10);
+    const maxFinal =
+      parts.length === 1 ? 0xffffffff : parts.length === 2 ? 0xffffff : parts.length === 3 ? 0xffff : 255;
+    if (i < parts.length - 1 ? n > 255 : n > maxFinal) return null;
+  }
+  let value = 0;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    value = value * 256 + parseInt(parts[i], 10);
+  }
+  const finalShift = 8 * (5 - parts.length);
+  return value * Math.pow(2, finalShift) + parseInt(parts[parts.length - 1], 10);
+}
+
+/** Expands an IPv6 literal (with at most one "::") into eight 16-bit groups. */
+function expandIpv6Groups(addr: string): number[] | null {
+  if (!addr.includes(':')) return null;
+  if ((addr.match(/::/g) || []).length > 1) return null;
+  let head: string[] = [];
+  let tail: string[] = [];
+  if (addr.includes('::')) {
+    const [h, t] = addr.split('::');
+    head = h ? h.split(':') : [];
+    tail = t ? t.split(':') : [];
+    if (head.length + tail.length > 7) return null;
+  } else {
+    head = addr.split(':');
+    if (head.length !== 8) return null;
+  }
+  const parseGroup = (g: string): number =>
+    /^[0-9a-f]{1,4}$/.test(g) ? parseInt(g, 16) : -1;
+  const headGroups = head.map(parseGroup);
+  const tailGroups = tail.map(parseGroup);
+  if (headGroups.some((g) => g === -1) || tailGroups.some((g) => g === -1)) return null;
+  return [...headGroups, ...new Array(8 - headGroups.length - tailGroups.length).fill(0), ...tailGroups];
+}
+
+function isPrivateOrReservedIpv6(groups: number[]): boolean {
+  const g0 = groups[0];
+  const g1 = groups[1];
+  if (g0 === 0 && groups.every((g) => g === 0)) return true; // :: unspecified
+  if (g0 === 0 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0 && groups[4] === 0 && groups[5] === 0 && groups[6] === 0 && groups[7] === 1) return true; // ::1
+  if (g0 === 0xfc || g0 === 0xfd) return true; // ULA fc00::/7
+  if (g0 === 0xfe && g1 >= 0x8000 && g1 <= 0xbfff) return true; // link-local fe80::/10
+  if (g0 === 0xff00 || (g0 & 0xff00) === 0xff00) return true; // multicast ff00::/8
+  if (g0 === 0xfe && g1 >= 0xc000) return true; // feC0::/10 reserved
+  // IPv4-mapped ::ffff:a.b.c.d (groups 5 must be 0xffff, group 4 zero)
+  if (g0 === 0 && g1 === 0 && groups[2] === 0 && groups[3] === 0 && groups[4] === 0 && groups[5] === 0xffff) {
+    const v4 = ((groups[6] >>> 8) & 0xff) * 16777216 + (groups[6] & 0xff) * 65536 + ((groups[7] >>> 8) & 0xff) * 256 + (groups[7] & 0xff);
+    return isPrivateIpv4Value(v4);
+  }
+  // NAT64 64:ff9b::/96 with embedded IPv4 in the last 32 bits
+  if (g0 === 0x64 && g1 === 0xff9b && groups[2] === 0 && groups[3] === 0 && groups[4] === 0 && groups[5] === 0) {
+    const v4 = ((groups[6] >>> 8) & 0xff) * 16777216 + (groups[6] & 0xff) * 65536 + ((groups[7] >>> 8) & 0xff) * 256 + (groups[7] & 0xff);
+    return isPrivateIpv4Value(v4);
+  }
+  return false;
+}
+
+/**
+ * Pure, dependency-free IP-literal classifier shared by Edge + Node guards.
+ * Returns true (restricted), false (public literal), or null (not an IP literal).
+ * Unparseable IP-looking inputs fail CLOSED (restricted) by design.
+ */
+export function isPrivateOrReservedIpLiteral(host: string): boolean | null {
+  const h = String(host || '')
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '');
+  if (!h) return true;
+  if (h.includes(':')) {
+    const groups = expandIpv6Groups(h);
+    if (!groups) return true;
+    return isPrivateOrReservedIpv6(groups);
+  }
+  if (/^\d{1,10}$/.test(h) || /^\d{1,3}(\.\d{1,3}){0,3}$/.test(h)) {
+    const value = inetAtonShorthand(h);
+    if (value === null) return true;
+    return isPrivateIpv4Value(value);
+  }
+  return null;
 }
 
 export async function fetchWithTimeout(
@@ -286,6 +386,42 @@ export async function fetchWithTimeout(
   } finally {
     clearTimeout(timer);
   }
+}
+
+const SENSITIVE_REDIRECT_HEADERS = new Set([
+  'cookie',
+  'authorization',
+  'x-supremeai-key',
+  'x-vault-cookie',
+  'origin',
+  'referer',
+  'proxy-authorization',
+  'x-api-key',
+  'x-admin-token',
+]);
+
+/**
+ * Audit 2026-11-24 (item 1.2): when a redirect crosses origins, session
+ * credentials must NOT follow. Vault cookies, bearer tokens, and any
+ * token-ish header are stripped before re-fetching the new origin.
+ */
+function stripSensitiveHeadersOnCrossOriginRedirect(
+  init: RequestInit,
+  fromOrigin: string,
+  toOrigin: string
+): RequestInit {
+  if (!init.headers || fromOrigin === toOrigin) return init;
+  const source =
+    init.headers instanceof Headers
+      ? init.headers
+      : new Headers(init.headers as HeadersInit);
+  const cleaned = new Headers();
+  source.forEach((value, key) => {
+    const lower = key.toLowerCase();
+    if (SENSITIVE_REDIRECT_HEADERS.has(lower) || lower.includes('token')) return;
+    cleaned.set(key, value);
+  });
+  return { ...init, headers: cleaned };
 }
 
 export async function safeEdgeFetch(
@@ -318,7 +454,10 @@ export async function safeEdgeFetch(
       if (hop === maxRedirects) {
         throw new Error('Too many redirects.');
       }
+      const previousOrigin = currentUrl.origin;
       currentUrl = new URL(location, currentUrl);
+      // Audit 2026-11-24 (item 1.2): never leak session credentials to a new origin.
+      currentInit = stripSensitiveHeadersOnCrossOriginRedirect(currentInit, previousOrigin, currentUrl.origin);
       if (
         res.status === 303 ||
         ((res.status === 301 || res.status === 302) &&
@@ -378,6 +517,100 @@ export async function mintOrExtractAuthHeaders(
   }
 
   return out;
+}
+
+// --- Upstream session verification (audit 2026-11-24, item 1.1) ---
+export interface UpstreamSessionVerification {
+  valid: boolean;
+  email?: string;
+  isGuest: boolean;
+  status?: number;
+}
+
+const SESSION_VERIFY_CACHE_TTL_MS = 60_000;
+const sessionVerifyCache = new Map<
+  string,
+  { ok: boolean; email?: string; isGuest: boolean; expires: number }
+>();
+
+async function hashTokenForCache(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest))
+    .slice(0, 16)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Validates a caller's session against the backend `/api/v1/auth/me` before
+ * trusting it. Presence of an `Authorization`/`X-SupremeAI-Key` header or a
+ * session cookie is NOT proof of authentication — this helper actually checks
+ * it server-side and caches the verdict for 60s per token hash so proxied page
+ * navigations don't hammer the upstream on every click.
+ * Fail-closed: network errors count as invalid sessions.
+ */
+export async function verifyUpstreamSession(
+  request: Request,
+  upstreamOrigin: string,
+  timeoutMs: number = 4500
+): Promise<UpstreamSessionVerification> {
+  const auth = (request.headers.get('Authorization') || '').trim();
+  const key = (request.headers.get('X-SupremeAI-Key') || '').trim();
+  const cookie = request.headers.get('Cookie') || '';
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  const token = bearer || key;
+  if (!token && !cookie) {
+    return { valid: false, isGuest: false };
+  }
+
+  const cacheKey = token ? `t:${await hashTokenForCache(token)}` : `c:${await hashTokenForCache(cookie)}`;
+  const cached = sessionVerifyCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    return { valid: cached.ok, email: cached.email, isGuest: cached.isGuest, status: cached.ok ? 200 : 401 };
+  }
+
+  let ok = false;
+  let email: string | undefined;
+  let isGuest = false;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+    headers['X-SupremeAI-Key'] = token;
+  }
+  if (cookie) headers.Cookie = cookie;
+
+  try {
+    const res = await fetchWithTimeout(
+      `${upstreamOrigin}/api/v1/auth/me`,
+      { method: 'GET', headers },
+      timeoutMs
+    );
+    if (res.ok) {
+      const data = (await res.json().catch(() => null)) as {
+        email?: string;
+        is_guest?: boolean;
+        plan?: string;
+      } | null;
+      ok = Boolean(data) && typeof data === 'object';
+      const lowerEmail = String(data?.email || '').trim().toLowerCase();
+      email = lowerEmail || undefined;
+      isGuest =
+        !lowerEmail ||
+        lowerEmail === 'guest' ||
+        Boolean(data?.is_guest) ||
+        String(data?.plan || '').toLowerCase() === 'guest';
+    }
+  } catch {
+    ok = false;
+  }
+
+  sessionVerifyCache.set(cacheKey, { ok, email, isGuest, expires: Date.now() + SESSION_VERIFY_CACHE_TTL_MS });
+  if (sessionVerifyCache.size > 5000) {
+    for (const stale of Array.from(sessionVerifyCache.keys()).slice(0, 2500)) {
+      sessionVerifyCache.delete(stale);
+    }
+  }
+  return { valid: ok, email, isGuest, status: ok ? 200 : 401 };
 }
 
 export async function forwardRawUpstream(
