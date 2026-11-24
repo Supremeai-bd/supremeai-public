@@ -196,17 +196,8 @@ export const WorkspaceMicroSurvey: React.FC<WorkspaceMicroSurveyProps> = ({
     }
   }, [forceOpen]);
 
-  const shouldAutoShow = useMemo(() => {
-    if (persisted.neverAsk) return false;
-    const now = Date.now();
-    if (persisted.lastSubmittedAt && now - persisted.lastSubmittedAt < SUBMIT_COOLDOWN_MS) {
-      return false;
-    }
-    if (persisted.lastDismissedAt && now - persisted.lastDismissedAt < SNOOZE_COOLDOWN_MS) {
-      return false;
-    }
-    return totalUserMessages >= 4;
-  }, [persisted, totalUserMessages]);
+  // বাংলা মন্তব্য: অযাচিত পপ-আপ বন্ধ — শুধু ব্যবহারকারী Feedback বাটনে ক্লিক করলেই ফর্ম খুলবে
+  const shouldAutoShow = Boolean(totalUserMessages < 0);
 
   const isVisible = forceOpen || (shouldAutoShow && !sessionDismissed);
   if (!isVisible) return null;

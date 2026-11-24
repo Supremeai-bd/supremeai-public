@@ -17,6 +17,16 @@ export type DashboardActionType =
   | 'none'
   | 'toggle_dark_mode'
   | 'toggle_light_mode'
+  | 'switch_lang_bn'
+  | 'switch_lang_en'
+  | 'set_live_theme'
+  | 'toggle_theme_motion'
+  | 'new_chat'
+  | 'open_projects'
+  | 'open_workspace_dock'
+  | 'enable_dev_mode'
+  | 'disable_dev_mode'
+  | 'disable_jarvis'
   | 'open_usage'
   | 'open_settings'
   | 'open_knowledge'
@@ -26,6 +36,11 @@ export type DashboardActionType =
   | 'open_admin_security'
   | 'open_admin_releases'
   | 'toggle_voice';
+
+export interface DashboardActionMatch {
+  action: DashboardActionType;
+  payload?: string;
+}
 
 export interface PendingClarification {
   id: string;
@@ -41,6 +56,7 @@ export interface IntentOrchestrationResult extends SmartIntentResult {
   primaryGoal: IntentPrimaryGoal;
   autoOpenDockTab: AutoDockTab;
   dashboardAction: DashboardActionType;
+  actionPayload?: string;
   needsClarification: boolean;
   clarificationQuestion?: string;
   clarificationOptions?: string[];
@@ -54,6 +70,10 @@ export interface UserMemoryProfile {
   preferredLanguage: 'en' | 'bn' | 'banglish';
   recentTopics: string[];
   interactionCount: number;
+  // বাংলা মন্তব্য: ব্যবহারকারীর কাজের ধরন ও কমান্ড থেকে স্বয়ংক্রিয়ভাবে শেখা প্রবণতা
+  developerAffinityScore: number;
+  preferredThemeId?: string;
+  preferredResponseStyle?: 'concise' | 'detailed';
   updatedAt: number;
 }
 
@@ -73,6 +93,9 @@ const BANGLISH_WEB_PATTERNS =
 const BANGLISH_SCHEDULE_PATTERNS =
   /\b(protidin|everyday|every\s*day|daily|weekly|remind\s*me|reminder|schedule|shokal|ratre|sokal)\b/i;
 
+const DEVELOPER_WORKFLOW_REGEX =
+  /\b(typescript|javascript|python|rust|react|vite|next\.?js|tailwind|docker|kubernetes|api\s*key|webhook|github|gitlab|git\s+push|branch|pull\s*request|terminal|cli|regex|sql|database|schema|refactor|debug|stack\s*trace|npm\s+run|tsconfig|package\.json)\b/i;
+
 export function detectPromptLanguage(text: string): 'en' | 'bn' | 'banglish' {
   if (BENGALI_SCRIPT_REGEX.test(text)) return 'bn';
   if (BANGLISH_PATTERNS.test(text)) return 'banglish';
@@ -80,13 +103,15 @@ export function detectPromptLanguage(text: string): 'en' | 'bn' | 'banglish' {
 }
 
 export function loadUserMemory(): UserMemoryProfile {
+  const empty: UserMemoryProfile = {
+    preferredLanguage: 'en',
+    recentTopics: [],
+    interactionCount: 0,
+    developerAffinityScore: 0,
+    updatedAt: Date.now(),
+  };
   if (typeof localStorage === 'undefined') {
-    return {
-      preferredLanguage: 'en',
-      recentTopics: [],
-      interactionCount: 0,
-      updatedAt: Date.now(),
-    };
+    return empty;
   }
   try {
     const raw = localStorage.getItem(USER_MEMORY_STORAGE_KEY);
@@ -101,18 +126,30 @@ export function loadUserMemory(): UserMemoryProfile {
           ? parsed.recentTopics.filter((t): t is string => typeof t === 'string').slice(0, 6)
           : [],
         interactionCount: typeof parsed.interactionCount === 'number' ? parsed.interactionCount : 0,
+        developerAffinityScore:
+          typeof parsed.developerAffinityScore === 'number' ? parsed.developerAffinityScore : 0,
+        preferredThemeId:
+          typeof parsed.preferredThemeId === 'string' ? parsed.preferredThemeId : undefined,
+        preferredResponseStyle:
+          parsed.preferredResponseStyle === 'concise' || parsed.preferredResponseStyle === 'detailed'
+            ? parsed.preferredResponseStyle
+            : undefined,
         updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now(),
       };
     }
   } catch {
     // Ignore storage read issues
   }
-  return { preferredLanguage: 'en', recentTopics: [], interactionCount: 0, updatedAt: Date.now() };
+  return empty;
 }
+
+export const USER_MEMORY_UPDATED_EVENT = 'supremeai-user-memory-updated';
 
 export function recordUserMemory(update: {
   language?: 'en' | 'bn' | 'banglish';
   topic?: string;
+  promptText?: string;
+  preferredThemeId?: string;
 }): UserMemoryProfile {
   const current = loadUserMemory();
   const nextTopics = [...current.recentTopics];
@@ -123,10 +160,24 @@ export function recordUserMemory(update: {
     nextTopics.splice(0, nextTopics.length, ...filtered.slice(0, 6));
   }
 
+  const promptSignal = update.promptText || '';
+  const devDelta = DEVELOPER_WORKFLOW_REGEX.test(promptSignal) ? 1 : 0;
+  const conciseSignal = /\b(short|brief|concise|tldr|সংক্ষেপে|ছোট\s*করে)\b/i.test(promptSignal);
+  const detailedSignal = /\b(detailed|step[\s-]+by[\s-]+step|deep\s+dive|বিস্তারিত)\b/i.test(
+    promptSignal
+  );
+
   const next: UserMemoryProfile = {
     preferredLanguage: update.language || current.preferredLanguage,
     recentTopics: nextTopics,
     interactionCount: current.interactionCount + 1,
+    developerAffinityScore: Math.min(20, current.developerAffinityScore + devDelta),
+    preferredThemeId: update.preferredThemeId || current.preferredThemeId,
+    preferredResponseStyle: conciseSignal
+      ? 'concise'
+      : detailedSignal
+        ? 'detailed'
+        : current.preferredResponseStyle,
     updatedAt: Date.now(),
   };
 
@@ -137,7 +188,26 @@ export function recordUserMemory(update: {
       // Ignore quota issues
     }
   }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(USER_MEMORY_UPDATED_EVENT, { detail: next }));
+  }
   return next;
+}
+
+/**
+ * বাংলা মন্তব্য: ব্যবহারকারী নিজে ডেভেলপার টুলস অন করলে বা তার প্রম্পটে বারবার
+ * কোডিং/ডেভেলপার কাজের ধারা থাকলে স্মার্টভাবে ডেভ-টুলস আনলক হয় — সাধারণ ইউজারদের
+ * জন্য ইন্টারফেস সবসময় পরিষ্কার থাকে।
+ */
+export function shouldEnableSmartDeveloperMode(params: {
+  explicitDeveloperMode?: boolean;
+  isAdmin?: boolean;
+  memory?: UserMemoryProfile;
+}): boolean {
+  if (params.isAdmin) return true;
+  if (typeof params.explicitDeveloperMode === 'boolean') return params.explicitDeveloperMode;
+  const score = params.memory?.developerAffinityScore ?? 0;
+  return score >= 2;
 }
 
 export function clearUserMemory(): void {
@@ -147,6 +217,9 @@ export function clearUserMemory(): void {
     } catch {
       // Ignore storage errors
     }
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(USER_MEMORY_UPDATED_EVENT));
   }
 }
 
@@ -158,27 +231,63 @@ export function buildMemoryContextPrompt(memory: UserMemoryProfile): string {
       : memory.preferredLanguage === 'banglish'
         ? 'User often writes in Banglish (Bengali in Latin script); respond clearly in natural Bengali or Banglish matching their tone.'
         : 'User prefers clear, concise English responses.';
+  const styleNote =
+    memory.preferredResponseStyle === 'concise'
+      ? 'User favors brief, direct answers without unnecessary technical clutter.'
+      : memory.preferredResponseStyle === 'detailed'
+        ? 'User appreciates thorough explanations with clear structure.'
+        : '';
   const topicsNote =
     memory.recentTopics.length > 0
       ? `Recent user focus areas: ${memory.recentTopics.join(', ')}.`
       : '';
-  return `\n[USER MEMORY CONTEXT]\n${langNote}${topicsNote ? `\n${topicsNote}` : ''}`;
+  return `\n[USER MEMORY CONTEXT]\n${langNote}${styleNote ? `\n${styleNote}` : ''}${topicsNote ? `\n${topicsNote}` : ''}`;
 }
 
-export function detectDirectDashboardAction(
+const LIVE_THEME_VOICE_ALIASES: Array<{ id: string; pattern: RegExp }> = [
+  { id: 'alpine-dunes', pattern: /\b(alpine|dunes|snow)\b/i },
+  { id: 'misty-fjords', pattern: /\b(fjord|misty|lake)\b/i },
+  { id: 'emerald-highlands', pattern: /\b(emerald|highlands|forest)\b/i },
+  { id: 'amber-canyon', pattern: /\b(amber|canyon|desert)\b/i },
+  { id: 'midnight-peaks', pattern: /\b(midnight|peaks|starlight|obsidian)\b/i },
+  { id: 'nebula', pattern: /\b(nebula|cosmos|space)\b/i },
+  { id: 'cyberpunk', pattern: /\b(cyberpunk|matrix|neon)\b/i },
+  { id: 'aurora-borealis', pattern: /\b(aurora|northern\s*lights|borealis)\b/i },
+  { id: 'oceanic-horizon', pattern: /\b(ocean|oceanic|sea|waves)\b/i },
+  { id: 'solar-meadow', pattern: /\b(solar|meadow|sunrise|dawn)\b/i },
+  { id: 'cyber-studio', pattern: /\b(cyber\s*studio|neural\s*mesh|studio\s*grid)\b/i },
+];
+
+export function detectDirectDashboardActionWithPayload(
   promptText: string,
   isAdmin: boolean
-): DashboardActionType {
+): DashboardActionMatch {
   const t = promptText.trim().toLowerCase();
-  if (!t || t.length > 110) return 'none';
+  if (!t || t.length > 120) return { action: 'none' };
 
-  // Theme switches
+  // Language switches via command or speech
+  if (
+    /\b(speak|reply|talk|switch|change|use)\s+(to\s+|in\s+)?(bangla|bengali)\b/i.test(t) ||
+    /(বাংলায়\s*(কথা\s*বলো|বলো|চালু|দাও|করো)|বাংলা\s*(মোড|ভাষা|করো|দাও)|bangla\s*(koro|bolo|te\s*kotha))/i.test(
+      promptText
+    )
+  ) {
+    return { action: 'switch_lang_bn' };
+  }
+  if (
+    /\b(speak|reply|talk|switch|change|use)\s+(to\s+|in\s+)?english\b/i.test(t) ||
+    /(ইংরেজিতে\s*(বলো|কথা\s*বলো|দাও)|ইংরেজি\s*(করো|চালু)|english\s*(koro|bolo))/i.test(promptText)
+  ) {
+    return { action: 'switch_lang_en' };
+  }
+
+  // Theme switches (Dark / Light + Live Screen backdrops + Motion)
   if (
     /\b(dark\s*mode|dark\s*theme)\b/i.test(t) ||
     /(ডার্ক\s*(মোড|থিম)|dark\s*(koro|kor|on|enable))/i.test(promptText)
   ) {
     if (!/\b(build|create|code|css|tailwind|component|app)\b/i.test(t)) {
-      return 'toggle_dark_mode';
+      return { action: 'toggle_dark_mode' };
     }
   }
   if (
@@ -186,16 +295,87 @@ export function detectDirectDashboardAction(
     /(লাইট\s*(মোড|থিম)|light\s*(koro|kor|on|enable))/i.test(promptText)
   ) {
     if (!/\b(build|create|code|css|tailwind|component|app)\b/i.test(t)) {
-      return 'toggle_light_mode';
+      return { action: 'toggle_light_mode' };
+    }
+  }
+  if (
+    /\b(still\s*background|pause\s*(backdrop|theme|motion|animation)|stop\s*(backdrop|theme)\s*animation|motion\s*(on|off))\b/i.test(
+      t
+    ) ||
+    /(ব্যাকগ্রাউন্ড\s*(স্থির|বন্ধ|চালু)|অ্যানিমেশন\s*(বন্ধ|চালু))/i.test(promptText)
+  ) {
+    return { action: 'toggle_theme_motion' };
+  }
+  if (/\b(theme|backdrop|screen|wallpaper|থিম|ব্যাকগ্রাউন্ড)\b/i.test(promptText)) {
+    for (const candidate of LIVE_THEME_VOICE_ALIASES) {
+      if (candidate.pattern.test(t) && !/\b(build|create|code|css)\b/i.test(t)) {
+        return { action: 'set_live_theme', payload: candidate.id };
+      }
+    }
+  } else {
+    // Allow concise speech like "Switch to Aurora"
+    for (const candidate of LIVE_THEME_VOICE_ALIASES) {
+      if (
+        new RegExp(`^(?:switch|change|use|set|apply)\\s+(?:to\\s+)?${candidate.pattern.source}`, 'i').test(t)
+      ) {
+        return { action: 'set_live_theme', payload: candidate.id };
+      }
     }
   }
 
-  // Voice mode
+  // JARVIS / Voice explicit stop vs start
   if (
-    /\b(open|start|enable|turn\s*on|toggle)\s+(live\s+)?voice(\s+mode)?\b/i.test(t) ||
-    /(ভয়েস\s*(মোড\s*)?(চালু|অন)|voice\s*(mode\s*)?(on|chalu))/i.test(promptText)
+    /\b(stop|turn\s*off|disable|close|exit|quit)\s+(jarvis|(?:live\s+)?voice(?:\s+mode)?)\b/i.test(
+      t
+    ) ||
+    /^(?:jarvis\s+)?(?:stop|off|bye|goodbye)$/i.test(t) ||
+    /(জার্ভিস\s*(বন্ধ|অফ|থামাও)|ভয়েস\s*(মোড\s*)?(বন্ধ|অফ)|jarvis\s*(bandho|bondho|off))/i.test(
+      promptText
+    )
   ) {
-    return 'toggle_voice';
+    return { action: 'disable_jarvis' };
+  }
+  if (
+    /\b(open|start|enable|turn\s*on|toggle)\s+(jarvis|(?:live\s+)?voice(?:\s+mode)?)\b/i.test(t) ||
+    /(জার্ভিস\s*(চালু|অন)|ভয়েস\s*(মোড\s*)?(চালু|অন)|voice\s*(mode\s*)?(on|chalu))/i.test(
+      promptText
+    )
+  ) {
+    return { action: 'toggle_voice' };
+  }
+
+  // Developer Tools toggle on command (replaces permanently cluttered sidebar/settings)
+  if (
+    /\b(enable|turn\s*on|show|open)\s+(dev|developer)\s*(mode|tools?)\b/i.test(t) ||
+    /(ডেভেলপার\s*(মোড|টুলস?)\s*(চালু|অন|দেখাও))/i.test(promptText)
+  ) {
+    return { action: 'enable_dev_mode' };
+  }
+  if (
+    /\b(disable|turn\s*off|hide)\s+(dev|developer)\s*(mode|tools?)\b/i.test(t) ||
+    /(ডেভেলপার\s*(মোড|টুলস?)\s*(বন্ধ|লুকাও))/i.test(promptText)
+  ) {
+    return { action: 'disable_dev_mode' };
+  }
+
+  // Quick Workspace actions
+  if (
+    /\b(start|open|create)\s+(a\s+)?new\s+chat\b/i.test(t) ||
+    /(নতুন\s*চ্যাট\s*(খোলো|শুরু)|new\s*chat\s*koro)/i.test(promptText)
+  ) {
+    return { action: 'new_chat' };
+  }
+  if (
+    /\b(open|show|check|view)\s+(my\s+)?projects?\b/i.test(t) ||
+    /(আমার\s*প্রজেক্ট|প্রজেক্ট\s*(দেখাও|খোলো))/i.test(promptText)
+  ) {
+    return { action: 'open_projects' };
+  }
+  if (
+    /\b(open|show)\s+(live\s+)?(preview|workspace)\s+dock\b/i.test(t) ||
+    /(প্রিভিউ\s*ডক\s*খোলো)/i.test(promptText)
+  ) {
+    return { action: 'open_workspace_dock' };
   }
 
   // User workspace navigation
@@ -203,25 +383,25 @@ export function detectDirectDashboardAction(
     /\b(show|open|check|view)\s+(my\s+)?(usage|billing|plan|tokens?|quota)\b/i.test(t) ||
     /(ইউসেজ|বিলিং|প্ল্যান|usage\s*dekhao)/i.test(promptText)
   ) {
-    return 'open_usage';
+    return { action: 'open_usage' };
   }
   if (
     /\b(open|show|go\s+to)\s+(my\s+)?settings\b/i.test(t) ||
     /(সেটিংস\s*(খোলো|দেখাও)|settings\s*(open|dekhao))/i.test(promptText)
   ) {
-    return 'open_settings';
+    return { action: 'open_settings' };
   }
   if (
     /\b(open|show|manage)\s+(my\s+)?(knowledge\s*base|uploaded\s*files?|rag\s*docs?)\b/i.test(t) ||
     /(নলেজ\s*বেস|আমার\s*ফাইল\s*দেখাও)/i.test(promptText)
   ) {
-    return 'open_knowledge';
+    return { action: 'open_knowledge' };
   }
   if (
     /\b(open|show)\s+(all\s+)?(chat\s+)?history\b/i.test(t) ||
     /(সব\s*চ্যাট|চ্যাট\s*হিস্ট্রি\s*দেখাও)/i.test(promptText)
   ) {
-    return 'open_history';
+    return { action: 'open_history' };
   }
 
   // Admin Ops navigation via natural language
@@ -232,26 +412,33 @@ export function detectDirectDashboardAction(
       ) ||
       /(সার্ভার\s*(হেলথ|স্ট্যাটাস)|health\s*(check|dekhao))/i.test(promptText)
     ) {
-      return 'open_admin_health';
+      return { action: 'open_admin_health' };
     }
     if (
       /\b(open|show|check)\s+(llm\s*gateway|gpu\s*fleet|ai\s*compute|models?\s*matrix)\b/i.test(t)
     ) {
-      return 'open_admin_ai';
+      return { action: 'open_admin_ai' };
     }
     if (/\b(open|show|check)\s+(customers?|security|audit\s*log|hitl)\b/i.test(t)) {
-      return 'open_admin_security';
+      return { action: 'open_admin_security' };
     }
     if (
       /\b(open|show|check)\s+(github\s*pipeline|release\s*gate|releases?|ci\/cd|schema\s*parity)\b/i.test(
         t
       )
     ) {
-      return 'open_admin_releases';
+      return { action: 'open_admin_releases' };
     }
   }
 
-  return 'none';
+  return { action: 'none' };
+}
+
+export function detectDirectDashboardAction(
+  promptText: string,
+  isAdmin: boolean
+): DashboardActionType {
+  return detectDirectDashboardActionWithPayload(promptText, isAdmin).action;
 }
 
 function buildHeuristicClarification(
@@ -420,13 +607,22 @@ export async function orchestrateUserIntent(params: {
   });
 
   // 1. Direct instant check for Chat-Driven Dashboard Actions (0ms latency)
-  const directAction = !attachment ? detectDirectDashboardAction(trimmed, isAdmin) : 'none';
-  if (directAction !== 'none') {
+  const directMatch = !attachment
+    ? detectDirectDashboardActionWithPayload(trimmed, isAdmin)
+    : { action: 'none' as DashboardActionType };
+  if (directMatch.action !== 'none') {
+    recordUserMemory({
+      language: inferredLanguage,
+      preferredThemeId:
+        directMatch.action === 'set_live_theme' ? directMatch.payload : undefined,
+      promptText: trimmed,
+    });
     return {
       ...base,
       primaryGoal: 'dashboard_action',
-      autoOpenDockTab: 'none',
-      dashboardAction: directAction,
+      autoOpenDockTab: directMatch.action === 'open_workspace_dock' ? 'preview' : 'none',
+      dashboardAction: directMatch.action,
+      actionPayload: directMatch.payload,
       needsClarification: false,
       planSummary: inferredLanguage === 'bn' ? 'ড্যাশবোর্ড অ্যাকশন' : 'Workspace Action',
       inferredLanguage,
@@ -607,6 +803,7 @@ export async function orchestrateUserIntent(params: {
   recordUserMemory({
     language: result.inferredLanguage,
     topic: result.inferredTopic,
+    promptText: trimmed,
   });
 
   return result;

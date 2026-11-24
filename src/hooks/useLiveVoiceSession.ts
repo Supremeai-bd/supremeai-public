@@ -66,7 +66,12 @@ interface LiveServerMessage {
 interface UseLiveVoiceSessionOptions {
   systemInstruction?: string;
   language?: 'en' | 'bn';
-  onTurnCommitted?: (userText: string, assistantText: string, voice: LiveVoiceName) => void;
+  onTurnCommitted?: (
+    userText: string,
+    assistantText: string,
+    voice: LiveVoiceName,
+    meta?: { fromTeardown?: boolean }
+  ) => void;
 }
 
 function resampleFloat32(
@@ -288,7 +293,7 @@ export function useLiveVoiceSession({
   const levelsRef = useRef<{ input: number; output: number }>({ input: 0, output: 0 });
   const teardownGuardRef = useRef<boolean>(false);
 
-  const flushPendingTurn = useCallback(() => {
+  const flushPendingTurn = useCallback((meta?: { fromTeardown?: boolean }) => {
     const uText = pendingUserTextRef.current.trim();
     const mText = pendingModelTextRef.current.trim();
     if (!uText && !mText) return;
@@ -319,7 +324,7 @@ export function useLiveVoiceSession({
     setTranscripts((prev) => [...prev, ...additions]);
 
     if (onTurnCommittedRef.current) {
-      onTurnCommittedRef.current(uText, mText, voiceRef.current);
+      onTurnCommittedRef.current(uText, mText, voiceRef.current, meta);
     }
   }, []);
 
@@ -411,7 +416,7 @@ export function useLiveVoiceSession({
       isLiveReadyRef.current = false;
       queuedTextPromptsRef.current = [];
 
-      flushPendingTurn();
+      flushPendingTurn({ fromTeardown: true });
       stopAllPlayback();
 
       if (processorRef.current) {

@@ -58,9 +58,17 @@ import { IntentClarificationCard } from './components/chat/IntentClarificationCa
 import { TaskApprovalCard } from './components/chat/TaskApprovalCard';
 import {
   orchestrateUserIntent,
+  loadUserMemory,
+  shouldEnableSmartDeveloperMode,
+  USER_MEMORY_UPDATED_EVENT,
   type DashboardActionType,
   type PendingClarification,
+  type UserMemoryProfile,
 } from './services/intentOrchestrator';
+import {
+  classifySpokenJarvisCommand,
+  computeJarvisToggleState,
+} from './utils/jarvisVoiceRouter';
 
 const ChatHistoryView = React.lazy(() =>
   import('./components/chat/ChatHistoryView').then((m) => ({ default: m.ChatHistoryView }))
@@ -241,7 +249,7 @@ import { useChatStore } from './stores/useChatStore';
 import { useAdminStore } from './stores/useAdminStore';
 import { useCustomerStore } from './stores/useCustomerStore';
 import { useWorkspaceStore } from './stores/useWorkspaceStore';
-import { useThemeStore } from './stores/useThemeStore';
+import { useThemeStore, LIVE_THEMES, type LiveThemeId } from './stores/useThemeStore';
 import { usePlatformStore } from './stores/usePlatformStore';
 import { useControlCenterStore } from './stores/useControlCenterStore';
 import { useTabRouter } from './hooks/useTabRouter';
@@ -329,7 +337,6 @@ export default function App() {
     isAdminAuthModalOpen,
     setIsTwoFactorModalOpen,
     setIsAdminAuthModalOpen,
-    setDeveloperEligibility,
     logout,
     revokeTrustedBrowser,
     impersonateCustomer,
@@ -465,35 +472,84 @@ export default function App() {
   );
   const [isLiveVoiceOpen, setIsLiveVoiceOpen] = useState<boolean>(false);
 
-  // বাংলা মন্তব্য: JARVIS মোড — ভয়েস + অটোনমাস টাস্ক এক্সিকিউশনের সেতু।
-  // মোড-স্টেট jarvisService (localStorage-backed) থেকে আসে; ইভেন্টে সিঙ্ক হয়।
+  // বাংলা মন্তব্য: JARVIS ও Live Voice বাটনের একক State Machine (Desync প্রতিরোধে)।
   const [jarvisEnabled, setJarvisEnabled] = useState<boolean>(() => isJarvisModeEnabled());
   useEffect(() => subscribeJarvisMode(setJarvisEnabled), []);
-  const toggleJarvis = () => {
-    const next = !isJarvisModeEnabled();
-    jarvisService.setEnabled(next, { announce: true });
-  };
-  // Ctrl+Alt+J — যেকোনো সময় JARVIS টগল (ডেস্কটপ গ্লোবাল শর্টকাটের সাথে সামঞ্জস্যপূর্ণ প্যাটার্ন)
+  const [userMemory, setUserMemory] = useState<UserMemoryProfile>(() => loadUserMemory());
+  const [explicitDevOverride, setExplicitDevOverride] = useState<boolean | undefined>(() => {
+    if (typeof localStorage === 'undefined') return undefined;
+    const saved = localStorage.getItem('supremeai_dev_mode_override');
+    if (saved === 'true') return true;
+    if (saved === 'false') return false;
+    return undefined;
+  });
+
   useEffect(() => {
-    const onJarvisShortcut = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.altKey && (e.key === 'j' || e.key === 'J')) {
-        e.preventDefault();
-        toggleJarvis();
-      }
-    };
-    window.addEventListener('keydown', onJarvisShortcut);
-    return () => window.removeEventListener('keydown', onJarvisShortcut);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const syncMemory = () => setUserMemory(loadUserMemory());
+    window.addEventListener(USER_MEMORY_UPDATED_EVENT, syncMemory);
+    return () => window.removeEventListener(USER_MEMORY_UPDATED_EVENT, syncMemory);
   }, []);
+
   const liveVoiceSystemInstruction =
     customInstruction.trim() ||
     userSettings.customInstructions?.trim() ||
     activeRole.systemInstruction;
+
+  const liveTurnCommittedHandlerRef = useRef<
+    (
+      userText: string,
+      assistantText: string,
+      voice: string,
+      meta?: { fromTeardown?: boolean }
+    ) => void
+  >(() => {});
+
   const liveVoice = useLiveVoiceSession({
     systemInstruction: liveVoiceSystemInstruction,
     language: appLanguage,
-    onTurnCommitted: appendVoiceTurn,
+    onTurnCommitted: (userText, assistantText, voice, meta) => {
+      liveTurnCommittedHandlerRef.current(userText, assistantText, voice, meta);
+    },
   });
+
+  const handleToggleJarvis = (forceNext?: boolean) => {
+    const transition =
+      typeof forceNext === 'boolean'
+        ? {
+            nextJarvisEnabled: forceNext,
+            nextLiveVoiceOpen: forceNext,
+            action: (forceNext ? 'enable' : 'disable') as 'enable' | 'disable',
+          }
+        : computeJarvisToggleState(isJarvisModeEnabled() || jarvisEnabled, isLiveVoiceOpen);
+
+    if (transition.action === 'disable') {
+      // বাংলা মন্তব্য: বন্ধ করার ক্লিকে কখনোই ভয়েস অন হবে না বা কথা বলবে না।
+      jarvisService.setEnabled(false, { announce: false });
+      liveVoice.disconnect();
+      setIsLiveVoiceOpen(false);
+      setJarvisEnabled(false);
+      return;
+    }
+
+    jarvisService.setEnabled(true, { announce: false });
+    setJarvisEnabled(true);
+    setIsLiveVoiceOpen(true);
+  };
+
+  const toggleJarvisRef = useRef<() => void>(() => {});
+  toggleJarvisRef.current = () => handleToggleJarvis();
+
+  // Ctrl+Alt+J — যেকোনো সময় JARVIS ও ভয়েস মোড নিরাপদে টগল (stale closure ছাড়া)
+  useEffect(() => {
+    const onJarvisShortcut = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && (e.key === 'j' || e.key === 'J')) {
+        e.preventDefault();
+        toggleJarvisRef.current();
+      }
+    };
+    window.addEventListener('keydown', onJarvisShortcut);
+    return () => window.removeEventListener('keydown', onJarvisShortcut);
+  }, []);
 
   useEffect(() => {
     if (isLiveVoiceOpen) {
@@ -535,8 +591,12 @@ export default function App() {
   const effectiveRole = isAuthorizedAdmin && currentRole === 'admin' ? 'admin' : 'user';
   const isProjectAdmin = isAuthorizedAdmin && effectiveRole === 'admin';
   const isDeveloperEligible = true;
-  // বাংলা মন্তব্য: ইউনিভার্সাল সুপ্রিম এআই — সমস্ত ফিচার সবার জন্য উন্মুক্ত ও স্বয়ংক্রিয়
-  const developerMode = true;
+  // বাংলা মন্তব্য: ব্যবহারকারীর কাজের ধরন (developerAffinityScore) বা কমান্ড বুঝে স্মার্টভাবে ডেভ-টুলস আনলক হয়
+  const developerMode = shouldEnableSmartDeveloperMode({
+    explicitDeveloperMode: userSettings.developerMode ? true : explicitDevOverride,
+    isAdmin: isProjectAdmin,
+    memory: userMemory,
+  });
   const enableKnowledgeGrounding = !isGuest;
   const showWorkspaceTips = !isGuest && userSettings.showWorkspaceTips !== false;
 
@@ -748,9 +808,17 @@ export default function App() {
     }
   };
 
-  const handleToggleDeveloperMode = () => {
+  const handleToggleDeveloperMode = (forceNext?: boolean) => {
     if (!isDeveloperEligible) return;
-    const next = !developerMode;
+    const next = typeof forceNext === 'boolean' ? forceNext : !developerMode;
+    setExplicitDevOverride(next);
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('supremeai_dev_mode_override', String(next));
+      } catch {
+        // Ignore storage errors
+      }
+    }
     updateSettings({ developerMode: next });
     if (!next) {
       if (DEV_ONLY_TABS.has(activeTab)) {
@@ -760,7 +828,7 @@ export default function App() {
     toast.info(
       next ? 'Developer Mode Enabled' : 'Standard Workspace Active',
       next
-        ? 'API keys, repositories, knowledge base, and Developer Tools are now unlocked.'
+        ? 'API keys, repositories, and Developer Tools are now unlocked.'
         : 'Clean Standard Mode active for everyday work.'
     );
   };
@@ -823,7 +891,8 @@ export default function App() {
 
   const executeDashboardAction = (
     action: DashboardActionType,
-    lang: 'en' | 'bn' | 'banglish'
+    lang: 'en' | 'bn' | 'banglish',
+    payload?: string
   ): boolean => {
     const bn = lang === 'bn';
     switch (action) {
@@ -841,11 +910,60 @@ export default function App() {
           bn ? 'থিম লাইট মোডে পরিবর্তন করা হয়েছে।' : 'Switched workspace theme to light mode.'
         );
         return true;
+      case 'switch_lang_bn':
+        useAppPreferencesStore.getState().setLanguage('bn');
+        toast.success('ভাষা পরিবর্তন', 'এখন থেকে বাংলা ভাষা সক্রিয় থাকবে।');
+        return true;
+      case 'switch_lang_en':
+        useAppPreferencesStore.getState().setLanguage('en');
+        toast.success('Language Switched', 'Interface & replies switched to English.');
+        return true;
+      case 'set_live_theme': {
+        const matchedTheme = payload && LIVE_THEMES.find((th) => th.id === payload);
+        if (matchedTheme) {
+          useThemeStore.getState().setLiveTheme(matchedTheme.id as LiveThemeId);
+          toast.success(
+            bn ? 'থিম পরিবর্তন' : 'Theme Updated',
+            bn ? `${matchedTheme.name} চালু করা হয়েছে।` : `Switched scenic theme to ${matchedTheme.name}.`
+          );
+          return true;
+        }
+        return false;
+      }
+      case 'toggle_theme_motion': {
+        const nextMotion = !useThemeStore.getState().liveMotion;
+        useThemeStore.getState().setLiveMotion(nextMotion);
+        toast.info(
+          nextMotion ? 'Live Screen Active' : 'Still Background',
+          nextMotion ? 'Background motion resumed.' : 'Switched to distraction-free still background.'
+        );
+        return true;
+      }
+      case 'new_chat':
+        createNewSession();
+        setActiveTab('chat');
+        return true;
+      case 'open_projects':
+        handleSelectTab('user-projects');
+        return true;
+      case 'open_workspace_dock':
+        setActiveTab('chat');
+        setDockOpen(true);
+        return true;
+      case 'enable_dev_mode':
+        handleToggleDeveloperMode(true);
+        return true;
+      case 'disable_dev_mode':
+        handleToggleDeveloperMode(false);
+        return true;
+      case 'disable_jarvis':
+        handleToggleJarvis(false);
+        return true;
       case 'toggle_voice':
-        setIsLiveVoiceOpen((v) => !v);
+        handleToggleJarvis();
         toast.info(
           bn ? 'ভয়েস মোড' : 'Voice Mode',
-          bn ? 'লাইভ ভয়েস ইন্টারফেস পরিবর্তন করা হয়েছে।' : 'Toggled live voice companion mode.'
+          bn ? 'লাইভ ভয়েস ও জার্ভিস পরিবর্তন করা হয়েছে।' : 'Toggled JARVIS & Live Voice companion.'
         );
         return true;
       case 'open_usage':
@@ -892,10 +1010,15 @@ export default function App() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handler = (ev: Event) => {
-      const detail = (ev as CustomEvent<{ action?: DashboardActionType; language?: 'en' | 'bn' | 'banglish' }>)
-        ?.detail;
+      const detail = (
+        ev as CustomEvent<{
+          action?: DashboardActionType;
+          language?: 'en' | 'bn' | 'banglish';
+          payload?: string;
+        }>
+      )?.detail;
       if (detail?.action) {
-        executeDashboardAction(detail.action, detail.language || 'en');
+        executeDashboardAction(detail.action, detail.language || 'en', detail.payload);
       }
     };
     window.addEventListener('supremeai-dashboard-action', handler);
@@ -906,9 +1029,9 @@ export default function App() {
     text: string,
     attachment?: ChatAttachment,
     attachments?: ChatAttachment[],
-    skipClarification = false
+    skipClarification = false,
+    fromVoiceCommand = false
   ) => {
-    setSidebarOpen(false);
     setPendingClarification(null);
     const trimmed = text.trim();
     const attCount = attachments?.length || (attachment ? 1 : 0);
@@ -928,9 +1051,15 @@ export default function App() {
       : undefined;
 
     if (intent && intent.dashboardAction !== 'none') {
-      const handled = executeDashboardAction(intent.dashboardAction, intent.inferredLanguage);
+      const handled = executeDashboardAction(
+        intent.dashboardAction,
+        intent.inferredLanguage,
+        intent.actionPayload
+      );
       if (handled) return;
     }
+
+    setSidebarOpen(false);
 
     if (
       intent?.needsClarification &&
@@ -950,32 +1079,33 @@ export default function App() {
       return;
     }
 
-    // When Voice Mode or JARVIS Mode is active, inputs trigger spoken voice responses
+    // When Voice Mode or JARVIS Mode is active, inputs execute tasks or speak responses cleanly
     if ((isLiveVoiceOpen || jarvisEnabled) && attCount === 0 && trimmed) {
-      // বাংলা মন্তব্য: JARVIS ব্রিজ — ভয়েস/টেক্সট প্রম্পট যদি টাস্ক-সদৃশ হয়, তবে
-      // সরাসরি autonomous agent executor-এ যায় এবং প্রতিটি ধাপ ভয়েসে ঘোষিত হয়।
-      // এক্সিকিউশন শেষে অ্যাসিস্ট্যান্টের সমাপনী উত্তরও Edge Neural TTS-এ পাঠ করে শোনানো হয়।
-      if (jarvisEnabled) {
-        const looksLikeTask = shouldRouteToAutonomousAgent({
+      // বাংলা মন্তব্য: JARVIS ব্রিজ — ভয়েস বা টেক্সট প্রম্পট কোনো কাজের (অ্যাপ বিল্ড, ওয়েব সার্চ,
+      // রিসার্চ বা শিডিউল) হলে সরাসরি অটোনমাস এজেন্টে চলে ও ফলাফল ভয়েসে পাঠ করে শোনায়।
+      const looksLikeTask =
+        fromVoiceCommand ||
+        shouldRouteToAutonomousAgent({
           promptText: trimmed,
           intent,
           hasAttachments: false,
-          deepResearch: false,
+          deepResearch: Boolean(intent?.enableDeepResearch),
           workspaceFileCount: useWorkspaceStore.getState().projectFiles.length,
-        });
-        if (looksLikeTask) {
-          await sendMessage(trimmed, undefined, knowledgeDocs, undefined, undefined, intent);
-          const updatedSession = useChatStore
-            .getState()
-            .sessions.find((s) => s.id === activeSessionId);
-          const lastMsg = updatedSession?.messages?.[updatedSession.messages.length - 1];
-          if (lastMsg?.role === 'assistant' && lastMsg.content) {
-            liveVoice.speakFallbackText(lastMsg.content);
-          }
-          return;
+        }) ||
+        (intent !== undefined && intent.primaryGoal !== 'chat');
+
+      if ((jarvisEnabled || fromVoiceCommand) && looksLikeTask) {
+        await sendMessage(trimmed, undefined, knowledgeDocs, undefined, undefined, intent);
+        const updatedSession = useChatStore
+          .getState()
+          .sessions.find((s) => s.id === activeSessionId);
+        const lastMsg = updatedSession?.messages?.[updatedSession.messages.length - 1];
+        if (lastMsg?.role === 'assistant' && lastMsg.content) {
+          liveVoice.speakFallbackText(lastMsg.content);
         }
+        return;
       }
-      if (isLiveVoiceOpen) {
+      if (isLiveVoiceOpen && !fromVoiceCommand) {
         appendVoiceTurn(trimmed, '');
         const routed = liveVoice.sendTextPrompt(trimmed, { recordUserTranscript: false });
         if (routed) {
@@ -1000,6 +1130,58 @@ export default function App() {
         liveVoice.speakFallbackText(lastMsg.content);
       }
     }
+  };
+
+  // বাংলা মন্তব্য: মুখে বলা প্রতিটি বাক্য বিশ্লেষণ — সরাসরি অ্যাকশন বা কাজ হলে ভয়েস থেকেই এক্সিকিউট হবে।
+  liveTurnCommittedHandlerRef.current = (userText, assistantText, _voice, meta) => {
+    const cleanUser = (userText || '').trim();
+    if (meta?.fromTeardown || !cleanUser) {
+      appendVoiceTurn(userText, assistantText);
+      return;
+    }
+
+    const classification = classifySpokenJarvisCommand({
+      transcript: cleanUser,
+      isAdmin: effectiveRole === 'admin',
+      workspaceFileCount: useWorkspaceStore.getState().projectFiles.length,
+      knowledgeDocs,
+    });
+
+    if (classification.kind === 'dashboard_action') {
+      liveVoice.interruptPlayback();
+      const action = classification.dashboardMatch.action;
+      if (action === 'disable_jarvis') {
+        handleToggleJarvis(false);
+        return;
+      }
+      executeDashboardAction(
+        action,
+        classification.language,
+        classification.dashboardMatch.payload
+      );
+      const bn = classification.language === 'bn';
+      const confirmMsg = bn
+        ? 'ঠিক আছে, পরিবর্তনটি সম্পন্ন করা হয়েছে।'
+        : 'Done — updated your workspace right away.';
+      appendVoiceTurn(classification.cleanedTranscript, confirmMsg);
+      liveVoice.speakFallbackText(confirmMsg);
+      return;
+    }
+
+    if (classification.kind === 'autonomous_task') {
+      liveVoice.interruptPlayback();
+      jarvisService.notifyTaskAccepted(classification.language === 'bn' ? 'bn' : 'en');
+      void handleSendMessageWrapper(
+        classification.cleanedTranscript,
+        undefined,
+        undefined,
+        true,
+        true
+      );
+      return;
+    }
+
+    appendVoiceTurn(userText, assistantText);
   };
 
   const handleSelectClarificationOption = (option: string) => {
@@ -1501,11 +1683,11 @@ export default function App() {
                             isGuest ? openAuthModal('Prompt Library') : setIsPromptModalOpen(true)
                           }
                           developerMode={developerMode}
-                          onOpenLiveVoice={() => setIsLiveVoiceOpen((v) => !v)}
+                          onOpenLiveVoice={() => handleToggleJarvis()}
                           isLiveVoiceOpen={isLiveVoiceOpen}
                           voiceStatus={liveVoice.status}
                           jarvisEnabled={jarvisEnabled}
-                          onToggleJarvis={toggleJarvis}
+                          onToggleJarvis={() => handleToggleJarvis()}
                         />
                       </div>
                       <WorkspaceTipBar
@@ -1583,11 +1765,11 @@ export default function App() {
                         isGuest ? openAuthModal('Prompt Library') : setIsPromptModalOpen(true)
                       }
                       developerMode={developerMode}
-                      onOpenLiveVoice={() => setIsLiveVoiceOpen((v) => !v)}
+                      onOpenLiveVoice={() => handleToggleJarvis()}
                       isLiveVoiceOpen={isLiveVoiceOpen}
                       voiceStatus={liveVoice.status}
                       jarvisEnabled={jarvisEnabled}
-                      onToggleJarvis={toggleJarvis}
+                      onToggleJarvis={() => handleToggleJarvis()}
                     />
                   </div>
                 )}
@@ -1601,18 +1783,23 @@ export default function App() {
                     voiceName={liveVoice.voiceName}
                     liveModelText={liveVoice.liveModelText}
                     levelsRef={liveVoice.levelsRef}
-                    inputGain={liveVoice.inputGain}
-                    onChangeInputGain={liveVoice.setInputGain}
-                    voicePitch={liveVoice.voicePitch}
-                    onChangeVoicePitch={liveVoice.setVoicePitch}
+                    isMuted={liveVoice.isMuted}
+                    onToggleMute={liveVoice.toggleMute}
+                    onClose={() => handleToggleJarvis(false)}
                   />
                 </Suspense>
               )}
 
-              {/* বাংলা মন্তব্য: JARVIS HUD — মোড চালু থাকলে অবস্থা ও ঘোষণা সবসময় দৃশ্যমান */}
+              {/* বাংলা মন্তব্য: JARVIS HUD — মোড চালু থাকলে অবস্থা, কমান্ড বার ও ঘোষণা দৃশ্যমান */}
               {jarvisEnabled && (
                 <Suspense fallback={null}>
-                  <JarvisOverlay onDisable={() => jarvisService.setEnabled(false)} />
+                  <JarvisOverlay
+                    onDisable={() => handleToggleJarvis(false)}
+                    isVoicePanelOpen={isLiveVoiceOpen}
+                    onQuickCommand={(cmd) =>
+                      void handleSendMessageWrapper(cmd, undefined, undefined, true, true)
+                    }
+                  />
                 </Suspense>
               )}
 
@@ -1819,8 +2006,7 @@ export default function App() {
                           onOpenAdminConsole={() => setActiveTab('admin-overview')}
                           isDeveloperEligible={isDeveloperEligible}
                           effectiveDeveloperMode={developerMode}
-                          onToggleDeveloperMode={handleToggleDeveloperMode}
-                          onToggleDeveloperEligibility={setDeveloperEligibility}
+                          onToggleDeveloperMode={() => handleToggleDeveloperMode()}
                           trustedUntil={trustedBrowserUntil}
                           onRevokeTrustedBrowser={revokeTrustedBrowser}
                           onSignOut={logout}
@@ -1828,7 +2014,7 @@ export default function App() {
                           onOpenKnowledgeBase={() => setActiveTab('user-knowledge')}
                           onOpenLiveVoice={() => {
                             setActiveTab('chat');
-                            setIsLiveVoiceOpen(true);
+                            handleToggleJarvis(true);
                           }}
                           onPreviewVoice={(sampleText) =>
                             liveVoice.speakFallbackText(sampleText || '')

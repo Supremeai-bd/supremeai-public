@@ -25,15 +25,23 @@ import {
 interface JarvisOverlayProps {
   /** বাংলা মন্তব্য: প্যানেল নিজে খোলা থাকবে কি না (মোড চালু = দৃশ্যমান) */
   onDisable: () => void;
+  /** বাংলা মন্তব্য: ভয়েস প্যানেল ওপেন থাকলে ওভারল্যাপ এড়াতে স্মার্ট পজিশনিং ও কমান্ড সাপোর্ট */
+  isVoicePanelOpen?: boolean;
+  onQuickCommand?: (command: string) => void;
 }
 
-export const JarvisOverlay: React.FC<JarvisOverlayProps> = ({ onDisable }) => {
+export const JarvisOverlay: React.FC<JarvisOverlayProps> = ({
+  onDisable,
+  isVoicePanelOpen = false,
+  onQuickCommand,
+}) => {
   const { lang, t } = useI18n();
   const isStreaming = useChatStore((s) => s.isStreaming);
   const pendingTaskApproval = useChatStore((s) => s.pendingTaskApproval);
   const streamingAgentSteps = useChatStore((s) => s.streamingAgentSteps);
   const [muted, setMuted] = useState<boolean>(() => isJarvisNarrationMuted());
   const [collapsed, setCollapsed] = useState(false);
+  const [quickCmd, setQuickCmd] = useState('');
   const [announcements, setAnnouncements] = useState<JarvisAnnouncement[]>(() =>
     getAnnouncementLog().slice(-6)
   );
@@ -71,6 +79,11 @@ export const JarvisOverlay: React.FC<JarvisOverlayProps> = ({ onDisable }) => {
     setJarvisNarrationMuted(next);
   };
 
+  // বাংলা মন্তব্য: মোবাইলে (<sm) হেডার ও চ্যাট-ইনপুটের মাঝে পরিষ্কার জায়গায় (top-24) এবং বড় স্ক্রিনে ৩ডি অবতারের বামে HUD অবস্থান নেয়।
+  const positionClass = isVoicePanelOpen
+    ? 'top-24 right-4 sm:top-16 sm:right-6 lg:right-[366px] xl:right-[406px]'
+    : 'bottom-20 right-4';
+
   if (collapsed) {
     return (
       <button
@@ -78,7 +91,7 @@ export const JarvisOverlay: React.FC<JarvisOverlayProps> = ({ onDisable }) => {
         onClick={() => setCollapsed(false)}
         aria-label={t.jarvisExpandLabel}
         data-testid="jarvis-overlay-collapsed"
-        className="fixed bottom-4 right-4 z-50 inline-flex items-center gap-2 px-3 py-2 rounded-full border border-cyan-400/40 bg-slate-900/90 text-cyan-300 shadow-lg backdrop-blur-md cursor-pointer hover:bg-slate-800/90 transition-colors"
+        className={`fixed ${positionClass} z-50 inline-flex items-center gap-2 px-3 py-2 rounded-full border border-cyan-400/40 bg-slate-900/90 text-cyan-300 shadow-lg backdrop-blur-md cursor-pointer hover:bg-slate-800/90 transition-colors`}
       >
         <Bot className="w-4 h-4" aria-hidden="true" />
         <span className="text-xs font-semibold">JARVIS</span>
@@ -93,7 +106,7 @@ export const JarvisOverlay: React.FC<JarvisOverlayProps> = ({ onDisable }) => {
       aria-live="polite"
       aria-label={t.jarvisOverlayLabel}
       data-testid="jarvis-overlay"
-      className="fixed bottom-4 right-4 z-50 w-[min(92vw,340px)] rounded-2xl border border-cyan-400/30 bg-slate-900/95 dark:bg-slate-950/95 text-slate-100 shadow-2xl backdrop-blur-md overflow-hidden"
+      className={`fixed ${positionClass} z-50 w-[min(92vw,330px)] rounded-2xl border border-cyan-400/30 bg-slate-900/95 dark:bg-slate-950/95 text-slate-100 shadow-2xl backdrop-blur-md overflow-hidden`}
     >
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/10">
         <div className="flex items-center gap-2 min-w-0">
@@ -193,6 +206,35 @@ export const JarvisOverlay: React.FC<JarvisOverlayProps> = ({ onDisable }) => {
             </div>
           ))}
         </div>
+      )}
+
+      {onQuickCommand && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const trimmed = quickCmd.trim();
+            if (!trimmed) return;
+            setQuickCmd('');
+            onQuickCommand(trimmed);
+          }}
+          className="px-3 py-2 border-t border-white/10 flex items-center gap-1.5"
+        >
+          <input
+            type="text"
+            value={quickCmd}
+            onChange={(e) => setQuickCmd(e.target.value)}
+            placeholder={lang === 'bn' ? 'জার্ভিসকে কমান্ড দিন...' : 'Command JARVIS...'}
+            aria-label={lang === 'bn' ? 'জার্ভিস কমান্ড' : 'JARVIS command'}
+            className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/15 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+          />
+          <button
+            type="submit"
+            disabled={!quickCmd.trim()}
+            className="px-2.5 py-1.5 rounded-lg bg-cyan-500/80 hover:bg-cyan-500 disabled:opacity-40 text-[11px] font-semibold text-slate-950 cursor-pointer shrink-0"
+          >
+            {lang === 'bn' ? 'চালান' : 'Run'}
+          </button>
+        </form>
       )}
 
       <div className="px-4 py-2 border-t border-white/10 text-[10px] text-slate-500 flex items-center justify-between">

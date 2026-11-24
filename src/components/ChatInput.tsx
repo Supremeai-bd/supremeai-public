@@ -3,37 +3,23 @@ import {
   Send,
   Square,
   Plus,
-  Mic,
-  ChevronDown,
-  ChevronRight,
-  Sparkles,
   Paperclip,
   Image as ImageIcon,
   X,
   BookOpen,
-  Lock,
   AudioLines,
   Loader2,
-  Check,
   Wand2,
   Search,
   Lightbulb,
-  SlidersHorizontal,
-  Globe,
-  Braces,
   Bot,
   Eye,
 } from 'lucide-react';
-import { ModelDetail, ChatAttachment, PlanTier, WorkbenchThinkingLevel } from '../types';
-import { SUPREMEAI_MODELS, getModelColorTheme } from '../data/models';
+import { ModelDetail, ChatAttachment } from '../types';
 import { usePlatformStore } from '../stores/usePlatformStore';
 import { useAuthStore } from '../stores/useAuthStore';
-import { useCustomerStore } from '../stores/useCustomerStore';
-import { useChatStore } from '../stores/useChatStore';
-import { useAudioTranscription } from '../hooks/useAudioTranscription';
 import type { LiveSessionStatus } from '../hooks/useLiveVoiceSession';
 import { useI18n } from '../utils/i18n';
-import { estimateMessagesContextTokens, validateJsonSchemaInput } from '../utils/workbenchUtils';
 import {
   isImageAttachment,
   MAX_CHAT_ATTACHMENTS,
@@ -60,92 +46,31 @@ interface ChatInputProps {
   onToggleJarvis?: () => void;
 }
 
-const TIER_RANK: Record<PlanTier, number> = {
-  Free: 0,
-  Pro: 1,
-  Enterprise: 2,
-};
-
 export const ChatInput: React.FC<ChatInputProps> = ({
   onSendMessage,
   onStopStreaming,
   isStreaming,
-  activeModel,
-  onSelectModel,
   onOpenPromptLibrary,
-  developerMode: developerModeProp,
   onOpenLiveVoice,
   isLiveVoiceOpen = false,
-  voiceStatus = 'idle',
   jarvisEnabled = false,
   onToggleJarvis,
 }) => {
   const [inputText, setInputText] = useState('');
-  const [showModelMenu, setShowModelMenu] = useState(false);
-  const [showManualModels, setShowManualModels] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const [showWorkbenchMenu, setShowWorkbenchMenu] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isProcessingAttachment, setIsProcessingAttachment] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const { t } = useI18n();
 
-  const runSettings = useChatStore((s) => s.runSettings);
-  const updateRunSettings = useChatStore((s) => s.updateRunSettings);
-  const sessions = useChatStore((s) => s.sessions);
-  const activeSessionId = useChatStore((s) => s.activeSessionId);
-  const customInstruction = useChatStore((s) => s.customInstruction);
-  const activeMessages = React.useMemo(
-    () => (sessions.find((s) => s.id === activeSessionId) || sessions[0])?.messages || [],
-    [sessions, activeSessionId]
-  );
-  const estimatedContextTokens = React.useMemo(
-    () => estimateMessagesContextTokens(activeMessages, inputText, attachments, customInstruction),
-    [activeMessages, inputText, attachments, customInstruction]
-  );
-  const schemaValidation = React.useMemo(
-    () => validateJsonSchemaInput(runSettings.jsonSchemaText),
-    [runSettings.jsonSchemaText]
-  );
-  const isThinkingManual = runSettings.thinkingMode === 'manual';
-  const isSearchManual = runSettings.searchMode === 'manual';
-  const hasCustomRunConfig =
-    isSearchManual ||
-    runSettings.responseMimeType === 'application/json' ||
-    isThinkingManual ||
-    !runSettings.agentLoopEnabled;
-
-  const {
-    isRecording,
-    isTranscribing,
-    recordingSeconds,
-    error: transcribeError,
-    toggleRecording,
-    clearError: clearTranscribeError,
-  } = useAudioTranscription({
-    onTranscript: (transcript) => {
-      setInputText((prev) => (prev ? `${prev} ${transcript}` : transcript));
-    },
-  });
-
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const config = usePlatformStore((s) => s.config);
   const currentRole = useAuthStore((s) => s.currentRole);
-  const authUser = useAuthStore((s) => s.authUser);
-  const storeDeveloperMode = useCustomerStore((s) => s.userSettings.developerMode);
-  const autoModelRouting = useCustomerStore((s) => s.userSettings.autoModelRouting !== false);
-  const updateSettings = useCustomerStore((s) => s.updateSettings);
-  const developerMode =
-    developerModeProp !== undefined
-      ? developerModeProp
-      : Boolean(storeDeveloperMode && (authUser?.isDeveloperEligible || currentRole === 'admin'));
-
-  const userTier: PlanTier = authUser?.plan || 'Pro';
   const isVisionEnabled = config.featureFlags.enable_multimodal_vision !== false;
-  const activeModelTheme = getModelColorTheme(activeModel.id);
+  const isJarvisOrVoiceActive = Boolean(jarvisEnabled || isLiveVoiceOpen);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -288,10 +213,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     void ingestFiles(dropped);
   };
 
-  // Microphone Audio Transcription via gemini-3.5-transcribe
-  const toggleListening = () => {
-    void toggleRecording();
-  };
+
 
   const insertStarter = (snippet: string) => {
     setInputText((prev) => (prev ? `${prev}\n${snippet}` : snippet));
@@ -414,20 +336,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           </div>
         )}
 
-        {transcribeError && (
-          <div className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-600 dark:text-rose-300">
-            <span className="truncate">{transcribeError}</span>
-            <button
-              type="button"
-              onClick={clearTranscribeError}
-              className="p-0.5 rounded hover:bg-rose-500/20 cursor-pointer shrink-0"
-              aria-label="Dismiss audio transcription error"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
         {/* SupremeAI Container-Responsive Input Capsule */}
         <div className="relative rounded-2xl @[640px]/input:rounded-3xl theme-input-surface border shadow-[0_12px_40px_rgba(15,23,42,0.12)] dark:shadow-[0_14px_40px_rgba(0,0,0,0.45)] theme-capsule-focus transition-all p-2 @[520px]/input:p-2.5 flex flex-wrap @[640px]/input:flex-nowrap items-center gap-1.5 @[520px]/input:gap-2">
           {/* Left + Button (Clean Intent-First Upload, Recipes & Quick Starters) */}
@@ -531,46 +439,38 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             className="order-1 @[640px]/input:order-2 basis-full @[640px]/input:basis-0 @[640px]/input:flex-1 min-w-0 max-h-40 bg-transparent resize-none border-none focus:outline-none text-xs @[520px]/input:text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 px-2 py-1 leading-relaxed"
           />
 
-          {/* Right Controls: Workbench Run Settings + Model Selector + Voice/Mic + Send */}
+          {/* Right Controls: Unified JARVIS Voice + Task Action & Send */}
           <div className="order-3 ml-auto @[640px]/input:ml-0 flex items-center gap-1 @[520px]/input:gap-1.5 shrink-0 pr-0.5">
-            {estimatedContextTokens > 0 && (
-              <span
-                title={`Estimated prompt context: ~${estimatedContextTokens.toLocaleString('en-US')} tokens`}
-                className="hidden @[560px]/input:inline text-[10px] font-mono tabular-nums text-slate-400 dark:text-slate-500 px-1 select-none"
-              >
-                ~{estimatedContextTokens.toLocaleString('en-US')} {t.wbTokensEstSuffix}
-              </span>
-            )}
-
-            {/* Unified Autonomous JARVIS (Voice + Vision + Action) Mode Button */}
+            {/* বাংলা মন্তব্য: একক JARVIS বাটন — অন করলে ভয়েস ও টাস্ক অটোমেশন দুটোই চালু হয়, অফ করলে দুটোই বন্ধ হয়। */}
             {(onToggleJarvis || onOpenLiveVoice) && (
               <button
                 type="button"
                 onClick={() => {
-                  if (onToggleJarvis) onToggleJarvis();
-                  if (onOpenLiveVoice && (jarvisEnabled !== isLiveVoiceOpen || !jarvisEnabled)) {
+                  if (onToggleJarvis) {
+                    onToggleJarvis();
+                  } else if (onOpenLiveVoice) {
                     onOpenLiveVoice();
                   }
                 }}
-                aria-label={jarvisEnabled || isLiveVoiceOpen ? t.jarvisDisableTooltip : t.jarvisEnableTooltip}
-                aria-pressed={jarvisEnabled || isLiveVoiceOpen}
-                title={jarvisEnabled || isLiveVoiceOpen ? t.jarvisDisableTooltip : t.jarvisEnableTooltip}
+                aria-label={isJarvisOrVoiceActive ? t.jarvisDisableTooltip : t.jarvisEnableTooltip}
+                aria-pressed={isJarvisOrVoiceActive}
+                title={isJarvisOrVoiceActive ? t.jarvisDisableTooltip : t.jarvisEnableTooltip}
                 data-testid="jarvis-toggle"
                 className={`inline-flex items-center gap-1.5 px-3 py-1 @[520px]/input:py-1.5 rounded-full border text-[11px] @[520px]/input:text-xs font-semibold transition-all cursor-pointer shrink-0 ${
-                  jarvisEnabled || isLiveVoiceOpen
+                  isJarvisOrVoiceActive
                     ? 'theme-btn-primary border-transparent shadow-xs'
                     : 'theme-accent-active hover:brightness-105'
                 }`}
               >
                 <Bot
-                  className={`w-3.5 h-3.5 shrink-0 ${jarvisEnabled || isLiveVoiceOpen ? 'animate-pulse' : ''}`}
+                  className={`w-3.5 h-3.5 shrink-0 ${isJarvisOrVoiceActive ? 'animate-pulse' : ''}`}
                   aria-hidden="true"
                 />
-                {(jarvisEnabled || isLiveVoiceOpen) && (
+                {isJarvisOrVoiceActive && (
                   <AudioLines className="w-3.5 h-3.5 shrink-0 text-cyan-400 animate-pulse" />
                 )}
                 <span className="whitespace-nowrap">
-                  {jarvisEnabled || isLiveVoiceOpen ? t.jarvisOnBtn : t.jarvisBtn}
+                  {isJarvisOrVoiceActive ? t.jarvisOnBtn : t.jarvisBtn}
                 </span>
               </button>
             )}
