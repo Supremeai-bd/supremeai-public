@@ -120,7 +120,7 @@ const MULTI_STEP_AGENT_ASCII =
   /\b(workspace|package\.json|server\.ts|project\s+files?|inspect\s+files?|read\s+files?|list\s+files?|compare\s+.*\band\b|step[\s-]+by[\s-]+step|end[\s-]+to[\s-]+end|automate|execute\s+this|check\s+.*\band\s+(?:then\s+)?(?:fix|summarize|schedule|open|save|create)|browse\s+.*\band\s+(?:schedule|summarize|compare)|schedule\s+.*\bhttps?:\/\/)\b/i;
 
 const MULTI_STEP_AGENT_BN =
-  /(ফাইল\s*(?:দেখে|প\u09dcে|চেক\s*করে)|প্রজেক্ট\s*(?:চেক|রিভিউ|ঠিক)|নিজে\s*(?:করে|চালি\u09dfে)\s*দাও|ধাপে\s*ধাপে\s*(?:করে|সমাধান)|তুলনা\s*করে\s*(?:দাও|বলো)|শিডিউল\s*(?:করে|বসি\u09dfে)\s*দাও|koro\s+ebong|check\s+kore\s+(?:bolo|dekhao|schedule)|file\s+gulo\s+dekho)/i;
+  /(ফাইল\s*(?:দেখে|পড়ে|চেক\s*করে)|প্রজেক্ট\s*(?:চেক|রিভিউ|ঠিক)|নিজে\s*(?:করে|চালিয়ে)\s*দাও|ধাপে\s*ধাপে\s*(?:করে|সমাধান)|তুলনা\s*করে\s*(?:দাও|বলো)|শিডিউল\s*(?:করে|বসিয়ে)\s*দাও|koro\s+ebong|check\s+kore\s+(?:bolo|dekhao|schedule)|file\s+gulo\s+dekho)/i;
 
 const FILE_PATH_REFERENCE =
   /(?:^|\s)(?:src\/|functions\/|scripts\/|package\.json|tsconfig\.json|server\.ts|index\.html|README\.md)\S*/i;
