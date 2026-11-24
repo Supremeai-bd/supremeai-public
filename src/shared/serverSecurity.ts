@@ -247,8 +247,10 @@ export function isRestrictedProxyTarget(
     host.startsWith('10.') ||
     host.startsWith('192.168.') ||
     host.startsWith('169.254.') ||
-    host.startsWith('fc') ||
-    host.startsWith('fd') ||
+    // Audit 2026-11-24 (item 3.1): the blanket startsWith('fc')/'fd') checks
+    // were removed — they wrongly blocked public domains like fcbarcelona.com /
+    // fdroid.org. ULA fc00::/7 literals are caught by net.isIP() + the
+    // isPrivateIpAddress() parser below (which matches real IPv6 text only).
     host.startsWith('fe80:') ||
     /^::ffff:127\./.test(host) ||
     /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
