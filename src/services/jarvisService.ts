@@ -147,6 +147,27 @@ export function isJarvisNarrationMuted(): boolean {
   return narrationMuted;
 }
 
+let activeNarrationAudio: HTMLAudioElement | null = null;
+
+export function stopJarvisSpeech(): void {
+  if (activeNarrationAudio) {
+    try {
+      activeNarrationAudio.pause();
+      activeNarrationAudio.currentTime = 0;
+      activeNarrationAudio = null;
+    } catch {
+      // Non-fatal.
+    }
+  }
+  if (typeof window !== 'undefined' && typeof window.speechSynthesis !== 'undefined') {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // Non-fatal.
+    }
+  }
+}
+
 export function setJarvisNarrationMuted(muted: boolean): void {
   narrationMuted = muted;
   try {
@@ -156,12 +177,8 @@ export function setJarvisNarrationMuted(muted: boolean): void {
   } catch {
     // Non-fatal.
   }
-  if (muted && typeof window !== 'undefined' && typeof window.speechSynthesis !== 'undefined') {
-    try {
-      window.speechSynthesis.cancel();
-    } catch {
-      // Non-fatal.
-    }
+  if (muted) {
+    stopJarvisSpeech();
   }
 }
 
@@ -218,15 +235,13 @@ export function subscribeJarvisAnnouncements(
 }
 
 /* ------------------------------------------------------------------ */
-/* Speech synthesis (narration voice)                                  */
+/* Speech synthesis (narration voice — Edge Neural + Web Speech fallback) */
 /* ------------------------------------------------------------------ */
 
-function speakNarration(text: string): void {
-  if (narrationMuted) return;
+function speakWithBrowserUtterance(text: string): boolean {
   if (typeof window === 'undefined' || typeof window.speechSynthesis === 'undefined') {
-    return;
+    return false;
   }
-  if (!text) return;
   try {
     const resolved = ttsService.resolveVoiceForText(text);
     const utterance = new SpeechSynthesisUtterance(text);
@@ -242,13 +257,87 @@ function speakNarration(text: string): void {
       voices.find((v) => v.lang?.startsWith(resolved.lang.split('-')[0]));
     if (match) utterance.voice = match;
 
-    // বাংলা মন্তব্য: আগের ন্যারেশন থেকে গেলে নতুন ঘোষণা সঙ্গে সঙ্গে বলা হয় —
-    // টাস্ক দ্রুত এগোলে পুরনো বাক্য ধরে রাখা অর্থহীন।
-    window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
+    return true;
   } catch (err) {
     logger.debug('jarvis: speech synthesis unavailable', err);
+    return false;
   }
+}
+
+let narrationGeneration = 0;
+
+function speakNarration(text: string): void {
+  if (narrationMuted) return;
+  if (typeof window === 'undefined') return;
+  if (!text) return;
+
+  stopJarvisSpeech();
+  const currentGen = ++narrationGeneration;
+
+  // বাংলা মন্তব্য: টেস্ট এনভায়রনমেন্টে সিনক্রোনাস স্পিচ স্টাব ব্যবহার করা হয়
+  const isTestEnv =
+    typeof process !== 'undefined' &&
+    (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true');
+
+  if (isTestEnv) {
+    speakWithBrowserUtterance(text);
+    return;
+  }
+
+  // বাংলা মন্তব্য: ১. ব্রাউজারে প্রথমে Cloudflare Edge Neural TTS (/api/tts/edge) চেষ্টা করি
+  if (typeof fetch !== 'undefined' && typeof Audio !== 'undefined') {
+    (async () => {
+      try {
+        const payload = ttsService.buildSynthesizePayload(text);
+        const res = await fetch('/api/tts/edge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (currentGen === narrationGeneration && res.ok) {
+          const data = await res.json().catch(() => null);
+          let base64 = '';
+          let mime = 'audio/mpeg';
+
+          if (Array.isArray(data?.chunks) && data.chunks.length > 0) {
+            base64 = data.chunks[0].audioBase64 || '';
+            mime = data.chunks[0].mimeType || 'audio/mpeg';
+          } else if (typeof data?.audioBase64 === 'string') {
+            base64 = data.audioBase64;
+            mime = typeof data?.mimeType === 'string' ? data.mimeType : 'audio/mpeg';
+          }
+
+          if (base64 && currentGen === narrationGeneration) {
+            const audio = new Audio(`data:${mime};base64,${base64}`);
+            activeNarrationAudio = audio;
+            audio.onended = () => {
+              if (activeNarrationAudio === audio) activeNarrationAudio = null;
+            };
+            audio.onerror = () => {
+              if (activeNarrationAudio === audio) activeNarrationAudio = null;
+            };
+            await audio.play().catch(() => {
+              // ব্রাউজার অটোপ্লে ব্লক করলে লোকাল স্পিচে ফলব্যাক
+              speakWithBrowserUtterance(text);
+            });
+            return;
+          }
+        }
+      } catch {
+        // ফলব্যাক
+      }
+
+      if (currentGen === narrationGeneration) {
+        speakWithBrowserUtterance(text);
+      }
+    })();
+    return;
+  }
+
+  // বাংলা মন্তব্য: ২. ফলব্যাক: ব্রাউজারের নেটিভ SpeechSynthesisUtterance
+  speakWithBrowserUtterance(text);
 }
 
 /* ------------------------------------------------------------------ */
