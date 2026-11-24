@@ -8,6 +8,9 @@ import {
   Check,
   QrCode,
   RefreshCw,
+  ChevronDown,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { TotpInputForm } from './two-factor/TotpInputForm';
 import { TrustedBrowserCheckbox } from './two-factor/TrustedBrowserCheckbox';
@@ -40,6 +43,8 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
     otpauthUrl: string;
   } | null>(null);
   const [copiedSecret, setCopiedSecret] = useState(false);
+  const [showManualKey, setShowManualKey] = useState(false);
+  const [revealKey, setRevealKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState(getUtcTotpSecondsRemaining);
 
@@ -57,9 +62,22 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
       } else {
         setIsEnrolled(false);
         const setup = await authService.setupTotp({ userEmail });
+        let qrDataUrl = setup.qrDataUrl;
+        if (!qrDataUrl && setup.otpauthUrl) {
+          try {
+            const QRCode = (await import('qrcode')).default;
+            qrDataUrl = await QRCode.toDataURL(setup.otpauthUrl, {
+              margin: 1,
+              width: 200,
+              color: { dark: '#0891b2', light: '#ffffff' },
+            });
+          } catch {
+            // fallback gracefully
+          }
+        }
         setSetupData({
           secret: setup.secret,
-          qrDataUrl: setup.qrDataUrl,
+          qrDataUrl: qrDataUrl || '',
           otpauthUrl: setup.otpauthUrl,
         });
       }
@@ -230,35 +248,67 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
                   </p>
                 </div>
 
-                <div className="flex justify-center">
-                  <img
-                    src={setupData.qrDataUrl}
-                    alt="TOTP Authenticator QR Code"
-                    className="w-40 h-40 rounded-xl border border-slate-200 dark:border-slate-700 bg-white p-1.5 shadow-sm"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                  <div className="min-w-0">
-                    <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
-                      Manual Setup Key
-                    </div>
-                    <code className="text-[11px] font-mono text-slate-800 dark:text-cyan-300 break-all">
-                      {setupData.secret}
-                    </code>
+                {setupData.qrDataUrl ? (
+                  <div className="flex justify-center py-1">
+                    <img
+                      src={setupData.qrDataUrl}
+                      alt="TOTP Authenticator QR Code"
+                      className="w-40 h-40 rounded-xl border border-slate-200 dark:border-slate-700 bg-white p-1.5 shadow-sm"
+                    />
                   </div>
+                ) : null}
+
+                {/* Collapsible Manual Setup Key — masked by default to protect against shoulder surfing */}
+                <div className="pt-1 border-t border-slate-200/80 dark:border-slate-800">
                   <button
                     type="button"
-                    onClick={handleCopySecret}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-cyan-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-                    title="Copy TOTP setup key"
+                    onClick={() => setShowManualKey((v) => !v)}
+                    className="w-full flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors py-1 cursor-pointer"
                   >
-                    {copiedSecret ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-500" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5" />
-                    )}
+                    <span>Can't scan QR code? Manual setup</span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        showManualKey ? 'rotate-180' : ''
+                      }`}
+                    />
                   </button>
+
+                  {showManualKey && (
+                    <div className="mt-2 flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-0.5">
+                          Manual Setup Key
+                        </div>
+                        <code className="text-xs font-mono text-slate-800 dark:text-cyan-300 tracking-wider break-all select-all">
+                          {revealKey ? setupData.secret : '•••• •••• •••• •••• •••• ••••'}
+                        </code>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setRevealKey((v) => !v)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-slate-100 dark:hover:bg-slate-850 transition-colors cursor-pointer"
+                          title={revealKey ? 'Hide key' : 'Reveal key'}
+                          aria-label={revealKey ? 'Hide key' : 'Reveal key'}
+                        >
+                          {revealKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCopySecret}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-slate-100 dark:hover:bg-slate-850 transition-colors cursor-pointer"
+                          title="Copy setup key to clipboard"
+                          aria-label="Copy setup key to clipboard"
+                        >
+                          {copiedSecret ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-500" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
