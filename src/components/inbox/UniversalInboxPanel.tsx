@@ -367,8 +367,16 @@ export const UniversalInboxPanel: React.FC = () => {
       </div>
 
       {errorMsg && (
-        <div className="mx-4 mt-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-600 dark:text-rose-400">
-          {errorMsg}
+        <div className="mx-4 mt-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-600 dark:text-rose-400 flex items-center justify-between gap-2">
+          <span>{errorMsg}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMsg(null)}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer p-0.5 text-base leading-none"
+            aria-label="Dismiss error"
+          >
+            &times;
+          </button>
         </div>
       )}
 

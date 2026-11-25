@@ -28,6 +28,10 @@ const resolvedConfig = {
   messagingSenderId:
     import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfig.messagingSenderId,
   appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfig.appId,
+  oAuthClientId:
+    import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID ||
+    firebaseConfig.oAuthClientId ||
+    '',
 };
 
 const GMAIL_SESSION_ENDPOINT = '/api/workspace/gmail-session';
@@ -165,6 +169,118 @@ async function clearGmailSessionFromServer(): Promise<void> {
   }
 }
 
+// বাংলা মন্তব্য: Firebase API Key অনুপস্থিত থাকলেও কনফিগার করা oAuthClientId দিয়ে সরাসরি Google Identity Services (GIS) OAuth টোকেন ক্লায়েন্ট চালানো হয়।
+async function connectWithGoogleIdentityServices(clientId: string): Promise<{
+  user: User;
+  accessToken: string;
+}> {
+  if (typeof window === 'undefined') {
+    throw new Error('Google OAuth is only available in browser environments.');
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    if ((window as any).google?.accounts?.oauth2) {
+      resolve();
+      return;
+    }
+    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener(
+        'error',
+        () => reject(new Error('Failed to load Google Identity Services SDK.')),
+        { once: true }
+      );
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () =>
+      reject(
+        new Error(
+          'Failed to load Google Identity Services SDK. Check your internet connection.'
+        )
+      );
+    document.head.appendChild(script);
+  });
+
+  const googleOauth = (window as any).google?.accounts?.oauth2;
+  if (!googleOauth?.initTokenClient) {
+    throw new Error('Google Identity Services SDK failed to initialize.');
+  }
+
+  return new Promise((resolve, reject) => {
+    const tokenClient = googleOauth.initTokenClient({
+      client_id: clientId,
+      scope:
+        'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+      callback: async (resp: any) => {
+        if (resp.error) {
+          reject(
+            new Error(
+              resp.error_description || resp.error || 'Google sign-in was cancelled or failed.'
+            )
+          );
+          return;
+        }
+        const token = resp.access_token;
+        if (!token) {
+          reject(new Error('No access token returned by Google OAuth.'));
+          return;
+        }
+        try {
+          let email = '';
+          let name = 'Gmail User';
+          let uid = `g_${Date.now()}`;
+          try {
+            const uRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (uRes.ok) {
+              const uData = (await uRes.json()) as any;
+              email = uData.email || '';
+              name = uData.name || (email ? email.split('@')[0] : name);
+              uid = uData.sub || uid;
+            }
+          } catch {
+            // Non-fatal profile enrichment fallback
+          }
+
+          const mockFirebaseUser = {
+            uid,
+            email,
+            displayName: name,
+            photoURL: null,
+            emailVerified: true,
+            isAnonymous: false,
+            providerData: [],
+          } as unknown as User;
+
+          cachedCurrentUser = mockFirebaseUser;
+          cachedAccessToken = token;
+          cachedSessionEmail = email || null;
+          await persistGmailSessionToServer(token, mockFirebaseUser);
+          resolve({ user: mockFirebaseUser, accessToken: token });
+        } catch (err) {
+          reject(
+            err instanceof Error
+              ? err
+              : new Error('Failed to complete Google OAuth session setup.')
+          );
+        }
+      },
+      error_callback: (err: any) => {
+        reject(new Error(err?.message || 'Google OAuth prompt failed to open.'));
+      },
+    });
+
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  });
+}
+
 export function subscribeGmailAuthState(
   onAuthSuccess?: (user: User | null, token: string, restoredEmail?: string) => void,
   onAuthFailure?: (signedInUser?: User | null) => void,
@@ -174,6 +290,32 @@ export function subscribeGmailAuthState(
   let unsubscribeInner: (() => void) | null = null;
 
   onRestoringChange?.(true);
+
+  if (!resolvedConfig.apiKey) {
+    // বাংলা মন্তব্য: Firebase API key না থাকলে ensureFirebaseAuth কল না করে সার্ভার-সাইড সেভ করা পূর্বের সেশন রিকভারি চেষ্টা করা হবে
+    void restoreGmailSessionFromServer(null)
+      .then((restored) => {
+        if (disposed) return;
+        onRestoringChange?.(false);
+        if (restored?.accessToken) {
+          cachedAccessToken = restored.accessToken;
+          cachedSessionEmail = restored.email || null;
+          onAuthSuccess?.(null, restored.accessToken, cachedSessionEmail || undefined);
+        } else {
+          onAuthFailure?.(null);
+        }
+      })
+      .catch(() => {
+        if (disposed) return;
+        onRestoringChange?.(false);
+        onAuthFailure?.(null);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }
+
   void ensureFirebaseAuth()
     .then(({ auth, onAuthStateChanged }) => {
       if (disposed) return;
@@ -252,18 +394,30 @@ export async function connectGmailWithGooglePopup(): Promise<{
 } | null> {
   try {
     isSigningIn = true;
-    const { auth, provider, GoogleAuthProvider, signInWithPopup } = await ensureFirebaseAuth();
-    const result = await signInWithPopup(auth, provider);
-    cachedCurrentUser = result.user;
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Could not obtain Gmail access token from Google sign-in.');
+    // বাংলা মন্তব্য: যদি Firebase API key কনফিগার করা থাকে তবে Firebase Auth পপআপ ব্যবহার হবে
+    if (resolvedConfig.apiKey) {
+      const { auth, provider, GoogleAuthProvider, signInWithPopup } = await ensureFirebaseAuth();
+      const result = await signInWithPopup(auth, provider);
+      cachedCurrentUser = result.user;
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (!credential?.accessToken) {
+        throw new Error('Could not obtain Gmail access token from Google sign-in.');
+      }
+      const token = credential.accessToken;
+      cachedAccessToken = token;
+      cachedSessionEmail = result.user.email || null;
+      await persistGmailSessionToServer(token, result.user);
+      return { user: result.user, accessToken: token };
     }
-    const token = credential.accessToken;
-    cachedAccessToken = token;
-    cachedSessionEmail = result.user.email || null;
-    await persistGmailSessionToServer(token, result.user);
-    return { user: result.user, accessToken: token };
+
+    // বাংলা মন্তব্য: Firebase API key না থাকলে সরাসরি Google Identity Services (GIS) OAuth চালানো হবে
+    if (resolvedConfig.oAuthClientId) {
+      return await connectWithGoogleIdentityServices(resolvedConfig.oAuthClientId);
+    }
+
+    throw new Error(
+      'Google OAuth is not configured. Set VITE_GOOGLE_OAUTH_CLIENT_ID or VITE_FIREBASE_API_KEY in your environment.'
+    );
   } finally {
     isSigningIn = false;
   }
@@ -274,11 +428,13 @@ export async function disconnectGmailAccount(): Promise<void> {
   cachedSessionEmail = null;
   cachedCurrentUser = null;
   await clearGmailSessionFromServer();
-  try {
-    const { auth } = await ensureFirebaseAuth();
-    await auth.signOut();
-  } catch {
-    // Ignore if firebase auth wasn't initialized
+  if (resolvedConfig.apiKey) {
+    try {
+      const { auth } = await ensureFirebaseAuth();
+      await auth.signOut();
+    } catch {
+      // Ignore if firebase auth wasn't initialized
+    }
   }
 }
 
