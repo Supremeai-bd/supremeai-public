@@ -14,19 +14,10 @@ import {
   Lightbulb,
   Bot,
   Eye,
-  ChevronDown,
-  SlidersHorizontal,
-  Check,
-  Sparkles,
-  Globe,
 } from 'lucide-react';
-import { ModelDetail, ChatAttachment, WorkbenchThinkingLevel } from '../types';
+import { ModelDetail, ChatAttachment } from '../types';
 import { usePlatformStore } from '../stores/usePlatformStore';
 import { useAuthStore } from '../stores/useAuthStore';
-import { useCustomerStore } from '../stores/useCustomerStore';
-import { useChatStore } from '../stores/useChatStore';
-import { SUPREMEAI_MODELS, getModelColorTheme } from '../data/models';
-import { SYSTEM_ROLES } from '../data/roles';
 import type { LiveSessionStatus } from '../hooks/useLiveVoiceSession';
 import { useI18n } from '../utils/i18n';
 import {
@@ -69,29 +60,19 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 }) => {
   const [inputText, setInputText] = useState('');
   const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const [showModelMenu, setShowModelMenu] = useState(false);
-  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isProcessingAttachment, setIsProcessingAttachment] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const { t, lang, setLanguage } = useI18n();
+  const { t } = useI18n();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const config = usePlatformStore((s) => s.config);
   const currentRole = useAuthStore((s) => s.currentRole);
-  const autoModelRouting = useCustomerStore((s) => s.userSettings.autoModelRouting !== false);
-  const updateCustomerSettings = useCustomerStore((s) => s.updateSettings);
-  const activeRole = useChatStore((s) => s.activeRole);
-  const selectRole = useChatStore((s) => s.selectRole);
-  const setIsRoleModalOpen = useChatStore((s) => s.setIsRoleModalOpen);
-  const runSettings = useChatStore((s) => s.runSettings);
-  const updateRunSettings = useChatStore((s) => s.updateRunSettings);
   const isVisionEnabled = config.featureFlags.enable_multimodal_vision !== false;
   const isJarvisOrVoiceActive = Boolean(jarvisEnabled || isLiveVoiceOpen);
-  const modelColor = getModelColorTheme(autoModelRouting ? 'auto' : activeModel.id);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -359,16 +340,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
         {/* SupremeAI Container-Responsive Input Capsule */}
         <div className="relative rounded-2xl @[640px]/input:rounded-3xl theme-input-surface border shadow-[0_12px_40px_rgba(15,23,42,0.12)] dark:shadow-[0_14px_40px_rgba(0,0,0,0.45)] theme-capsule-focus transition-all p-2 @[520px]/input:p-2.5 flex flex-wrap @[640px]/input:flex-nowrap items-center gap-1.5 @[520px]/input:gap-2">
-          {/* Left Controls: + Attach Menu, Unified Model Picker, Persona & Run Options */}
-          <div className="order-2 @[640px]/input:order-1 flex items-center gap-1 @[520px]/input:gap-1.5 shrink-0">
+          {/* Left Controls: + Attach Menu */}
+          <div className="order-2 @[640px]/input:order-1 flex items-center shrink-0">
             <div className="relative">
               <button
                 type="button"
-                onClick={() => {
-                  setShowAttachMenu(!showAttachMenu);
-                  setShowModelMenu(false);
-                  setShowOptionsMenu(false);
-                }}
+                onClick={() => setShowAttachMenu(!showAttachMenu)}
                 aria-label="Attach files, prompt recipes, and starters"
                 title={t.inputOptionsHeader}
                 className="relative w-7 h-7 @[520px]/input:w-8 @[520px]/input:h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300"
@@ -439,229 +416,6 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                       <Lightbulb className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                       <span>{t.starterAnalyzeTitle}</span>
                     </button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* বাংলা মন্তব্য: সব প্ল্যাটফর্মে অভিন্ন মডেল ও Auto-Routing নির্বাচক (তাৎক্ষণিক রিয়েল-টাইম সিঙ্কসহ) */}
-            <div className="relative">
-              <button
-                type="button"
-                data-testid="chat-model-selector"
-                onClick={() => {
-                  setShowModelMenu(!showModelMenu);
-                  setShowAttachMenu(false);
-                  setShowOptionsMenu(false);
-                }}
-                title={autoModelRouting ? t.autoModelTitle : activeModel.name}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all cursor-pointer max-w-[140px] @[520px]/input:max-w-[180px] ${modelColor.triggerClass}`}
-              >
-                <span className={`w-2 h-2 rounded-full shrink-0 ${modelColor.dotClass}`} />
-                <span className="truncate">
-                  {autoModelRouting
-                    ? t.autoModelBadge
-                    : activeModel.name.replace(/^SupremeAI\s+/i, '')}
-                </span>
-                <ChevronDown className="w-3 h-3 opacity-70 shrink-0" />
-              </button>
-
-              {showModelMenu && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setShowModelMenu(false)} />
-                  <div className="absolute left-0 bottom-full mb-2 w-72 max-w-[88vw] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-40 p-2 space-y-1 text-xs max-h-80 overflow-y-auto">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        updateCustomerSettings({ autoModelRouting: true });
-                        setShowModelMenu(false);
-                      }}
-                      className={`w-full text-left px-2.5 py-2 rounded-lg flex items-start justify-between gap-2 cursor-pointer transition-colors ${
-                        autoModelRouting
-                          ? 'bg-indigo-500/10 dark:bg-indigo-500/15 border border-indigo-500/35 text-slate-900 dark:text-white'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="font-semibold flex items-center gap-1.5">
-                          <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                          <span>{t.autoModelTitle}</span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
-                          {t.autoModelDesc}
-                        </p>
-                      </div>
-                      {autoModelRouting && (
-                        <Check className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
-                      )}
-                    </button>
-
-                    <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
-
-                    {SUPREMEAI_MODELS.map((m) => {
-                      const isSelected = !autoModelRouting && m.id === activeModel.id;
-                      const mTheme = getModelColorTheme(m.id);
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => {
-                            updateCustomerSettings({
-                              autoModelRouting: false,
-                              defaultModel: m.id,
-                            });
-                            onSelectModel(m);
-                            setShowModelMenu(false);
-                          }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 cursor-pointer transition-colors ${
-                            isSelected
-                              ? mTheme.menuActiveClass
-                              : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'
-                          }`}
-                        >
-                          <div className="min-w-0 flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full shrink-0 ${mTheme.dotClass}`} />
-                            <div className="min-w-0">
-                              <div className="font-semibold truncate">{m.name}</div>
-                              <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                                {m.alias} · {m.latencyRating}
-                              </div>
-                            </div>
-                          </div>
-                          {isSelected && (
-                            <Check className={`w-3.5 h-3.5 shrink-0 ${mTheme.activeTextClass}`} />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* বাংলা মন্তব্য: পার্সোনা/রোল, থিংকিং লেভেল, ওয়েব সার্চ গ্রাউন্ডিং এবং ভাষা (EN/বাংলা) অপশন পপওভার */}
-            <div className="relative">
-              <button
-                type="button"
-                data-testid="chat-options-selector"
-                onClick={() => {
-                  setShowOptionsMenu(!showOptionsMenu);
-                  setShowAttachMenu(false);
-                  setShowModelMenu(false);
-                }}
-                title={t.wbSettingsBtn}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-slate-200/80 dark:border-slate-700/80 bg-white/60 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] font-medium text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
-              >
-                <SlidersHorizontal className="w-3 h-3 shrink-0" />
-                <span className="hidden @[480px]/input:inline truncate max-w-[96px]">
-                  {activeRole.badge}
-                </span>
-              </button>
-
-              {showOptionsMenu && (
-                <>
-                  <div className="fixed inset-0 z-30" onClick={() => setShowOptionsMenu(false)} />
-                  <div className="absolute left-0 bottom-full mb-2 w-72 max-w-[88vw] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-40 p-3 space-y-3 text-xs">
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                          {t.configurePersonaTitle}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowOptionsMenu(false);
-                            setIsRoleModalOpen(true);
-                          }}
-                          className="text-[10px] theme-accent-text hover:underline cursor-pointer"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                      <select
-                        value={activeRole.id}
-                        onChange={(e) => {
-                          const found = SYSTEM_ROLES.find((r) => r.id === e.target.value);
-                          if (found) selectRole(found);
-                        }}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-800 dark:text-slate-100"
-                      >
-                        {SYSTEM_ROLES.map((role) => (
-                          <option key={role.id} value={role.id}>
-                            {role.name} ({role.badge})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                        {t.wbThinkingLevelLabel}
-                      </span>
-                      <div className="grid grid-cols-4 gap-1">
-                        {(['LOW', 'MEDIUM', 'HIGH', 'XHIGH'] as WorkbenchThinkingLevel[]).map(
-                          (lvl) => (
-                            <button
-                              key={lvl}
-                              type="button"
-                              onClick={() => updateRunSettings({ thinkingLevel: lvl })}
-                              className={`py-1 rounded-md text-[10px] font-semibold border cursor-pointer transition-colors ${
-                                runSettings.thinkingLevel === lvl
-                                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-slate-900 dark:border-slate-100'
-                                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                              }`}
-                            >
-                              {lvl}
-                            </button>
-                          )
-                        )}
-                      </div>
-                    </div>
-
-                    <label className="flex items-center justify-between gap-2 cursor-pointer pt-1 border-t border-slate-100 dark:border-slate-800">
-                      <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
-                        <Globe className="w-3.5 h-3.5 text-cyan-500" />
-                        <span>{t.wbSearchGroundingLabel}</span>
-                      </span>
-                      <input
-                        type="checkbox"
-                        checked={runSettings.enableSearchGrounding}
-                        onChange={(e) =>
-                          updateRunSettings({ enableSearchGrounding: e.target.checked })
-                        }
-                        className="w-3.5 h-3.5 rounded cursor-pointer"
-                      />
-                    </label>
-
-                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-                      <span className="text-slate-600 dark:text-slate-300 font-medium">
-                        Language / ভাষা
-                      </span>
-                      <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => setLanguage('en')}
-                          className={`px-2 py-0.5 text-[10px] font-semibold cursor-pointer ${
-                            lang === 'en'
-                              ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                              : 'text-slate-600 dark:text-slate-300'
-                          }`}
-                        >
-                          EN
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setLanguage('bn')}
-                          className={`px-2 py-0.5 text-[10px] font-semibold cursor-pointer ${
-                            lang === 'bn'
-                              ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                              : 'text-slate-600 dark:text-slate-300'
-                          }`}
-                        >
-                          বাংলা
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 </>
               )}
