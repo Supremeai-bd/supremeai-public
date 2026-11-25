@@ -28,6 +28,7 @@ import { ChatThread } from './components/ChatThread';
 import { ChatEmptyState } from './components/chat/ChatEmptyState';
 import { ChatInput } from './components/ChatInput';
 import { GuestOnboardingCard } from './components/chat/GuestOnboardingCard';
+import { MorningBriefingCard } from './components/chat/MorningBriefingCard';
 import { useLiveVoiceSession } from './hooks/useLiveVoiceSession';
 import {
   jarvisService,
@@ -90,6 +91,9 @@ const ModelMatrix = React.lazy(() =>
 );
 const RepoHub = React.lazy(() =>
   import('./components/RepoHub').then((m) => ({ default: m.RepoHub }))
+);
+const UniversalInboxPanel = React.lazy(() =>
+  import('./components/inbox/UniversalInboxPanel').then((m) => ({ default: m.UniversalInboxPanel }))
 );
 const UserProjectsView = React.lazy(() =>
   import('./components/user/UserProjectsView').then((m) => ({ default: m.UserProjectsView }))
@@ -1458,21 +1462,19 @@ export default function App() {
                                     <span>{currentSession?.isPinned ? t.pinned : t.pin}</span>
                                   </button>
 
-                                  {developerMode && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (currentSession?.id) {
-                                          branchSession(currentSession.id);
-                                        }
-                                        setShowChatMenu(false);
-                                      }}
-                                      className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <GitFork className="w-3.5 h-3.5 text-violet-500" />
-                                      <span>{t.branch}</span>
-                                    </button>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (currentSession?.id) {
+                                        branchSession(currentSession.id);
+                                      }
+                                      setShowChatMenu(false);
+                                    }}
+                                    className="w-full text-left px-2.5 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center gap-2 transition-colors cursor-pointer"
+                                  >
+                                    <GitFork className="w-3.5 h-3.5 text-violet-500" />
+                                    <span>{t.branch}</span>
+                                  </button>
 
                                   <button
                                     type="button"
@@ -1544,19 +1546,17 @@ export default function App() {
                                         >
                                           {t.exportPlainText}
                                         </button>
-                                        {developerMode && (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              exportThread('json');
-                                              setShowExportSubmenu(false);
-                                              setShowChatMenu(false);
-                                            }}
-                                            className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-                                          >
-                                            {t.exportJson}
-                                          </button>
-                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            exportThread('json');
+                                            setShowExportSubmenu(false);
+                                            setShowChatMenu(false);
+                                          }}
+                                          className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                                        >
+                                          {t.exportJson}
+                                        </button>
                                       </div>
                                     )}
                                   </div>
@@ -1595,6 +1595,15 @@ export default function App() {
                         userName={authUser?.name || (isGuest ? 'Guest' : undefined)}
                         developerMode={developerMode}
                       />
+                      {/* বাংলা মন্তব্য: প্রো-অ্যাক্টিভ মর্নিং ব্রিফিং কার্ড — লগড-ইন ইউজারের মেমোরি ও টাস্ক সামারি */}
+                      {!isGuest && (
+                        <div className="w-full px-2 mt-3">
+                          <MorningBriefingCard
+                            visible
+                            userName={authUser?.name}
+                          />
+                        </div>
+                      )}
                       {/* বাংলা মন্তব্য: গেস্ট গ্লাস অনবোর্ডিং কার্ড (Blueprint §4) —
                           ইনপুটের ঠিক উপরে; প্রথম টাইপ/মেসেজে ফেড-আউট। */}
                       {isGuest && (
@@ -2105,6 +2114,8 @@ export default function App() {
                       )}
 
                       {activeTab === 'repos' && <RepoHub />}
+
+                      {activeTab === 'universal-inbox' && <UniversalInboxPanel />}
                     </Suspense>
                   </ErrorBoundary>
                 </div>
@@ -2122,18 +2133,6 @@ export default function App() {
 
         {/* Modals & Dialogs */}
         <Suspense fallback={null}>
-          {isRoleModalOpen && (
-            <RoleModal
-              isOpen={isRoleModalOpen}
-              onClose={() => setIsRoleModalOpen(false)}
-              activeRole={activeRole}
-              customInstruction={customInstruction}
-              onSaveRole={(role, prompt) => selectRole(role, prompt)}
-              activeModel={activeModel}
-              onSelectModel={selectModel}
-            />
-          )}
-
           {isAdminAuthModalOpen && (
             <AdminAuthModal
               isOpen={isAdminAuthModalOpen}

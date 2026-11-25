@@ -23,6 +23,7 @@ import { EXTERNAL_URLS } from '../../config/externalUrls';
 import { federationFindings, buildMarkdownAuditReport, surfaces } from '../../data/mcpAuditData';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
+import { AdminTowerAuditPanel } from './AdminTowerAuditPanel';
 
 interface AdminSystemAuditViewProps {
   auditRecords: SystemAuditRecord[];
@@ -37,7 +38,7 @@ export const AdminSystemAuditView: React.FC<AdminSystemAuditViewProps> = ({ audi
     'audit',
     'অডিট রেকর্ড এখনো লাইভ সিঙ্ক হয়নি — localStorage ক্যাশ দেখানো হচ্ছে; Federation সাব-ট্যাব স্ট্যাটিক ডেমো (src/data/mcpAuditData)।'
   );
-  const [activeTab, setActiveTab] = useState<'trail' | 'federation'>('trail');
+  const [activeTab, setActiveTab] = useState<'trail' | 'federation' | 'tower-audit'>('trail');
   const [searchTerm, setSearchTerm] = useState('');
   const latestGithubCommit = useControlCenterStore((s) => s.latestGithubCommit);
   const loadOverview = useControlCenterStore((s) => s.loadOverview);
@@ -363,7 +364,26 @@ export const AdminSystemAuditView: React.FC<AdminSystemAuditViewProps> = ({ audi
             {federationFindings.length}
           </span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('tower-audit')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+            activeTab === 'tower-audit'
+              ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <ShieldAlert className="w-4 h-4 text-cyan-500" />
+          <span>Tower Audit v1.0</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-cyan-100 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300">
+            17
+          </span>
+        </button>
       </div>
+
+      {/* TAB 3: Tower Audit v1.0 (25 Nov 2026) */}
+      {activeTab === 'tower-audit' && <AdminTowerAuditPanel />}
 
       {/* TAB 1: Admin Audit Trail */}
       {activeTab === 'trail' && (

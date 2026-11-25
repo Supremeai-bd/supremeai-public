@@ -32,6 +32,7 @@ export const ADMIN_ONLY_TABS = new Set([
 export const DEV_ONLY_TABS = new Set<string>();
 
 export const SUBVIEW_TITLES: Record<string, string> = {
+  'universal-inbox': 'Universal Inbox',
   'chat-history': 'All Conversations',
   'user-projects': 'My Projects',
   'user-api-keys': 'API Keys & Providers',
