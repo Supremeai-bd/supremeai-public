@@ -5,6 +5,7 @@ import { useFederationLive } from './useFederationLive';
 import { getFederationData } from '../services/federationBridge';
 import { useAuthStore } from '../stores/useAuthStore';
 import { isAuthorizedAdminEmail } from '../services/authService';
+import { getWorkspaceAuthHeaders } from '../utils/workspaceAuth';
 
 export function useHitlApproval() {
   const authUser = useAuthStore((s) => s.authUser);
@@ -70,10 +71,21 @@ export function useHitlApproval() {
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectAttempt = 0;
 
-    const openSse = () => {
+    const openSse = async () => {
       try {
         const sseUrl = `${env.apiBaseUrl}/api/v1/stream/hitl`;
-        eventSource = new EventSource(sseUrl, { withCredentials: true });
+        const headers = getWorkspaceAuthHeaders();
+        const ticketRes = await fetch(`${env.apiBaseUrl}/api/v1/hitl/sse-ticket`, {
+          method: 'POST',
+          headers,
+        });
+        if (!ticketRes.ok) throw new Error(`ticket request failed: ${ticketRes.status}`);
+        const ticketData = (await ticketRes.json()) as { ticket?: string };
+        if (!ticketData.ticket) throw new Error('no ticket returned');
+        eventSource = new EventSource(
+          `${sseUrl}?ticket=${encodeURIComponent(ticketData.ticket)}`,
+          { withCredentials: true }
+        );
         eventSource.addEventListener('hitl', (event) => {
           try {
             const data = JSON.parse(event.data);
@@ -104,15 +116,24 @@ export function useHitlApproval() {
           if (reconnectAttempt < 5) {
             const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
             reconnectAttempt += 1;
-            reconnectTimer = setTimeout(openSse, delay);
+            reconnectTimer = setTimeout(() => {
+              void openSse();
+            }, delay);
           }
         };
       } catch {
-        // EventSource unavailable (SSR, blocked by an extension) — polling covers it.
+        // Ticket/SSE unavailable — polling covers it.
+        if (reconnectAttempt < 5) {
+          const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
+          reconnectAttempt += 1;
+          reconnectTimer = setTimeout(() => {
+            void openSse();
+          }, delay);
+        }
       }
     };
 
-    openSse();
+    void openSse();
 
     return () => {
       if (reconnectTimer) {
