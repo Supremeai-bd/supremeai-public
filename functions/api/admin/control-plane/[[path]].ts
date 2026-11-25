@@ -260,6 +260,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     }
 
     if (!hasAdminCredential) {
+      const upstreamOrigin = resolveUpstreamOrigin(env);
       const session = await verifyUpstreamSession(request, upstreamOrigin).catch(() => ({ valid: false } as any));
       if (
         session.valid &&

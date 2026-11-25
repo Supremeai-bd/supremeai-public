@@ -23,7 +23,47 @@ function getGatewayUrl(): string {
       ? (import.meta as { env?: Record<string, string | undefined> }).env
           ?.VITE_SUPREMEAI_GATEWAY_URL
       : undefined;
-  return (fromEnv || DEFAULT_GATEWAY_URL).replace(/\/+$/, '');
+  if (fromEnv) return fromEnv.replace(/\/+$/, '');
+  // On browser web (Cloudflare Pages), relative path avoids cross-origin preflight issues:
+  if (
+    typeof window !== 'undefined' &&
+    window.location?.origin &&
+    !window.location.origin.includes('localhost') &&
+    !window.location.origin.includes('127.0.0.1')
+  ) {
+    return '';
+  }
+  return DEFAULT_GATEWAY_URL.replace(/\/+$/, '');
+}
+
+async function fetchWithFallback(path: string, init?: RequestInit): Promise<Response> {
+  const base = getGatewayUrl();
+  const token = getStoredAccessToken();
+  const headers = new Headers(init?.headers);
+  if (!headers.has('Content-Type') && (!init?.method || init.method !== 'GET')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const primaryUrl = base ? `${base}${path}` : path;
+  try {
+    const res = await fetch(primaryUrl, { ...init, headers });
+    if (res.ok || (res.status !== 404 && res.status !== 502 && res.status !== 503)) {
+      return res;
+    }
+  } catch (err) {
+    if (!DEFAULT_GATEWAY_URL || primaryUrl.startsWith(DEFAULT_GATEWAY_URL)) {
+      throw err;
+    }
+  }
+
+  if (DEFAULT_GATEWAY_URL && !primaryUrl.startsWith(DEFAULT_GATEWAY_URL)) {
+    const fallbackUrl = `${DEFAULT_GATEWAY_URL.replace(/\/+$/, '')}${path}`;
+    return fetch(fallbackUrl, { ...init, headers });
+  }
+  return fetch(primaryUrl, { ...init, headers });
 }
 
 function getStoredAccessToken(): string {
@@ -75,16 +115,9 @@ export async function registerPasskey(
   }
 
   try {
-    const base = getGatewayUrl();
-    const token = getStoredAccessToken();
-
     // 1. Fetch Registration Options from gateway/service/passkey_auth.py
-    const optRes = await fetch(`${base}/api/auth/passkey/register/options`, {
+    const optRes = await fetchWithFallback('/api/auth/passkey/register/options', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
       body: JSON.stringify({
         email,
         display_name: displayName || email.split('@')[0],
@@ -124,12 +157,8 @@ export async function registerPasskey(
       device_name: deviceName,
     };
 
-    const verifyRes = await fetch(`${base}/api/auth/passkey/register/verify`, {
+    const verifyRes = await fetchWithFallback('/api/auth/passkey/register/verify', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
       body: JSON.stringify(verifyPayload),
     });
 
@@ -163,12 +192,9 @@ export async function loginWithPasskey(
   }
 
   try {
-    const base = getGatewayUrl();
-
     // 1. Fetch Login Options — matches LoginOptionsRequest in passkey_auth.py
-    const optRes = await fetch(`${base}/api/auth/passkey/login/options`, {
+    const optRes = await fetchWithFallback('/api/auth/passkey/login/options', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: email || null, role: 'user' }),
     });
 
@@ -210,9 +236,8 @@ export async function loginWithPasskey(
       },
     };
 
-    const verifyRes = await fetch(`${base}/api/auth/passkey/login/verify`, {
+    const verifyRes = await fetchWithFallback('/api/auth/passkey/login/verify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(verifyPayload),
     });
 
@@ -251,13 +276,8 @@ export async function loginWithPasskey(
 export async function listPasskeyDevices(userId: string): Promise<PasskeyDevice[]> {
   if (!userId) return [];
   try {
-    const base = getGatewayUrl();
-    const token = getStoredAccessToken();
-    const res = await fetch(
-      `${base}/api/auth/passkey/devices?user_id=${encodeURIComponent(userId)}`,
-      {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      }
+    const res = await fetchWithFallback(
+      `/api/auth/passkey/devices?user_id=${encodeURIComponent(userId)}`
     );
     if (!res.ok) return [];
     const data = (await res.json()) as { devices?: PasskeyDevice[] };
@@ -272,14 +292,9 @@ export async function revokePasskeyDevice(
   userId: string
 ): Promise<boolean> {
   try {
-    const base = getGatewayUrl();
-    const token = getStoredAccessToken();
-    const res = await fetch(
-      `${base}/api/auth/passkey/devices/${encodeURIComponent(credentialId)}?user_id=${encodeURIComponent(userId)}`,
-      {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      }
+    const res = await fetchWithFallback(
+      `/api/auth/passkey/devices/${encodeURIComponent(credentialId)}?user_id=${encodeURIComponent(userId)}`,
+      { method: 'DELETE' }
     );
     return res.ok;
   } catch {

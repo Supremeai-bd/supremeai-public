@@ -69,7 +69,46 @@ function getGatewayBase(): string {
       ? (import.meta as { env?: Record<string, string | undefined> }).env
           ?.VITE_SUPREMEAI_GATEWAY_URL
       : undefined;
-  return (fromEnv || DEFAULT_GATEWAY_URL || '').replace(/\/+$/, '');
+  if (fromEnv) return fromEnv.replace(/\/+$/, '');
+  if (
+    typeof window !== 'undefined' &&
+    window.location?.origin &&
+    !window.location.origin.includes('localhost') &&
+    !window.location.origin.includes('127.0.0.1')
+  ) {
+    return '';
+  }
+  return (DEFAULT_GATEWAY_URL || '').replace(/\/+$/, '');
+}
+
+async function fetchMcpWithFallback(path: string, init?: RequestInit): Promise<Response> {
+  const base = getGatewayBase();
+  const token = getToken();
+  const headers = new Headers(init?.headers);
+  if (!headers.has('Content-Type') && (!init?.method || init.method !== 'GET')) {
+    headers.set('Content-Type', 'application/json');
+  }
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const primaryUrl = base ? `${base}${path}` : path;
+  try {
+    const res = await fetch(primaryUrl, { ...init, headers });
+    if (res.ok || (res.status !== 404 && res.status !== 502 && res.status !== 503)) {
+      return res;
+    }
+  } catch (err) {
+    if (!DEFAULT_GATEWAY_URL || primaryUrl.startsWith(DEFAULT_GATEWAY_URL)) {
+      throw err;
+    }
+  }
+
+  if (DEFAULT_GATEWAY_URL && !primaryUrl.startsWith(DEFAULT_GATEWAY_URL)) {
+    const fallbackUrl = `${DEFAULT_GATEWAY_URL.replace(/\/+$/, '')}${path}`;
+    return fetch(fallbackUrl, { ...init, headers });
+  }
+  return fetch(primaryUrl, { ...init, headers });
 }
 
 function getToken(): string {
@@ -105,19 +144,15 @@ export const PersonalMcpHubCard: React.FC<PersonalMcpHubCardProps> = ({
   const [memoryBusy, setMemoryBusy] = useState(false);
 
   const loadAll = useCallback(async () => {
-    const token = getToken();
-    const base = getGatewayBase();
-    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
     // 1. Personal MCP Gateway state
     try {
-      const gwRes = await fetch(`${base}/api/v1/mcp/gateway`, { headers });
+      const gwRes = await fetchMcpWithFallback('/api/v1/mcp/gateway');
       if (gwRes.ok) {
         const data = (await gwRes.json()) as McpGatewayState;
         setMcpState(data);
         if (data.slug) setSlugInput(data.slug);
       }
-      const clRes = await fetch(`${base}/api/v1/mcp/clients`, { headers });
+      const clRes = await fetchMcpWithFallback('/api/v1/mcp/clients');
       if (clRes.ok) {
         const clData = (await clRes.json()) as { clients?: McpClientItem[] };
         setClients(Array.isArray(clData.clients) ? clData.clients : []);
@@ -134,7 +169,7 @@ export const PersonalMcpHubCard: React.FC<PersonalMcpHubCardProps> = ({
 
     // 3. Personal Memory Graph
     try {
-      const memRes = await fetch(`${base}/api/memory/graph`, { headers });
+      const memRes = await fetchMcpWithFallback('/api/memory/graph');
       if (memRes.ok) {
         const memData = (await memRes.json()) as { facts?: MemoryFactItem[] };
         setMemoryFacts(Array.isArray(memData.facts) ? memData.facts : []);
@@ -154,13 +189,8 @@ export const PersonalMcpHubCard: React.FC<PersonalMcpHubCardProps> = ({
     setMcpBusy(true);
     setMcpMessage(null);
     try {
-      const token = getToken();
-      const res = await fetch(`${getGatewayBase()}/api/v1/mcp/slug/claim`, {
+      const res = await fetchMcpWithFallback('/api/v1/mcp/slug/claim', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
         body: JSON.stringify({ slug: clean }),
       });
       const body = (await res.json().catch(() => ({}))) as {
@@ -187,13 +217,8 @@ export const PersonalMcpHubCard: React.FC<PersonalMcpHubCardProps> = ({
     setMcpMessage(null);
     setOneTimeToken(null);
     try {
-      const token = getToken();
-      const res = await fetch(`${getGatewayBase()}/api/v1/mcp/clients`, {
+      const res = await fetchMcpWithFallback('/api/v1/mcp/clients', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
         body: JSON.stringify({
           name: clientNameInput.trim(),
           provider: 'claude-desktop',
@@ -282,10 +307,8 @@ export const PersonalMcpHubCard: React.FC<PersonalMcpHubCardProps> = ({
   const handleWipeMemory = async () => {
     setMemoryBusy(true);
     try {
-      const token = getToken();
-      const res = await fetch(`${getGatewayBase()}/api/memory/graph`, {
+      const res = await fetchMcpWithFallback('/api/memory/graph', {
         method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
         setMemoryFacts([]);
