@@ -186,7 +186,11 @@ export function registerWorkspaceTerminalRoutes(app: Express, ctx: WorkspaceTerm
       return;
     }
 
-    if (/[;&|`$<>\\r\\n]/.test(rawCommand)) {
+    // Single-escaped regex: \r and \n must be the regex metacharacters so real
+    // CR/LF bytes inside rawCommand are rejected. The previous double-escaped
+    // literal only matched literal backslash-r/backslash-n text, letting actual
+    // newline injection bypass the sandbox guard.
+    if (/[;&|`$<>\r\n]/.test(rawCommand)) {
       res.json({
         exitCode: 126,
         stderr: `Command "${rawCommand}" is blocked by workspace sandbox policy. Type "help" to view permitted commands.`,
@@ -239,7 +243,7 @@ export function registerWorkspaceTerminalRoutes(app: Express, ctx: WorkspaceTerm
       };
     } else if (rawCommand === 'git branch') {
       execSpec = { bin: 'git', binArgs: ['branch'] };
-    } else if (rawCommand === 'git log' || /^git log -n [1-9]\\d{0,1}$/.test(rawCommand)) {
+    } else if (rawCommand === 'git log' || /^git log -n [1-9]\d{0,1}$/.test(rawCommand)) {
       const n = rawCommand === 'git log' ? '10' : rawCommand.split(' ').pop() || '10';
       execSpec = { bin: 'git', binArgs: ['log', '--oneline', '-n', n] };
     } else if (rawCommand === 'git diff --stat') {

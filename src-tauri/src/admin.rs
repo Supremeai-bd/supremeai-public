@@ -7,7 +7,10 @@ use tauri::{AppHandle, State};
 use crate::secure_vault::{config_dir_file, read_encrypted_json_or_migrate, write_encrypted_json};
 
 const DEFAULT_GATEWAY_API: &str = "https://supremeai-api-ulw0.onrender.com";
-const DEFAULT_CORE_API: &str = "https://supremeai-primary-node.onrender.com";
+// Canonical core API host (see supremeai/config/service_registry.yaml). The
+// previous default pointed at a retired Render service that no longer resolves,
+// so desktop admin installs booted against a dead endpoint.
+const DEFAULT_CORE_API: &str = "https://supremeai-primary-node-5xso.onrender.com";
 const MAX_ADMIN_RESPONSE_BYTES: u64 = 1_000_000;
 
 fn resolve_https_endpoint(env_key: &str, default_url: &str) -> Result<String, String> {
