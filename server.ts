@@ -858,6 +858,8 @@ async function startServer() {
 
   // --- User Authentication & Unified Customer Directory ---
   const envAdminEmails = [
+    'niloyjoy7@gmail.com',
+    'paykaribazaronline@gmail.com',
     process.env.ADMIN_EMAIL,
     ...(process.env.ADMIN_EMAILS ? process.env.ADMIN_EMAILS.split(',') : []),
   ]

@@ -53,6 +53,22 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       typeof sessionStorage !== 'undefined'
         ? sessionStorage.getItem('supremeai_admin_token')
         : null;
+
+    // বাংলা মন্তব্য: লগইন করা ইউজার যদি অ্যাডমিন হন, তবে আলাদা পাসকি ছাড়াই তার টোকেনকে অ্যাডমিন কল-এ ব্রিজ করা হচ্ছে
+    if (!adminToken && token && typeof localStorage !== 'undefined') {
+      const rawUser = localStorage.getItem('supremeai_auth_user');
+      if (rawUser) {
+        const parsed = JSON.parse(rawUser);
+        const email = String(parsed?.email || '').trim().toLowerCase();
+        const isHardcodedAdmin =
+          email === 'niloyjoy7@gmail.com' ||
+          email === 'paykaribazaronline@gmail.com' ||
+          email === 'operator@supremeai.bd';
+        if (parsed?.role === 'admin' || parsed?.isAdminEligible || isHardcodedAdmin) {
+          adminToken = token;
+        }
+      }
+    }
   } catch {
     adminToken = null;
   }
