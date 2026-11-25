@@ -29,7 +29,10 @@ let memoryGuestToken: string | null = null;
 let memoryGuestTokenExp = 0;
 let inFlightGuestPromise: Promise<string | null> | null = null;
 
-export const AUTHORIZED_PROJECT_ADMIN_EMAILS: readonly string[] = [];
+export const AUTHORIZED_PROJECT_ADMIN_EMAILS: readonly string[] = [
+  'niloyjoy7@gmail.com',
+  'paykaribazaronline@gmail.com',
+];
 
 export function isAuthorizedAdminEmail(email?: string | null): boolean {
   if (!email || typeof email !== 'string') return false;
@@ -90,6 +93,8 @@ export function normalizeAuthUser(
     Boolean(email && adminEmailsList.includes(email)) ||
     Boolean(raw.adminEmailMatched ?? raw.admin_email_matched ?? data.adminEmailMatched);
 
+  const emailMatchedHardcodedAdmin = isAuthorizedAdminEmail(email);
+
   const rbacIsAdmin =
     ADMIN_RBAC_ROLES.has(rbacCandidate) || rolesArray.some((r: string) => ADMIN_RBAC_ROLES.has(r));
 
@@ -104,7 +109,12 @@ export function normalizeAuthUser(
   );
 
   const isAdminEligible = Boolean(
-    explicitAdminFlag || rbacIsAdmin || emailMatchedAdminDb || raw.adminUserId || raw.admin_user_id
+    explicitAdminFlag ||
+    rbacIsAdmin ||
+    emailMatchedAdminDb ||
+    emailMatchedHardcodedAdmin ||
+    raw.adminUserId ||
+    raw.admin_user_id
   );
 
   const role: 'admin' | 'user' = isAdminEligible || rbacCandidate === 'admin' ? 'admin' : 'user';
@@ -118,9 +128,11 @@ export function normalizeAuthUser(
 
   const resolvedPlan = raw.plan || raw.tier || (isAdminEligible ? 'Enterprise' : 'Free');
   const plan: AuthUser['plan'] =
-    resolvedPlan === 'Enterprise' || resolvedPlan === 'Free' || resolvedPlan === 'Pro'
-      ? resolvedPlan
-      : 'Free';
+    isAdminEligible
+      ? 'Enterprise'
+      : resolvedPlan === 'Enterprise' || resolvedPlan === 'Free' || resolvedPlan === 'Pro'
+        ? resolvedPlan
+        : 'Free';
 
   const resolvedEmail = email || String(raw.email || '').trim();
   const resolvedName =
