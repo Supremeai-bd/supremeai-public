@@ -253,10 +253,10 @@ jobs:
           echo "Using Android SDK: $SDK_DIR"
           echo "Using Android NDK: $NDK_DIR"
 
-      - name: Setup Rust toolchain (Android arm64 + armv7)
+      - name: Setup Rust toolchain (Android arm64-v8a)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
+          targets: aarch64-linux-android
 
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
@@ -283,7 +283,8 @@ jobs:
             npm run tauri -- android init --ci --skip-targets-install
           fi
           chmod +x src-tauri/gen/android/gradlew 2>/dev/null || true
-          npm run tauri -- android build --apk --target aarch64 --target armv7 --ci
+          # বাংলা মন্তব্য: শুধু আধুনিক ৬৪-বিট (arm64-v8a) ডিভাইসের জন্য APK বিল্ড করা হচ্ছে যাতে সাইজ ও বিল্ড টাইম ~৪০% কমে।
+          npm run tauri -- android build --apk --target aarch64 --ci
 
       - name: Sign Android APK (v2/v3 apksigner for Android 11-15+)
         shell: bash
