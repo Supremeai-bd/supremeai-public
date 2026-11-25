@@ -7,6 +7,7 @@ import {
   resolveMcpTowerOrigin,
   fetchWithTimeout,
   callMcpTowerRpc,
+  timingSafeEqualStrings,
   verifyUpstreamSession,
 } from '../../../_lib/edgeHelpers';
 import {
@@ -17,6 +18,54 @@ import {
   parseDeepDiagnoseResult,
   parseEcosystemDiagnosticsResult,
 } from '../../../../src/shared/controlPlaneShared';
+
+// ---------------------------------------------------------------------------
+// P0 fail-closed JWT verification. The previous auth gate accepted a
+// base64-decoded JWT payload WITHOUT any signature check, so a forged token
+// carrying {"role":"admin"} granted admin access. JWTs are now accepted only
+// when they carry a valid HS256 signature over the configured signing secret
+// (SUPABASE_JWT_SECRET / SUPREMEAI_JWT_SECRET) and are not expired. With no
+// signing secret configured, JWT evidence is ignored entirely.
+// ---------------------------------------------------------------------------
+function base64UrlDecodeBytes(input: string): Uint8Array {
+  const b64 = input.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+  const bin = atob(padded);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function verifySignedAdminJwt(
+  token: string,
+  secret: string
+): Promise<{ email: string; role: string } | null> {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [encHeader, encPayload, encSignature] = parts;
+  const header = JSON.parse(new TextDecoder().decode(base64UrlDecodeBytes(encHeader))) as { alg?: string };
+  if (String(header?.alg || '').toUpperCase() !== 'HS256') return null;
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['verify']
+  );
+  const signature = base64UrlDecodeBytes(encSignature);
+  const data = new TextEncoder().encode(`${encHeader}.${encPayload}`);
+  const valid = await crypto.subtle.verify('HMAC', key, signature, data);
+  if (!valid) return null;
+  const payload = JSON.parse(new TextDecoder().decode(base64UrlDecodeBytes(encPayload))) as Record<string, any>;
+  if (typeof payload?.exp === 'number' && payload.exp * 1000 <= Date.now()) return null;
+  const email = String(
+    payload?.email || payload?.user_metadata?.email || payload?.app_metadata?.email || ''
+  ).trim().toLowerCase();
+  const role = String(
+    payload?.role || payload?.app_metadata?.role || payload?.user_metadata?.role || ''
+  ).trim().toLowerCase();
+  return { email, role };
+}
 
 async function fetchGithubHead(env?: Record<string, string | undefined>) {
   try {
@@ -55,7 +104,7 @@ async function probeServiceMesh(origin: string, env?: Record<string, string | un
   const upstreamOrigin = resolveUpstreamOrigin(env);
   const mcpOrigin = resolveMcpTowerOrigin(env);
 
-  // বাংলা মন্তব্য: ControlCenterHealthMonitorView এবং McpHealthMonitorSnapshot-এর পূর্ণাঙ্গ কন্ট্রাক্ট অনুযায়ী হেলথ অবজেক্ট তৈরি করা হচ্ছে।
+  // বাংলা মন্তব্য: ControlCenterHealthMonitorView এবং McpHealthMonitorSnapshot-এর পূর্ণাঙ্গ কন্ট্রাক্ট অনুযায়ী হেলথ অবজেক্ট তৈরি করা হচ্ছে।
   const probe = async (id: string, name: string, provider: string, url: string) => {
     const start = Date.now();
     const nowIso = new Date().toISOString();
@@ -222,16 +271,18 @@ export async function onRequest(context: PagesContext): Promise<Response> {
 
   let hasAdminCredential = false;
   if (configuredKeys.length > 0) {
-    hasAdminCredential = Boolean(effectiveToken && configuredKeys.includes(effectiveToken));
-  } else {
-    // When no edge secrets configured, require valid non-trivial admin token
+    // timing-safe comparison (parity with admin/[[path]].ts)
     hasAdminCredential =
       Boolean(effectiveToken) &&
-      effectiveToken.length >= 16 &&
-      (effectiveToken.startsWith('adm_') || effectiveToken.startsWith('sk-admin-'));
+      configuredKeys.some((configured) => timingSafeEqualStrings(effectiveToken, configured));
+  } else {
+    // P0 fail-closed fix: with no edge admin secrets configured, NO token shape
+    // is accepted on this path. The previous prefix heuristic let any 16+
+    // character token carrying an admin-ish prefix authenticate as admin.
+    hasAdminCredential = false;
   }
 
-  // বাংলা মন্তব্য: অনুমোদিত প্রোজেক্ট অ্যাডমিনের ভ্যালিড সেশন টোকেন বা JWT থাকলে তাকে সরাসরি কন্ট্রোল প্লেন অ্যাক্সেস অনুমোদন দেওয়া হচ্ছে
+  // বাংলা মন্তব্য: অনুমোদিত প্রোজেক্ট অ্যাডমিনের ভ্যালিড সেশন টোকেন বা JWT থাকলে তাকে সরাসরি কন্ট্রোল প্লেন অ্যাক্সেস অনুমোদন দেওয়া হচ্ছে
   if (!hasAdminCredential && effectiveToken) {
     const authorizedAdmins = [
       'niloyjoy7@gmail.com',
@@ -245,38 +296,23 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         : []),
     ];
 
-    const clientEmail = String(request.headers.get('X-Admin-Email') || '').trim().toLowerCase();
-    if (clientEmail && authorizedAdmins.includes(clientEmail)) {
-      hasAdminCredential = true;
-    }
-
+    // P0 fail-closed fix: the removed blocks (a) accepted the client-controlled
+    // X-Admin-Email header as admin proof and (b) accepted JWTs by decoding the
+    // base64 payload WITHOUT signature verification. Admin email/role claims are
+    // now accepted only from a cryptographically verified HS256 JWT; when no
+    // signing secret is configured, JWT evidence is ignored entirely.
     if (!hasAdminCredential) {
-      try {
-        const parts = effectiveToken.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-          const jwtEmail = String(
-            payload?.email ||
-            payload?.user_metadata?.email ||
-            payload?.app_metadata?.email ||
-            ''
-          ).trim().toLowerCase();
-          const jwtRole = String(
-            payload?.role ||
-            payload?.app_metadata?.role ||
-            payload?.user_metadata?.role ||
-            ''
-          ).trim().toLowerCase();
-          if (
-            (jwtEmail && authorizedAdmins.includes(jwtEmail)) ||
-            jwtRole === 'admin' ||
-            jwtRole === 'super_admin'
-          ) {
-            hasAdminCredential = true;
-          }
+      const jwtSecret = String(env?.SUPABASE_JWT_SECRET || env?.SUPREMEAI_JWT_SECRET || '').trim();
+      if (jwtSecret.length >= 16) {
+        const verified = await verifySignedAdminJwt(effectiveToken, jwtSecret).catch(() => null);
+        if (
+          verified &&
+          ((verified.email && authorizedAdmins.includes(verified.email)) ||
+            verified.role === 'admin' ||
+            verified.role === 'super_admin')
+        ) {
+          hasAdminCredential = true;
         }
-      } catch {
-        // Non-JWT token
       }
     }
 
@@ -287,7 +323,6 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         session.valid &&
         ((session.email && authorizedAdmins.includes(session.email.toLowerCase())) ||
           session.role === 'admin' ||
-          session.user_id === 'usr-admin-primary' ||
           (Array.isArray(session.permissions) && session.permissions.includes('admin')))
       ) {
         hasAdminCredential = true;
