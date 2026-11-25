@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# SupremeAI Public Repo pre-push hook
+# Enable once per clone:  git config core.hooksPath .githooks
+set -euo pipefail
+
+# বাংলা মন্তব্য: supremeai-public থেকে কোনো এজেন্ট যেন সরাসরি private/monorepo (supremeai) রিমোটে push না করে।
+REMOTE_NAME="${1:-}"
+REMOTE_URL="${2:-}"
+if printf '%s %s' "$REMOTE_NAME" "$REMOTE_URL" | grep -qiE 'Supremeai-bd/supremeai(\.git)?([[:space:]]|$)'; then
+    echo "BLOCKED: Direct push from 'supremeai-public' to 'supremeai' is forbidden." >&2
+    echo "Use: python scripts/ci/create_cross_repo_patch.py --target private --slug <slug>" >&2
+    exit 1
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
+
+if command -v node >/dev/null 2>&1; then
+    node scripts/smart-pr-guard.mjs
+else
+    echo "WARN: node not found; skipping smart-pr-guard.mjs" >&2
+fi
