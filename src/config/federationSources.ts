@@ -658,8 +658,12 @@ export function resolveFederationAuthHeaders(
  * the Cloudflare Pages proxy (production) or the Express edge (local/preview).
  */
 export function resolveFederationUrl(source: FederationSource, apiBaseUrl = ''): string {
-  const base = apiBaseUrl.replace(/\/+$/, '');
-  return `${base}${source.path}`;
+  let base = apiBaseUrl.trim().replace(/\/+$/, '');
+  const path = source.path.startsWith('/') ? source.path : `/${source.path}`;
+  if (base.endsWith('/api') && path.startsWith('/api/')) {
+    base = base.slice(0, -4);
+  }
+  return `${base}${path}`;
 }
 
 /** True when the source needs a credential that is not currently available. */
