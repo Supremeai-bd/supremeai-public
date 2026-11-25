@@ -30,6 +30,12 @@ const FORBIDDEN_FILE_PATTERNS = [
 const SECRET_PATTERNS = [
   /(?:^|[^A-Za-z0-9])ghp_[A-Za-z0-9]{30,}/,
   /(?:^|[^A-Za-z0-9])github_pat_[A-Za-z0-9_]{20,}/,
+  /(?:^|[^A-Za-z0-9])glsa_[A-Za-z0-9_]{20,}/,
+  /(?:^|[^A-Za-z0-9])glc_[A-Za-z0-9_=+-]{20,}/,
+  /(?:^|[^A-Za-z0-9])sk-proj-[A-Za-z0-9_-]{20,}/,
+  /(?:^|[^A-Za-z0-9])AIza[0-9A-Za-z_-]{30,}/,
+  /(?:^|[^A-Za-z0-9])AKIA[0-9A-Z]{16}/,
+  /(?:^|[^A-Za-z0-9])xox[baprs]-[0-9A-Za-z-]{15,}/,
   /-----BEGIN (?:RSA|EC|DSA|OPENSSH) PRIVATE KEY-----/,
   /eyJhbGciOi[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/, // JWT pattern in code
 ];
@@ -135,6 +141,43 @@ function scanDiffForSecrets(baseRef = 'origin/main') {
   return leaks;
 }
 
+function checkTestTampering(baseRef = 'origin/main') {
+  const violations = [];
+  try {
+    const deleted = execSync(`git diff --name-only --diff-filter=D ${baseRef}...HEAD`, { encoding: 'utf8' })
+      .split('\n')
+      .map((f) => f.trim())
+      .filter(Boolean);
+    for (const file of deleted) {
+      if (/\.(?:test|spec)\.[jt]sx?$/i.test(file)) {
+        violations.push({ file, reason: 'Deleting test files is forbidden by Test Integrity Guard.' });
+      }
+    }
+    const diff = execSync(`git diff ${baseRef}...HEAD -- '*.test.*' '*.spec.*'`, {
+      encoding: 'utf8',
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    for (const line of diff.split('\n')) {
+      if (!line.startsWith('+') || line.startsWith('+++')) continue;
+      if (/\b(?:it|test|describe)\.(?:skip|only)\s*\(|\bx(?:it|test|describe)\s*\(/.test(line)) {
+        violations.push({ file: 'test diff', reason: `Test skip/only tampering detected: ${line.trim().slice(0, 60)}` });
+      }
+    }
+  } catch {
+    // Skip if baseRef diff unavailable
+  }
+  return violations;
+}
+
+function checkLockfileSync(files) {
+  const hasRootPkg = files.includes('package.json');
+  const hasRootLock = files.includes('package-lock.json');
+  if (hasRootPkg && !hasRootLock) {
+    return [{ file: 'package.json', reason: 'package.json modified without updating package-lock.json.' }];
+  }
+  return [];
+}
+
 function classifyRisk(files) {
   let isHigh = false;
   let isMedium = false;
@@ -184,7 +227,23 @@ function main() {
     process.exit(1);
   }
 
-  // 4. Risk Classification
+  // 4. Test Integrity Guard (Anti-Tamper)
+  const testTamper = checkTestTampering();
+  if (testTamper.length > 0) {
+    console.error('\n❌ REJECTED: Test integrity violation detected:');
+    testTamper.forEach((v) => console.error(`  - ${v.file}: ${v.reason}`));
+    process.exit(1);
+  }
+
+  // 5. Lockfile Sync Check
+  const lockViolations = checkLockfileSync(files);
+  if (lockViolations.length > 0) {
+    console.error('\n❌ REJECTED: Lockfile out of sync:');
+    lockViolations.forEach((v) => console.error(`  - ${v.file}: ${v.reason}`));
+    process.exit(1);
+  }
+
+  // 6. Risk Classification
   const riskTier = classifyRisk(files);
   console.log(`\n✅ All preflight guards PASSED!`);
   console.log(`Risk Classification: [${riskTier}]`);
