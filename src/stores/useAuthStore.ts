@@ -15,7 +15,15 @@ import {
 import { logger } from '../utils/logger';
 
 const hasAdminAccess = (user?: AuthUser | null): boolean =>
-  Boolean(user && (user.isAdminEligible || isAuthorizedAdminEmail(user.email)));
+  Boolean(
+    user && (
+      user.isAdminEligible ||
+      isAuthorizedAdminEmail(user.email) ||
+      user.role === 'admin' ||
+      user.rbacRole === 'admin' ||
+      user.rbacRole === 'super_admin'
+    )
+  );
 
 const AUTH_USER_KEY = 'supremeai_auth_user';
 const ROLE_KEY = 'supremeai_studio_user_role';
@@ -85,7 +93,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
       }
       if (typeof localStorage !== 'undefined') {
         const saved = localStorage.getItem(ROLE_KEY);
-        return saved === 'admin' ? 'admin' : 'user';
+        // বাংলা মন্তব্য: অ্যাডমিন সুবিধা থাকা ইউজারের ক্ষেত্রে পূর্বে 'user' জোর করে সেট না করা থাকলে সরাসরি 'admin' রাখা হবে
+        return saved === 'user' && !isAuthorizedAdminEmail(user?.email) ? 'user' : 'admin';
       }
     } catch (error) {
       logger.debug('useAuthStore: suppressed non-fatal error', error);
@@ -155,18 +164,40 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ isLoading: true });
       try {
         const user = await authService.getMe();
-        if (user && hasAdminAccess(user)) {
-          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+        // বাংলা মন্তব্য: পূর্ববর্তী ক্যাশড ইউজার ডেটা থেকে অ্যাডমিন তথ্য ও ইমেইল প্রিজার্ভ করা
+        let existingUser: AuthUser | null = null;
+        try {
+          const raw = localStorage.getItem(AUTH_USER_KEY);
+          if (raw) existingUser = JSON.parse(raw);
+        } catch {
+          // ignore parse errors
+        }
+
+        const effectiveUser: AuthUser | null = user
+          ? {
+              ...user,
+              email: user.email || existingUser?.email || '',
+              name: user.name && user.name !== 'User' ? user.name : (existingUser?.name || user.name),
+              role: (hasAdminAccess(user) || hasAdminAccess(existingUser)) ? 'admin' : user.role,
+              rbacRole: (hasAdminAccess(user) || hasAdminAccess(existingUser))
+                ? (user.rbacRole === 'super_admin' ? 'super_admin' : 'admin')
+                : user.rbacRole,
+              isAdminEligible: Boolean(user.isAdminEligible || existingUser?.isAdminEligible || hasAdminAccess(user) || hasAdminAccess(existingUser)),
+            }
+          : null;
+
+        if (effectiveUser && hasAdminAccess(effectiveUser)) {
+          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(effectiveUser));
           const savedRole = localStorage.getItem(ROLE_KEY);
-          const role: UserRole = savedRole === 'admin' ? 'admin' : 'user';
+          const role: UserRole = savedRole === 'user' && !isAuthorizedAdminEmail(effectiveUser.email) ? 'user' : 'admin';
           localStorage.setItem(ROLE_KEY, role);
-          set({ authUser: user, currentRole: role, isLoading: false });
+          set({ authUser: effectiveUser, currentRole: role, isLoading: false });
           useCustomerStore.getState().updateSettings(
             {
-              name: user.name,
-              email: user.email,
-              plan: user.plan,
-              monthlyTokensLimit: getPlanSpec(user.plan).monthlyTokensLimit,
+              name: effectiveUser.name,
+              email: effectiveUser.email,
+              plan: effectiveUser.plan,
+              monthlyTokensLimit: getPlanSpec(effectiveUser.plan).monthlyTokensLimit,
             },
             true
           );
@@ -179,16 +210,16 @@ export const useAuthStore = create<AuthState>((set, get) => {
             .getState()
             .syncRemoteSessions()
             .catch(() => {});
-        } else if (user) {
-          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+        } else if (effectiveUser) {
+          localStorage.setItem(AUTH_USER_KEY, JSON.stringify(effectiveUser));
           localStorage.setItem(ROLE_KEY, 'user');
-          set({ authUser: user, currentRole: 'user', isLoading: false });
+          set({ authUser: effectiveUser, currentRole: 'user', isLoading: false });
           useCustomerStore.getState().updateSettings(
             {
-              name: user.name,
-              email: user.email,
-              plan: user.plan,
-              monthlyTokensLimit: getPlanSpec(user.plan).monthlyTokensLimit,
+              name: effectiveUser.name,
+              email: effectiveUser.email,
+              plan: effectiveUser.plan,
+              monthlyTokensLimit: getPlanSpec(effectiveUser.plan).monthlyTokensLimit,
             },
             true
           );

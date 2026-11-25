@@ -527,13 +527,24 @@ export interface UpstreamSessionVerification {
   valid: boolean;
   email?: string;
   isGuest: boolean;
+  role?: string;
+  user_id?: string;
+  permissions?: string[];
   status?: number;
 }
 
 const SESSION_VERIFY_CACHE_TTL_MS = 60_000;
 const sessionVerifyCache = new Map<
   string,
-  { ok: boolean; email?: string; isGuest: boolean; expires: number }
+  {
+    ok: boolean;
+    email?: string;
+    isGuest: boolean;
+    role?: string;
+    userId?: string;
+    permissions?: string[];
+    expires: number;
+  }
 >();
 
 async function hashTokenForCache(token: string): Promise<string> {
@@ -574,12 +585,23 @@ export async function verifyUpstreamSession(
   const cacheKey = token ? `t:${await hashTokenForCache(token)}` : `c:${await hashTokenForCache(cookie)}`;
   const cached = sessionVerifyCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) {
-    return { valid: cached.ok, email: cached.email, isGuest: cached.isGuest, status: cached.ok ? 200 : 401 };
+    return {
+      valid: cached.ok,
+      email: cached.email,
+      isGuest: cached.isGuest,
+      role: cached.role,
+      user_id: cached.userId,
+      permissions: cached.permissions,
+      status: cached.ok ? 200 : 401,
+    };
   }
 
   let ok = false;
   let email: string | undefined;
   let isGuest = false;
+  let role: string | undefined;
+  let userId: string | undefined;
+  let permissions: string[] | undefined;
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -598,12 +620,18 @@ export async function verifyUpstreamSession(
         email?: string;
         is_guest?: boolean;
         plan?: string;
+        role?: string;
+        user_id?: string;
+        permissions?: string[];
       } | null;
       ok = Boolean(data) && typeof data === 'object';
       const lowerEmail = String(data?.email || '').trim().toLowerCase();
       email = lowerEmail || undefined;
+      role = String(data?.role || '').trim().toLowerCase() || undefined;
+      userId = String(data?.user_id || '').trim() || undefined;
+      permissions = Array.isArray(data?.permissions) ? data.permissions : undefined;
       isGuest =
-        !lowerEmail ||
+        (!lowerEmail && role !== 'admin') ||
         lowerEmail === 'guest' ||
         Boolean(data?.is_guest) ||
         String(data?.plan || '').toLowerCase() === 'guest';
@@ -612,7 +640,16 @@ export async function verifyUpstreamSession(
     ok = false;
   }
 
-  sessionVerifyCache.set(cacheKey, { ok, email, isGuest, expires: Date.now() + SESSION_VERIFY_CACHE_TTL_MS });
+  sessionVerifyCache.set(cacheKey, {
+    ok,
+    email,
+    isGuest,
+    role,
+    userId,
+    permissions,
+    expires: Date.now() + SESSION_VERIFY_CACHE_TTL_MS,
+  });
+  return { valid: ok, email, isGuest, role, user_id: userId, permissions, status: ok ? 200 : 401 };
   if (sessionVerifyCache.size > 5000) {
     for (const stale of Array.from(sessionVerifyCache.keys()).slice(0, 2500)) {
       sessionVerifyCache.delete(stale);
