@@ -9,12 +9,28 @@ export interface ApiRequestOptions extends RequestInit {
   skipRefresh?: boolean;
   /** When true, a 401 error will never emit the global session-expired event. */
   skipSessionExpiry?: boolean;
+  /**
+   * Max EXTRA attempts for transient upstream failures (502/503/504) on
+   * idempotent methods (GET/HEAD/OPTIONS). Defaults to 2 for idempotent
+   * methods and 0 otherwise. Render free-tier cold starts answer 502/503
+   * for the first seconds — a bounded retry turns those into success
+   * instead of a raw error surface.
+   */
+  retries?: number;
+  /** Base delay (ms) for the exponential backoff between retry attempts. */
+  retryDelayMs?: number;
+  /** Opt out of the single-flight deduplication of concurrent identical GETs. */
+  skipDedup?: boolean;
 }
 
 export type RefreshHandler = () => Promise<string | null>;
 
 /** Dispatched on `window` when a 401 could not be recovered by refreshing. */
 export const SESSION_EXPIRED_EVENT = 'supremeai:session-expired';
+
+/** Upstream statuses worth a bounded, jittered retry on idempotent methods. */
+const TRANSIENT_UPSTREAM_STATUSES = new Set([502, 503, 504]);
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export class ApiError extends Error {
   public status: number;
@@ -36,6 +52,8 @@ export class ApiError extends Error {
 class ApiClient {
   private refreshHandler: RefreshHandler | null = null;
   private refreshInFlight: Promise<string | null> | null = null;
+  /** Single-flight registry for concurrent identical GETs (keyed by URL+auth shape). */
+  private inflightGets = new Map<string, Promise<unknown>>();
 
   /**
    * Registers the session refresher (wired up by `authService`). Kept as an
@@ -106,6 +124,84 @@ class ApiClient {
   }
 
   public async request<T = unknown>(endpoint: string, options: ApiRequestOptions = {}): Promise<T> {
+    const method = ((options.method as string) || 'GET').toUpperCase();
+    const url = endpoint.startsWith('http') ? endpoint : `${env.apiBaseUrl}${endpoint}`;
+
+    // Single-flight dedup: concurrent identical GETs share one network round
+    // trip (the same pattern refreshOnce() uses for token refreshes). Internal
+    // re-entries (401 refresh retry) and caller-owned signals always bypass it.
+    if (method !== 'GET' || options.skipDedup || options.skipRefresh || options.signal) {
+      return this.performRequest<T>(endpoint, options, method, url);
+    }
+
+    const dedupKey = `${url} skipAuth=${options.skipAuth ? 1 : 0} cred=${options.credentials || 'same-origin'}`;
+    const existing = this.inflightGets.get(dedupKey);
+    if (existing) {
+      return this.awaitShared<T>(existing, options, endpoint);
+    }
+
+    const shared = this.performRequest<T>(endpoint, { ...options, skipDedup: true }, method, url);
+    this.inflightGets.set(dedupKey, shared);
+    try {
+      return await this.awaitShared<T>(shared, options, endpoint);
+    } finally {
+      if (this.inflightGets.get(dedupKey) === shared) {
+        this.inflightGets.delete(dedupKey);
+      }
+    }
+  }
+
+  /** Await a shared in-flight GET while enforcing the caller's own timeout/signal. */
+  private awaitShared<T>(
+    shared: Promise<unknown>,
+    options: ApiRequestOptions,
+    endpoint: string
+  ): Promise<T> {
+    const timeoutMs = options.timeoutMs ?? 15000;
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new ApiError(`Request timeout exceeded (${timeoutMs}ms) for ${endpoint}`, 408));
+      }, timeoutMs);
+      const onAbort = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+      const cleanup = () => {
+        clearTimeout(timer);
+        options.signal?.removeEventListener('abort', onAbort);
+      };
+      if (options.signal) {
+        options.signal.addEventListener('abort', onAbort, { once: true });
+      }
+      shared.then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(value as T);
+        },
+        (error) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(error);
+        }
+      );
+    });
+  }
+
+  private async performRequest<T>(
+    endpoint: string,
+    options: ApiRequestOptions,
+    method: string,
+    url: string
+  ): Promise<T> {
     const { timeoutMs = 15000, skipAuth = false, headers = {}, ...rest } = options;
 
     const controller = new AbortController();
@@ -128,10 +224,8 @@ class ApiClient {
       }
     }
 
-    const url = endpoint.startsWith('http') ? endpoint : `${env.apiBaseUrl}${endpoint}`;
-
     try {
-      const response = await fetch(url, {
+      let response = await fetch(url, {
         credentials: options.credentials || 'same-origin',
         ...rest,
         headers: mergedHeaders,
@@ -139,6 +233,36 @@ class ApiClient {
       });
 
       clearTimeout(timeoutId);
+
+      // Bounded, jittered retry for transient upstream failures (Render
+      // free-tier cold starts, brief gateway hiccups). Idempotent methods
+      // only, and never for 4xx — the 401 refresh flow below stays the
+      // single owner of auth recovery.
+      const idempotent = IDEMPOTENT_METHODS.has(method);
+      const maxRetries = options.retries ?? (idempotent ? 2 : 0);
+      const retryBaseMs = options.retryDelayMs ?? 400;
+      let attemptsMade = 1;
+      while (TRANSIENT_UPSTREAM_STATUSES.has(response.status) && attemptsMade <= maxRetries) {
+        const backoffMs = Math.round(
+          Math.min(retryBaseMs * 2 ** (attemptsMade - 1), 2000) * (0.7 + Math.random() * 0.6)
+        );
+        await new Promise((resolveSleep) => setTimeout(resolveSleep, backoffMs));
+        attemptsMade += 1;
+        const retryController = new AbortController();
+        const retryTimeoutId = setTimeout(() => retryController.abort(), timeoutMs);
+        try {
+          response = await fetch(url, {
+            credentials: options.credentials || 'same-origin',
+            ...rest,
+            headers: mergedHeaders,
+            signal: options.signal || retryController.signal,
+          });
+          clearTimeout(retryTimeoutId);
+        } catch (retryError) {
+          clearTimeout(retryTimeoutId);
+          throw retryError;
+        }
+      }
 
       const contentType = response.headers.get('content-type') || '';
       const isJson = contentType.includes('application/json');
@@ -301,7 +425,18 @@ class ApiClient {
     } catch (err: unknown) {
       clearTimeout(timeoutId);
       if (err instanceof ApiError) throw err;
-      if (err instanceof Error && err.name === 'AbortError') {
+      // DOMException is not an instanceof Error in jsdom/some browsers —
+      // match by name so caller aborts are classified correctly everywhere.
+      const isAbortError =
+        (err instanceof Error || err instanceof DOMException) &&
+        (err as { name?: string }).name === 'AbortError';
+      if (isAbortError) {
+        // A caller-owned AbortSignal firing is NOT a timeout — reporting
+        // "Request timeout exceeded" for it was a lie that masked real
+        // cancellations (unmounts, navigation, explicit aborts).
+        if (options.signal?.aborted) {
+          throw err;
+        }
         throw new ApiError(`Request timeout exceeded (${timeoutMs}ms) for ${endpoint}`, 408);
       }
 

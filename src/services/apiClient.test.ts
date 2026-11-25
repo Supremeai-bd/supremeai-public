@@ -186,3 +186,143 @@ describe('apiClient 401 recovery', () => {
     expect(dispatchEvent).not.toHaveBeenCalled();
   });
 });
+
+describe('apiClient transient retry (pattern audit P3.1)', () => {
+  beforeEach(() => {
+    apiClient.registerRefreshHandler(null);
+  });
+
+  it('retries a GET on 503 and succeeds on the next attempt', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ detail: 'cold start' }, 503))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await apiClient.get('/api/v1/transient', { retryDelayMs: 1 });
+
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up after the default two extra attempts and surfaces the last status', async () => {
+    // 504 (not 502/503) keeps the pre-existing Cloudflare direct-fallback
+    // path out of the picture so fetch counts stay exact.
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ detail: 'still down' }, 504));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiClient.get('/api/v1/flaky', { retryDelayMs: 1 })).rejects.toMatchObject({
+      status: 504,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3); // 1 primary + 2 retries
+  });
+
+  it('never retries non-idempotent methods by default', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ detail: 'down' }, 504));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      apiClient.post('/api/v1/orders', { item: 1 }, { retryDelayMs: 1 })
+    ).rejects.toMatchObject({ status: 504 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry 4xx responses', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ detail: 'nope' }, 404));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiClient.get('/api/v1/missing', { retryDelayMs: 1 })).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors an explicit retries: 0', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ detail: 'down' }, 504));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      apiClient.get('/api/v1/no-retry', { retries: 0, retryDelayMs: 1 })
+    ).rejects.toMatchObject({ status: 504 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('apiClient GET single-flight dedup (pattern audit P3.1)', () => {
+  beforeEach(() => {
+    apiClient.registerRefreshHandler(null);
+  });
+
+  it('shares one network round trip between concurrent identical GETs', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve(jsonResponse({ n: 1 })), 5)
+          ) as Promise<Response>
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [a, b] = await Promise.all([
+      apiClient.get('/api/v1/dedupe-probe'),
+      apiClient.get('/api/v1/dedupe-probe'),
+    ]);
+
+    expect(a).toEqual({ n: 1 });
+    expect(b).toEqual({ n: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('issues separate requests when skipDedup is set', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve(jsonResponse({ ok: true })), 5)
+          ) as Promise<Response>
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await Promise.all([
+      apiClient.get('/api/v1/poll', { skipDedup: true }),
+      apiClient.get('/api/v1/poll', { skipDedup: true }),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('apiClient abort semantics (pattern audit P3.1)', () => {
+  beforeEach(() => {
+    apiClient.registerRefreshHandler(null);
+  });
+
+  it('rethrows a caller-initiated abort instead of faking a timeout', async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn().mockImplementation(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError'))
+          );
+        })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = apiClient.get('/api/v1/long', { signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('still maps its own timeout to the 408 ApiError', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>(() => undefined));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiClient.get('/api/v1/hang', { timeoutMs: 20 })).rejects.toMatchObject({
+      status: 408,
+    });
+  });
+});
