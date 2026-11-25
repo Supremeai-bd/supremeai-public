@@ -22,6 +22,7 @@ import {
   type TowerSeverity,
 } from '../../data/towerAuditV1Data';
 import { ArchitectureMap, AuditRadarChart } from './ArchitectureMap';
+import { InteractiveMeshGraph } from './InteractiveMeshGraph';
 import { toast } from '../../stores/useToastStore';
 
 interface LiveProbe {
@@ -239,6 +240,9 @@ export const AdminTowerAuditPanel: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Interactive Planetary Graph + Telemetry Console (Combined v1 + v2) */}
+      <InteractiveMeshGraph />
 
       {/* Visual Mesh Topology & Radar Chart */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
