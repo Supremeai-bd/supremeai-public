@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -105,6 +105,11 @@ export const AdminTowerAuditPanel: React.FC = () => {
     setProbing(false);
     toast.success('Live contract probes completed');
   }, []);
+
+  // বাংলা মন্তব্য: প্যানেল খোলার সাথে সাথেই লাইভ কন্ট্র্যাক্ট প্রোব স্বয়ংক্রিয়ভাবে চলবে।
+  useEffect(() => {
+    void runLiveProbes();
+  }, [runLiveProbes]);
 
   const exportMarkdown = () => {
     const md = buildTowerAuditMarkdown();
