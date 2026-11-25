@@ -781,12 +781,18 @@ async function startServer() {
       const rows = await supabaseRestRequest('platform_settings?id=eq.global&select=value', 'GET');
       const value = Array.isArray(rows) ? rows[0]?.value : rows?.value;
       if (value && typeof value === 'object') {
-        if (Array.isArray(value.blockedIps)) blockedIps = value.blockedIps;
+        // Merge IN PLACE: route modules, the chat stream, and the WS bridge capture
+        // references to these arrays/objects at registration time. Reassigning the
+        // let bindings here would orphan those references, so admin-persisted
+        // blocked IPs, runtime feature flags, and platform config would silently
+        // never apply to already-registered consumers (same pattern as the
+        // auditRecords splice below).
+        if (Array.isArray(value.blockedIps)) blockedIps.splice(0, blockedIps.length, ...value.blockedIps);
         if (value.runtimeFeatureFlags && typeof value.runtimeFeatureFlags === 'object') {
-          runtimeFeatureFlags = { ...runtimeFeatureFlags, ...value.runtimeFeatureFlags };
+          Object.assign(runtimeFeatureFlags, value.runtimeFeatureFlags);
         }
         if (value.platformConfig && typeof value.platformConfig === 'object') {
-          platformConfig = { ...platformConfig, ...value.platformConfig };
+          Object.assign(platformConfig, value.platformConfig);
         }
       }
       const logs = await supabaseRestRequest(
@@ -814,7 +820,10 @@ async function startServer() {
       /* offline: keep seed/local state */
     }
   };
-  void loadPlatformState();
+  // Load durable platform state BEFORE the request routes below are reached, so
+  // admin-persisted blocked IPs / feature flags / platform config from Supabase
+  // are in effect from the first request instead of arriving mid-flight.
+  await loadPlatformState();
 
   // Startup schema probe. The durable audit + platform-state writers swallow
   // errors so they can never break a request, which previously hid the fact
@@ -916,7 +925,7 @@ async function startServer() {
   }
 
   const getSessionSigningSecret = (): string => {
-    // বাংলা মন্তব্য: ডুয়াল-পারপাস কী (ADMIN_PASSKEY) সাইনিং চেইন থেকে বাদ দেওয়া হয়েছে যাতে সেশন টোকেন ও পাসকি আলাদা থাকে
+    // বাংলা মন্তব্য: ডুয়াল-পারপাস কী (ADMIN_PASSKEY) সাইনিং চেইন থেকে বাদ দেওয়া হয়েছে যাতে সেশন টোকেন ও পাসকি আলাদা থাকে
     const fromEnv = process.env.AUTH_TOKEN_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
     if (fromEnv) return fromEnv;
     const keyFilePath = path.join(os.tmpdir(), 'supremeai_session_signing.key');
