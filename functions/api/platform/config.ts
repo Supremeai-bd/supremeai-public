@@ -1,6 +1,7 @@
 import { PagesContext, handleCorsPreflight, jsonEdgeResponse } from '../../_lib/edgeHelpers';
+import { DEFAULT_MODEL_ID, DEFAULT_MODEL_POLICIES } from '../../../src/shared/platformCatalog';
 
-// বাংলা মন্তব্য: Cloudflare Pages Edge-এর জন্য প্ল্যাটফর্ম গভর্ন্যান্স কনফিগ (যাতে গেস্ট বা বুট সময়ে 401/429 এরর ছাড়াই ডিফল্ট পলিসি লোড হয়)
+// বাংলা মন্তব্য: Cloudflare Pages Edge-এর প্ল্যাটফর্ম কনফিগ এখন ক্যানোনিকাল মডেল পলিসি ব্যবহার করে
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
   if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
@@ -16,11 +17,11 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         'SupremeAI Studio is undergoing scheduled database maintenance. Administrators remain online.',
       announcementBanner: {
         active: false,
-        message: 'All SupremeAI Core routes are operating normally.',
+        message: 'All SupremeAI Core and SupremeAI Reason routes are operating normally.',
         level: 'info',
       },
       allowNewSignups: true,
-      defaultModelId: 'supreme-core',
+      defaultModelId: DEFAULT_MODEL_ID,
       featureFlags: {
         enable_supreme_reason: true,
         enable_multimodal_vision: true,
@@ -29,14 +30,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         enforce_strict_rate_limits: false,
         maintenance_mode: false,
       },
-      modelPolicies: {
-        'supreme-core': { enabled: true, minTier: 'Free' },
-        'supreme-spark': { enabled: false, minTier: 'Free' },
-        'supreme-reason': { enabled: false, minTier: 'Pro' },
-        'supreme-deep': { enabled: false, minTier: 'Enterprise' },
-        'supremeai-web': { enabled: false, minTier: 'Free' },
-        'supremeai-api': { enabled: false, minTier: 'Free' },
-      },
+      modelPolicies: DEFAULT_MODEL_POLICIES,
     },
     200,
     request,

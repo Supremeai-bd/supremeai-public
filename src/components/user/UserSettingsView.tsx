@@ -293,16 +293,20 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    const matchedModel = SUPREMEAI_MODELS.find((m) => m.id === defaultModel);
+    if (matchedModel) {
+      useChatStore.getState().selectModel(matchedModel);
+    }
     onUpdateSettings({
       name,
       email,
       emailNotifications,
       autoCodeReview,
-      streamResponses: true,
-      enableKnowledgeGrounding: true,
+      streamResponses: settings.streamResponses ?? true,
+      enableKnowledgeGrounding: settings.enableKnowledgeGrounding ?? true,
       showWorkspaceTips,
       defaultModel,
-      autoModelRouting: devModeActive ? autoModelRouting : true,
+      autoModelRouting,
       language,
       contentLayout,
       customInstructions,
@@ -754,7 +758,16 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                   </label>
                   <select
                     value={defaultModel}
-                    onChange={(e) => setDefaultModel(e.target.value)}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      setDefaultModel(nextId);
+                      const matched = SUPREMEAI_MODELS.find((m) => m.id === nextId);
+                      if (matched) {
+                        useChatStore.getState().selectModel(matched);
+                      } else {
+                        onUpdateSettings({ defaultModel: nextId });
+                      }
+                    }}
                     className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-slate-400"
                   >
                     {SUPREMEAI_MODELS.map((m) => (

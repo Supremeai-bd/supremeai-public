@@ -7,6 +7,7 @@ import {
 } from './userPreferencesSyncBus';
 import { useCustomerStore } from '../stores/useCustomerStore';
 import { useThemeStore, type ThemePersistedConfig } from '../stores/useThemeStore';
+import { useAppPreferencesStore } from '../stores/useAppPreferencesStore';
 import { ttsService } from './ttsService';
 import {
   loadAvatarPreference,
@@ -73,11 +74,103 @@ export function buildCurrentPreferencesSnapshot(): Record<string, unknown> {
     },
     chat_prefs: {
       selectedModelId: chatState.activeModel?.id,
+      autoModelRouting: customerState.userSettings.autoModelRouting !== false,
       activeRoleId: chatState.activeRole?.id,
       customInstruction: chatState.customInstruction,
+      runSettings: chatState.runSettings,
       pinnedSessionIds: chatState.sessions.filter((s) => s.isPinned).map((s) => s.id),
     },
   };
+}
+
+/**
+ * বাংলা মন্তব্য: রিমোট সার্ভার বা রিয়েল-টাইম SSE স্ট্রিম থেকে আগত প্রেফারেন্সগুলো ইকো-লুপ ছাড়াই সব লোকাল স্টোরে প্রয়োগ করে।
+ */
+export function applyRemotePreferencesBundle(remotePrefs: Record<string, unknown>): {
+  hasRemoteStudio: boolean;
+  hasRemoteTheme: boolean;
+} {
+  const hasRemoteStudio = Boolean(
+    remotePrefs.studio_settings && typeof remotePrefs.studio_settings === 'object'
+  );
+  const hasRemoteTheme = Boolean(
+    remotePrefs.theme_config && typeof remotePrefs.theme_config === 'object'
+  );
+  const hasRemoteVoice = Boolean(
+    remotePrefs.voice_tts_config && typeof remotePrefs.voice_tts_config === 'object'
+  );
+  const hasRemoteAvatar = Boolean(
+    remotePrefs.avatar_pref && typeof remotePrefs.avatar_pref === 'object'
+  );
+  const hasRemotePlugins = Array.isArray(remotePrefs.user_plugins);
+  const hasRemoteWorkspace = Boolean(
+    remotePrefs.workspace_prefs && typeof remotePrefs.workspace_prefs === 'object'
+  );
+  const hasRemoteChat = Boolean(
+    remotePrefs.chat_prefs && typeof remotePrefs.chat_prefs === 'object'
+  );
+
+  clearPendingPreferences();
+  setPreferencesHydrating(true);
+  try {
+    if (hasRemoteStudio) {
+      const studio = remotePrefs.studio_settings as Partial<UserAccountSettings>;
+      useCustomerStore.getState().applyRemoteSettings(studio);
+      if (studio.language === 'bn' || studio.language === 'en') {
+        useAppPreferencesStore.setState({ language: studio.language });
+      }
+    }
+
+    if (hasRemotePlugins) {
+      useCustomerStore.getState().applyRemotePlugins(remotePrefs.user_plugins as PluginItem[]);
+    }
+
+    if (hasRemoteTheme) {
+      useThemeStore
+        .getState()
+        .applyRemoteThemeConfig(remotePrefs.theme_config as Partial<ThemePersistedConfig>);
+    }
+
+    if (hasRemoteVoice) {
+      const v = remotePrefs.voice_tts_config as Record<string, unknown>;
+      ttsService.updateConfig(
+        {
+          ...(v.language === 'bn' || v.language === 'en' ? { language: v.language } : {}),
+          ...(typeof v.voicePersona === 'string'
+            ? { voicePersona: v.voicePersona as ReturnType<typeof ttsService.getConfig>['voicePersona'] }
+            : {}),
+          ...(typeof v.pitch === 'number' ? { pitch: v.pitch } : {}),
+          ...(v.banglaAccent === 'bn-bd' || v.banglaAccent === 'bn-in'
+            ? { banglaAccent: v.banglaAccent }
+            : {}),
+        },
+        { syncRemote: false }
+      );
+      if (typeof v.micGain === 'number') {
+        saveMicInputGainPreference(v.micGain, false);
+      }
+    }
+
+    if (hasRemoteAvatar) {
+      saveAvatarPreference(remotePrefs.avatar_pref as AvatarPreference, false);
+    }
+
+    if (hasRemoteWorkspace) {
+      const wp = remotePrefs.workspace_prefs as Record<string, unknown>;
+      if (typeof wp.liveArtifactSync === 'boolean') {
+        useWorkspaceStore.getState().setLiveArtifactSync(wp.liveArtifactSync);
+      }
+    }
+
+    if (hasRemoteChat) {
+      const chatPrefs = remotePrefs.chat_prefs as Record<string, unknown>;
+      useChatStore.getState().applyRemoteChatPrefs(chatPrefs);
+    }
+  } finally {
+    setPreferencesHydrating(false);
+  }
+
+  return { hasRemoteStudio, hasRemoteTheme };
 }
 
 let activeHydrationPromise: Promise<boolean> | null = null;
@@ -91,71 +184,7 @@ export async function hydrateUserPreferencesFromServer(): Promise<boolean> {
     const remotePrefs = await fetchRemotePreferences();
     if (!remotePrefs) return false;
 
-    const hasRemoteStudio =
-      remotePrefs.studio_settings && typeof remotePrefs.studio_settings === 'object';
-    const hasRemoteTheme = remotePrefs.theme_config && typeof remotePrefs.theme_config === 'object';
-    const hasRemoteVoice =
-      remotePrefs.voice_tts_config && typeof remotePrefs.voice_tts_config === 'object';
-    const hasRemoteAvatar = remotePrefs.avatar_pref && typeof remotePrefs.avatar_pref === 'object';
-    const hasRemotePlugins = Array.isArray(remotePrefs.user_plugins);
-    const hasRemoteWorkspace =
-      remotePrefs.workspace_prefs && typeof remotePrefs.workspace_prefs === 'object';
-    const hasRemoteChat = remotePrefs.chat_prefs && typeof remotePrefs.chat_prefs === 'object';
-
-    clearPendingPreferences();
-    setPreferencesHydrating(true);
-    try {
-      if (hasRemoteStudio) {
-        useCustomerStore
-          .getState()
-          .applyRemoteSettings(remotePrefs.studio_settings as Partial<UserAccountSettings>);
-      }
-
-      if (hasRemotePlugins) {
-        useCustomerStore.getState().applyRemotePlugins(remotePrefs.user_plugins as PluginItem[]);
-      }
-
-      if (hasRemoteTheme) {
-        useThemeStore
-          .getState()
-          .applyRemoteThemeConfig(remotePrefs.theme_config as Partial<ThemePersistedConfig>);
-      }
-
-      if (hasRemoteVoice) {
-        const v = remotePrefs.voice_tts_config as Record<string, any>;
-        ttsService.updateConfig(
-          {
-            ...(v.language === 'bn' || v.language === 'en' ? { language: v.language } : {}),
-            ...(typeof v.voicePersona === 'string' ? { voicePersona: v.voicePersona as any } : {}),
-            ...(typeof v.pitch === 'number' ? { pitch: v.pitch } : {}),
-            ...(v.banglaAccent === 'bn-bd' || v.banglaAccent === 'bn-in'
-              ? { banglaAccent: v.banglaAccent }
-              : {}),
-          },
-          { syncRemote: false }
-        );
-        if (typeof v.micGain === 'number') {
-          saveMicInputGainPreference(v.micGain, false);
-        }
-      }
-
-      if (hasRemoteAvatar) {
-        saveAvatarPreference(remotePrefs.avatar_pref as AvatarPreference, false);
-      }
-
-      if (hasRemoteWorkspace) {
-        const wp = remotePrefs.workspace_prefs as Record<string, unknown>;
-        if (typeof wp.liveArtifactSync === 'boolean') {
-          useWorkspaceStore.getState().setLiveArtifactSync(wp.liveArtifactSync);
-        }
-      }
-
-      if (hasRemoteChat) {
-        useChatStore.getState().applyRemoteChatPrefs(remotePrefs.chat_prefs);
-      }
-    } finally {
-      setPreferencesHydrating(false);
-    }
+    const { hasRemoteStudio, hasRemoteTheme } = applyRemotePreferencesBundle(remotePrefs);
 
     // First-time migration: if account has no synced studio/theme prefs on server yet,
     // push current local snapshot once so other devices receive it immediately.

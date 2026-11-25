@@ -76,11 +76,13 @@ export function resolveMcpRpcUrl(env?: Record<string, string | undefined>): stri
   return resolveMcpRpcCandidates(env)[0];
 }
 
+// বাংলা মন্তব্য: Web, Desktop (Windows WebView2 `http://tauri.localhost`), Android Tauri, এবং VS Code Webview অরিজিন অনুমোদিত
 const DEFAULT_ALLOWED_EDGE_ORIGINS = [
   'https://supremeai-studio.pages.dev',
   'https://supremeai.studio',
   'https://www.supremeai.studio',
   'https://tauri.localhost',
+  'http://tauri.localhost',
   'tauri://localhost',
 ];
 
@@ -93,6 +95,7 @@ export function isAllowedEdgeOrigin(
   if (!clean) return true;
   if (clean === incomingOrigin) return true;
   if (DEFAULT_ALLOWED_EDGE_ORIGINS.includes(clean)) return true;
+  if (clean.startsWith('vscode-webview://')) return true;
 
   const extra = (env?.ALLOWED_ORIGINS || '')
     .split(',')

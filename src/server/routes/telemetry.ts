@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PLAN_CATALOG } from '../../config/plans';
+import { CANONICAL_SERVER_MODELS, DEFAULT_MODEL_ID } from '../../shared/platformCatalog';
 
 /**
  * Telemetry + Health + Models — `POST /api/telemetry/client-error` + `GET /api/health` + `GET /api/models`
@@ -35,38 +36,8 @@ const APP_VERSION = (() => {
   }
 })();
 
-const SUPPORTED_MODELS: Record<string, { name: string; description: string; tier: 'standard' | 'advanced' }> = {
-  auto: {
-    name: 'SupremeAI Auto',
-    description: 'Intelligent adaptive routing across API Pool and Webhook relays',
-    tier: 'standard',
-  },
-  'supreme-core': {
-    name: 'SupremeAI Core',
-    description: 'Flagship multimodal foundation model for general tasks, synthesis & coding',
-    tier: 'standard',
-  },
-  'supreme-spark': {
-    name: 'SupremeAI Spark',
-    description: 'Ultra-low latency model for high-frequency queries and streaming',
-    tier: 'standard',
-  },
-  'supreme-reason': {
-    name: 'SupremeAI Reason',
-    description: 'Deep analytical and architectural reasoning engine',
-    tier: 'advanced',
-  },
-  'supreme-deep': {
-    name: 'SupremeAI Deep',
-    description: 'Complex multi-step logic, code synthesis and autonomous tasks',
-    tier: 'advanced',
-  },
-  'supremeai-web': {
-    name: 'SupremeAI Web',
-    description: 'Live web search grounded answer model',
-    tier: 'standard',
-  },
-};
+// বাংলা মন্তব্য: ক্যানোনিকাল কন্ট্রাক্ট থেকে সব মডেল (`auto` + ৬টি ফাউন্ডেশন মডেল) লোড করা হচ্ছে
+const SUPPORTED_MODELS = CANONICAL_SERVER_MODELS;
 
 export interface TelemetryContext {
   fetchGatewayJson: (pathAndQuery: string, ttlMs?: number) => Promise<any | null>;
@@ -95,13 +66,13 @@ export function registerTelemetryRoutes(app: Express, ctx: TelemetryContext): vo
   app.get('/api/models', async (_req: Request, res: Response) => {
     const remote = await ctx.fetchGatewayJson('/api/v1/models');
     const remoteModels = remote?.models;
-    const useRemote =
+    const hasRemoteMap =
       remoteModels && typeof remoteModels === 'object' && !Array.isArray(remoteModels);
     res.json({
-      models: useRemote ? remoteModels : SUPPORTED_MODELS,
+      models: hasRemoteMap ? { ...SUPPORTED_MODELS, ...remoteModels } : SUPPORTED_MODELS,
       defaultModel:
-        (useRemote && (remote?.defaultModel || remote?.default_model)) || 'supreme-spark',
-      source: useRemote ? 'gateway' : 'local',
+        (hasRemoteMap && (remote?.defaultModel || remote?.default_model)) || DEFAULT_MODEL_ID,
+      source: hasRemoteMap ? 'gateway+canonical' : 'canonical',
     });
   });
 

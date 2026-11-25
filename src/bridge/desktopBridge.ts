@@ -7,12 +7,25 @@ const WEB_FEEDBACK_LOG_KEY = 'supremeai.desktop.web_feedback.v1';
 
 export type ChatTurn = { role: 'user' | 'assistant'; content: string };
 
+export type DesktopSelectableModel =
+  | 'auto'
+  | 'supreme-core'
+  | 'supreme-spark'
+  | 'supreme-reason'
+  | 'supreme-deep'
+  | 'supremeai-web'
+  | 'supremeai-api'
+  | 'supremeai/openrouter'
+  | 'supremeai/groq';
+
 export interface DesktopChatRequest {
   prompt: string;
-  model: 'auto' | 'supremeai/openrouter' | 'supremeai/groq';
+  model: DesktopSelectableModel | string;
   conversationId: string;
   history: ChatTurn[];
   systemInstruction?: string;
+  temperature?: number;
+  maxTokens?: number;
   onChunk?: (token: string) => void;
   signal?: AbortSignal;
 }
@@ -135,6 +148,9 @@ export async function sendDesktopChat(req: DesktopChatRequest): Promise<DesktopC
         model: req.model,
         conversationId: req.conversationId,
         history: req.history.slice(-10),
+        systemInstruction: req.systemInstruction,
+        temperature: req.temperature,
+        maxTokens: req.maxTokens,
       },
       onChunk: channel,
     });

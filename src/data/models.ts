@@ -1,91 +1,15 @@
 import { ModelDetail } from '../types';
+import {
+  AUTO_MODEL_OPTION,
+  CANONICAL_MODELS,
+  DEFAULT_MODEL_ID,
+  normalizeConcreteModelId,
+  normalizeModelSelection,
+} from '../shared/platformCatalog';
 
-export const SUPREMEAI_MODELS: ModelDetail[] = [
-  {
-    id: 'supreme-spark',
-    name: 'SupremeAI Spark',
-    alias: 'Ultra-Low Latency',
-    badge: 'Recommended',
-    tagline: 'Instant snippets, rapid turnaround & sub-second completions',
-    description:
-      'Featherweight, rapid turnaround model designed for high-frequency interactions, instant responses, and sub-second completions.',
-    idealFor: 'Rapid chat, coding, syntax conversions, regex, and instantaneous lookups',
-    latencyRating: 'Ultra-Fast',
-    contextTokens: '1,000,000+',
-    reasoningCapability: 'High',
-    tier: 'standard',
-  },
-  {
-    id: 'supreme-core',
-    name: 'SupremeAI Core',
-    alias: 'Flagship Intelligence',
-    badge: 'Standard',
-    tagline: 'High-throughput multimodal foundation intelligence',
-    description:
-      'Versatile reasoning, full-stack conversational coding, structured analysis, and instant problem solving.',
-    idealFor: 'Everyday engineering tasks, full-stack development, and architecture Q&A',
-    latencyRating: 'Balanced',
-    contextTokens: '1,000,000+',
-    reasoningCapability: 'High',
-    tier: 'standard',
-  },
-  {
-    id: 'supreme-reason',
-    name: 'SupremeAI Reason',
-    alias: 'Deep Analytical Engine',
-    badge: 'Deep Compute',
-    tagline: 'Deep reasoning, mathematical proofs & root-cause debugging',
-    description:
-      'Engineered for hard algorithm synthesis, distributed system invariants, formal logic, and architectural failure mode auditing.',
-    idealFor: 'Complex algorithmic logic, security audits, and mission-critical reasoning',
-    latencyRating: 'Deep-Compute',
-    contextTokens: '2,000,000+',
-    reasoningCapability: 'Extreme',
-    tier: 'advanced',
-  },
-  {
-    id: 'supreme-deep',
-    name: 'SupremeAI Deep',
-    alias: 'Agentic Orchestration',
-    badge: 'Autonomous',
-    tagline: 'Complex interactive coding & multi-agent swarms',
-    description:
-      'Specialized for large multi-file refactoring, autonomous agent workflows, terminal loop execution, and deep repository inspection.',
-    idealFor: 'Multi-step autonomous tasks, large refactors, and complex agentic jobs',
-    latencyRating: 'Deep-Compute',
-    contextTokens: '2,000,000+',
-    reasoningCapability: 'Extreme',
-    tier: 'advanced',
-  },
-  {
-    id: 'supremeai-web',
-    name: 'SupremeAI Web',
-    alias: 'Stealth Webpool',
-    badge: 'Zero-Cost Web',
-    tagline: 'Stealth web session relay via cookie pool',
-    description:
-      'Direct $0 cookie-authenticated web session relay for uninterrupted high-volume web queries and search synthesis.',
-    idealFor: 'Web scraping, live search synthesis, zero-token cost streaming',
-    latencyRating: 'Balanced',
-    contextTokens: '1,000,000+',
-    reasoningCapability: 'High',
-    tier: 'standard',
-  },
-  {
-    id: 'supremeai-api',
-    name: 'SupremeAI API',
-    alias: 'Multi-Cloud API Squad',
-    badge: 'Enterprise API',
-    tagline: 'High-availability multi-key provider pool',
-    description:
-      'Direct load-balanced multi-provider API squad across Gemini, Groq, OpenRouter, Mistral, and Hugging Face.',
-    idealFor: 'Mission-critical enterprise completions, production APIs, guaranteed failover',
-    latencyRating: 'Ultra-Fast',
-    contextTokens: '2,000,000+',
-    reasoningCapability: 'Extreme',
-    tier: 'standard',
-  },
-];
+// বাংলা মন্তব্য: Web, Desktop এবং Mobile অ্যাপের মডেল তালিকা এখন সরাসরি ক্যানোনিকাল কন্ট্রাক্ট থেকে লোড হয়
+export const SUPREMEAI_MODELS: ModelDetail[] = CANONICAL_MODELS;
+export { AUTO_MODEL_OPTION, DEFAULT_MODEL_ID, normalizeConcreteModelId, normalizeModelSelection };
 
 export interface ModelColorTheme {
   id: string;
@@ -98,6 +22,17 @@ export interface ModelColorTheme {
 }
 
 export const MODEL_COLOR_THEMES: Record<string, ModelColorTheme> = {
+  auto: {
+    id: 'indigo',
+    label: 'Indigo',
+    hex: '#6366f1',
+    dotClass: 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.7)]',
+    triggerClass:
+      'bg-indigo-500/12 hover:bg-indigo-500/20 border-indigo-500/35 text-indigo-700 dark:bg-indigo-500/15 dark:hover:bg-indigo-500/25 dark:border-indigo-400/40 dark:text-indigo-300',
+    menuActiveClass:
+      'bg-indigo-500/10 dark:bg-indigo-500/15 border border-indigo-500/35 text-slate-900 dark:text-white',
+    activeTextClass: 'text-indigo-600 dark:text-indigo-400',
+  },
   'supreme-core': {
     id: 'cyan',
     label: 'Cyan',
@@ -167,5 +102,19 @@ export const MODEL_COLOR_THEMES: Record<string, ModelColorTheme> = {
 };
 
 export function getModelColorTheme(modelId: string): ModelColorTheme {
-  return MODEL_COLOR_THEMES[modelId] || MODEL_COLOR_THEMES['supreme-core'];
+  const normalized =
+    modelId === 'auto'
+      ? 'auto'
+      : MODEL_COLOR_THEMES[modelId]
+        ? modelId
+        : normalizeModelSelection(modelId, false);
+  return (
+    (MODEL_COLOR_THEMES[modelId] ||
+      (modelId === 'supreme-web'
+        ? MODEL_COLOR_THEMES['supremeai-web']
+        : modelId === 'supreme-api'
+          ? MODEL_COLOR_THEMES['supremeai-api']
+          : MODEL_COLOR_THEMES[normalized])) ??
+    MODEL_COLOR_THEMES['supreme-core']
+  );
 }

@@ -1,7 +1,7 @@
 {
   "name": "supremeai-vscode",
   "displayName": "SupremeAI Federation IDE Bridge",
-  "description": "Developer workflow bridge, AI coding chat, and live federation runway telemetry for SupremeAI autonomous agents",
+  "description": "Developer workflow bridge, AI coding chat, and live cross-platform synced models & options across Web, Desktop, Mobile, and VS Code",
   "version": "2.5.0",
   "publisher": "supremeai",
   "license": "MIT",
@@ -23,7 +23,8 @@
     "mcp",
     "agents",
     "runway",
-    "telemetry"
+    "telemetry",
+    "sync"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -54,6 +55,21 @@
       {
         "command": "supremeai.openChat",
         "title": "Open SupremeAI Chat",
+        "category": "SupremeAI"
+      },
+      {
+        "command": "supremeai.selectModel",
+        "title": "Select SupremeAI Model (Synced Across Devices)",
+        "category": "SupremeAI"
+      },
+      {
+        "command": "supremeai.selectRole",
+        "title": "Select Persona / System Role (Synced Across Devices)",
+        "category": "SupremeAI"
+      },
+      {
+        "command": "supremeai.syncNow",
+        "title": "Sync Models, Options & Chats Across Platforms Now",
         "category": "SupremeAI"
       },
       {
@@ -112,15 +128,115 @@
           "default": "https://supremeai-api-ulw0.onrender.com",
           "description": "SupremeAI Gateway base URL for chat completions"
         },
+        "supremeai.syncUrl": {
+          "type": "string",
+          "default": "https://supremeai-studio.pages.dev",
+          "description": "SupremeAI Studio Cloud Sync endpoint shared with Web, Desktop, and Mobile"
+        },
         "supremeai.apiKey": {
           "type": "string",
           "default": "",
-          "description": "X-SupremeAI-Key for gateway authentication (or SUPREMEAI_API_KEY environment variable)"
+          "description": "SupremeAI API Key or Account Access Token for gateway & cross-platform sync"
         },
         "supremeai.model": {
           "type": "string",
           "default": "auto",
-          "description": "Default model tier (auto, fast, balanced, pro)"
+          "enum": [
+            "auto",
+            "supreme-spark",
+            "supreme-core",
+            "supreme-reason",
+            "supreme-deep",
+            "supremeai-web",
+            "supremeai-api"
+          ],
+          "enumDescriptions": [
+            "SupremeAI Auto — Smart Intent Routing across all foundation models",
+            "SupremeAI Spark — Ultra-Low Latency sub-second completions",
+            "SupremeAI Core — Flagship multimodal foundation intelligence",
+            "SupremeAI Reason — Deep analytical & architectural reasoning",
+            "SupremeAI Deep — Autonomous multi-file agentic orchestration",
+            "SupremeAI Web — Live search grounded web synthesis",
+            "SupremeAI API — High-availability multi-provider API pool"
+          ],
+          "description": "Active SupremeAI model synchronized with Web, Desktop, and Mobile"
+        },
+        "supremeai.autoModelRouting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically route prompts across Spark, Core, Reason, Deep, and Web"
+        },
+        "supremeai.role": {
+          "type": "string",
+          "default": "supreme-general",
+          "enum": [
+            "supreme-general",
+            "supreme-architect",
+            "supreme-fullstack",
+            "supreme-fast-dev",
+            "supreme-security"
+          ],
+          "description": "Active System Persona synchronized across Web, Desktop, Mobile, and VS Code"
+        },
+        "supremeai.customInstructions": {
+          "type": "string",
+          "default": "",
+          "description": "Custom system instructions synced across all SupremeAI apps"
+        },
+        "supremeai.language": {
+          "type": "string",
+          "default": "en",
+          "enum": [
+            "en",
+            "bn"
+          ],
+          "description": "Interface & response language preference (en = English, bn = বাংলা)"
+        },
+        "supremeai.thinkingLevel": {
+          "type": "string",
+          "default": "MEDIUM",
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "XHIGH"
+          ],
+          "description": "Reasoning depth / thinking effort synced across all platforms"
+        },
+        "supremeai.temperature": {
+          "type": "number",
+          "default": 0.7,
+          "description": "Sampling temperature (0.0 to 1.5) synced across all platforms"
+        },
+        "supremeai.maxTokens": {
+          "type": "number",
+          "default": 8192,
+          "description": "Maximum output tokens synced across all platforms"
+        },
+        "supremeai.enableSearchGrounding": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable live web search grounding & citations"
+        },
+        "supremeai.themeMode": {
+          "type": "string",
+          "default": "system",
+          "enum": [
+            "system",
+            "dark",
+            "light"
+          ],
+          "description": "Theme mode synchronized across Web, Desktop, Mobile, and VS Code"
+        },
+        "supremeai.liveTheme": {
+          "type": "string",
+          "default": "alpine-dunes",
+          "description": "Active Studio visual theme preset synchronized across devices"
+        },
+        "supremeai.syncEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable real-time cross-platform synchronization (Web, Desktop, Mobile, VS Code)"
         },
         "supremeai.autoCheckUpdates": {
           "type": "boolean",

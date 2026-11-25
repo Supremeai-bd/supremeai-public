@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { getSyncDeviceId, getSyncPlatform } from '../sync/realtimeSync';
 
 let isHydrating = false;
 let pendingPatch: Record<string, unknown> = {};
@@ -8,8 +9,15 @@ let flushInFlight: Promise<boolean> | null = null;
 function getAuthToken(): string | null {
   try {
     if (typeof localStorage === 'undefined') return null;
-    const token = localStorage.getItem('supremeai_access_token');
-    return token && token.trim() ? token.trim() : null;
+    const token =
+      localStorage.getItem('supremeai_access_token') ||
+      localStorage.getItem('supremeai_api_key') ||
+      '';
+    const clean = token.trim();
+    if (!clean || clean.startsWith('tok_guest_') || clean.startsWith('sk-supreme-guest')) {
+      return null;
+    }
+    return clean;
   } catch {
     return null;
   }
@@ -45,6 +53,8 @@ export async function pushPreferencesNow(patch: Record<string, unknown>): Promis
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
         'X-SupremeAI-Key': token,
+        'X-Device-Id': getSyncDeviceId(),
+        'X-Sync-Platform': getSyncPlatform(),
       },
       credentials: 'same-origin',
       keepalive: true,

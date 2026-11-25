@@ -5,6 +5,10 @@
  */
 
 import { version } from '../../package.json';
+import {
+  DEFAULT_BACKEND_ORIGIN,
+  DEFAULT_PUBLIC_API_PROXY_URL,
+} from './platformEndpoints';
 
 export interface AppEnvConfig {
   isMockEnabled: boolean;
@@ -61,14 +65,47 @@ const getRuntimeMockOverride = (): boolean | null => {
   return null;
 };
 
+// বাংলা মন্তব্য: Desktop (Tauri), Mobile (Android APK/iOS), এবং VS Code Webview-এ লোকাল `/api` না থাকায় স্বয়ংক্রিয়ভাবে ক্যানোনিকাল ক্লাউড এন্ডপয়েন্ট ব্যবহৃত হবে
+export function isEmbeddedAppOrigin(loc?: { protocol?: string; hostname?: string } | null): boolean {
+  const target =
+    loc ?? (typeof window !== 'undefined' && window.location ? window.location : null);
+  if (!target) return false;
+  const protocol = String(target.protocol || '').toLowerCase();
+  const hostname = String(target.hostname || '').toLowerCase();
+  if (
+    protocol === 'tauri:' ||
+    protocol === 'file:' ||
+    protocol === 'vscode-webview:' ||
+    protocol === 'capacitor:' ||
+    protocol === 'ionic:'
+  ) {
+    return true;
+  }
+  return hostname === 'tauri.localhost' || hostname.endsWith('.tauri.localhost');
+}
+
+const resolveDefaultApiBaseUrl = (): string => {
+  const configured = getEnvString('VITE_API_BASE_URL', '').trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  return isEmbeddedAppOrigin() ? DEFAULT_PUBLIC_API_PROXY_URL : '';
+};
+
+const resolveDefaultWsBaseUrl = (): string => {
+  const configured = getEnvString('VITE_WS_BASE_URL', '').trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  if (isEmbeddedAppOrigin()) {
+    return DEFAULT_BACKEND_ORIGIN.replace(/^http/i, 'ws');
+  }
+  return isProdEnvironment() ? '' : 'ws://localhost:3000';
+};
+
 export const env: AppEnvConfig = {
   isMockEnabled: isProdEnvironment()
     ? false
     : (getRuntimeMockOverride() ?? getEnvBool('VITE_USE_MOCK', false)),
-  // Same-origin by default (routed via Vite/Express in preview and Cloudflare Pages Functions `/api/*` in prod)
-  // to avoid cross-domain CORS preflights and ad-blocker false positives. Set VITE_API_BASE_URL to override.
-  apiBaseUrl: getEnvString('VITE_API_BASE_URL', ''),
-  wsBaseUrl: getEnvString('VITE_WS_BASE_URL', isProdEnvironment() ? '' : 'ws://localhost:3000'),
+  // Same-origin by default on Web; automatically resolves to canonical cloud proxy inside Desktop/Mobile Tauri & WebViews.
+  apiBaseUrl: resolveDefaultApiBaseUrl(),
+  wsBaseUrl: resolveDefaultWsBaseUrl(),
   mockBaseUrl: getEnvString('VITE_MOCK_BASE_URL', '/api/mock'),
   supabaseUrl: getEnvString('VITE_SUPABASE_URL', ''),
   gatewayUrl: getEnvString('VITE_GATEWAY_URL', '/v1'),

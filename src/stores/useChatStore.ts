@@ -13,7 +13,8 @@ import {
   WorkbenchRunSettings,
 } from '../types';
 import { SYSTEM_ROLES } from '../data/roles';
-import { SUPREMEAI_MODELS } from '../data/models';
+import { SUPREMEAI_MODELS, normalizeConcreteModelId } from '../data/models';
+import { mergeSyncedSessions } from '../sync/realtimeSync';
 import { chatService, VisionRequestError } from '../services/chatService';
 import type { ClassifiedVisionError } from '../shared/visionRouting';
 import { conversationService } from '../services/conversationService';
@@ -148,10 +149,13 @@ interface ChatState {
   clearCurrentThread: () => void;
   exportThread: (format: 'markdown' | 'text' | 'json') => void;
   syncRemoteSessions: () => Promise<void>;
+  applyRemoteSyncedSessions: (remoteSessions: ChatSession[]) => void;
   applyRemoteChatPrefs: (prefs: {
     selectedModelId?: string;
+    autoModelRouting?: boolean;
     activeRoleId?: string;
     customInstruction?: string;
+    runSettings?: Partial<WorkbenchRunSettings>;
     pinnedSessionIds?: string[];
   }) => void;
   resetAccountSessions: () => void;
@@ -216,8 +220,10 @@ export const useChatStore = create<ChatState>((set, get) => {
     schedulePreferencesPatch({
       chat_prefs: {
         selectedModelId: st.activeModel?.id,
+        autoModelRouting: useCustomerStore.getState().userSettings.autoModelRouting !== false,
         activeRoleId: st.activeRole?.id,
         customInstruction: st.customInstruction,
+        runSettings: st.runSettings,
         pinnedSessionIds: Array.from(pinnedSet),
       },
     });
@@ -448,6 +454,10 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     selectModel: (model: ModelDetail) => {
       set({ activeModel: model });
+      const currentDefault = useCustomerStore.getState().userSettings.defaultModel;
+      if (currentDefault !== model.id) {
+        useCustomerStore.getState().updateSettings({ defaultModel: model.id });
+      }
       scheduleChatPrefsSync();
       toast.info('Model Switched', `Active model set to ${model.name}`);
     },
@@ -480,6 +490,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         }
         return { runSettings: next };
       });
+      scheduleChatPrefsSync();
     },
     setIsPromptModalOpen: (open: boolean) => set({ isPromptModalOpen: open }),
     setIsRoleModalOpen: (open: boolean) => set({ isRoleModalOpen: open }),
@@ -652,7 +663,8 @@ export const useChatStore = create<ChatState>((set, get) => {
         authStateSnapshot.currentRole === 'admin' ||
         (Boolean(authStateSnapshot.authUser?.isDeveloperEligible) &&
           Boolean(customerSettingsSnapshot.developerMode));
-      const useAutoRouting = !isDevOrAdmin || customerSettingsSnapshot.autoModelRouting !== false;
+      // বাংলা মন্তব্য: সব প্ল্যাটফর্মে (Web, Desktop, Mobile, VS Code) ব্যবহারকারী যে মডেল বা Auto-Routing বেছে নেবেন সেটিই কার্যকর হবে
+      const useAutoRouting = customerSettingsSnapshot.autoModelRouting !== false;
 
       const semanticRecommendedModel = precomputedIntent?.recommendedModelId
         ? SUPREMEAI_MODELS.find((m) => m.id === precomputedIntent.recommendedModelId)
@@ -1924,13 +1936,35 @@ When the user asks to create, build, design, or fix a project, app, website, das
       }
     },
 
+    applyRemoteSyncedSessions: (remoteSessions) => {
+      if (!Array.isArray(remoteSessions) || remoteSessions.length === 0) return;
+      if (get().isStreaming) return;
+      set((state) => {
+        const merged = mergeSyncedSessions(state.sessions, remoteSessions);
+        persistSessionsSafely(merged);
+        const activeStillExists = merged.some((s) => s.id === state.activeSessionId);
+        return {
+          sessions: merged,
+          activeSessionId: activeStillExists ? state.activeSessionId : merged[0]?.id || '',
+        };
+      });
+    },
+
     applyRemoteChatPrefs: (prefs) => {
       if (!prefs || typeof prefs !== 'object') return;
+      if (typeof prefs.autoModelRouting === 'boolean') {
+        useCustomerStore.getState().applyRemoteSettings({
+          autoModelRouting: prefs.autoModelRouting,
+        });
+      }
       set((state) => {
-        const nextModel =
-          typeof prefs.selectedModelId === 'string'
-            ? SUPREMEAI_MODELS.find((m) => m.id === prefs.selectedModelId) || state.activeModel
-            : state.activeModel;
+        const normalizedModelId =
+          typeof prefs.selectedModelId === 'string' && prefs.selectedModelId.trim()
+            ? normalizeConcreteModelId(prefs.selectedModelId)
+            : null;
+        const nextModel = normalizedModelId
+          ? SUPREMEAI_MODELS.find((m) => m.id === normalizedModelId) || state.activeModel
+          : state.activeModel;
         const nextRole =
           typeof prefs.activeRoleId === 'string'
             ? SYSTEM_ROLES.find((r) => r.id === prefs.activeRoleId) || state.activeRole
@@ -1939,6 +1973,17 @@ When the user asks to create, build, design, or fix a project, app, website, das
           typeof prefs.customInstruction === 'string'
             ? prefs.customInstruction
             : state.customInstruction;
+        const nextRunSettings =
+          prefs.runSettings && typeof prefs.runSettings === 'object'
+            ? { ...state.runSettings, ...prefs.runSettings }
+            : state.runSettings;
+        if (prefs.runSettings && typeof prefs.runSettings === 'object') {
+          try {
+            localStorage.setItem(RUN_SETTINGS_STORAGE_KEY, JSON.stringify(nextRunSettings));
+          } catch {
+            // ignore storage errors
+          }
+        }
         const nextPinnedIds = Array.isArray(prefs.pinnedSessionIds)
           ? prefs.pinnedSessionIds.filter((id): id is string => typeof id === 'string')
           : state.remotePinnedSessionIds;
@@ -1956,6 +2001,7 @@ When the user asks to create, build, design, or fix a project, app, website, das
           activeModel: nextModel,
           activeRole: nextRole,
           customInstruction: nextInstruction,
+          runSettings: nextRunSettings,
           remotePinnedSessionIds: nextPinnedIds,
           sessions: nextSessions,
         };
