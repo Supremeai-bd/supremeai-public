@@ -21,6 +21,7 @@ import {
   towerReleaseMatrix,
   type TowerSeverity,
 } from '../../data/towerAuditV1Data';
+import { ArchitectureMap, AuditRadarChart } from './ArchitectureMap';
 import { toast } from '../../stores/useToastStore';
 
 interface LiveProbe {
@@ -237,6 +238,61 @@ export const AdminTowerAuditPanel: React.FC = () => {
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{s.summary}</p>
           </div>
         ))}
+      </div>
+
+      {/* Visual Mesh Topology & Radar Chart */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="xl:col-span-2 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/60 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Observed Topology & Live Mesh Interconnect
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Clients · Edge Gateway · Runtime Fleet · State & Storage Plane
+                </p>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                Live Mesh v2.5
+              </span>
+            </div>
+            <div className="rounded-xl border border-slate-200/60 dark:border-slate-800/80 bg-slate-950 p-2 overflow-hidden shadow-inner">
+              <ArchitectureMap />
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-2 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Telemetry: Zero-Auth local state · Control plane active on MCP Tower</span>
+          </div>
+        </div>
+
+        <div className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/60 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Multi-Domain Score Radar
+              </h3>
+              <span className="text-[10px] font-mono text-cyan-500 font-semibold">
+                68/100 (B-)
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
+              Weighted cross-domain heuristic profile:
+            </p>
+            <div className="rounded-xl border border-slate-200/60 dark:border-slate-800/80 bg-slate-950/40 p-2 flex items-center justify-center">
+              <AuditRadarChart
+                data={towerDomainScores.map((s) => ({
+                  label: s.label.split(' ')[0],
+                  value: Math.round((s.value / s.target) * 100),
+                }))}
+              />
+            </div>
+          </div>
+          <p className="mt-3 text-[10px] text-slate-400 dark:text-slate-500 text-center">
+            Evaluates release alignment, security boundaries, and runtime parity.
+          </p>
+        </div>
       </div>
 
       {/* Release Matrix + Quick Wins */}
