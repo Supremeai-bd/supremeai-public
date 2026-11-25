@@ -114,10 +114,14 @@ export function normalizeAuthUser(
     emailMatchedAdminDb ||
     emailMatchedHardcodedAdmin ||
     raw.adminUserId ||
-    raw.admin_user_id
+    raw.admin_user_id ||
+    raw.role === 'admin' ||
+    data.role === 'admin' ||
+    raw.role === 'super_admin' ||
+    data.role === 'super_admin'
   );
 
-  const role: 'admin' | 'user' = isAdminEligible || rbacCandidate === 'admin' ? 'admin' : 'user';
+  const role: 'admin' | 'user' = isAdminEligible || rbacCandidate === 'admin' || raw.role === 'admin' || data.role === 'admin' ? 'admin' : 'user';
   const normalizedRbacRole: AuthUser['rbacRole'] = isAdminEligible
     ? rbacCandidate === 'super_admin' || rbacCandidate === 'superadmin'
       ? 'super_admin'
@@ -262,10 +266,25 @@ export const authService = {
     };
   },
 
-  async getMe(): Promise<AuthUser | null> {
+  async getMe(fallbackEmail?: string, fallbackName?: string): Promise<AuthUser | null> {
     try {
       const data = await apiClient.get<any>('/api/v1/auth/me');
-      return normalizeAuthUser(data);
+      // বাংলা মন্তব্য: সার্ভার যদি রেসপন্সে email ফিল্ড খালি রাখে, লোকাল স্টোরেজে থাকা পূর্বের ভ্যালিড সেশন থেকে email রিকভার করা হবে
+      let effectiveEmail = fallbackEmail;
+      let effectiveName = fallbackName;
+      if (!effectiveEmail && typeof localStorage !== 'undefined') {
+        try {
+          const raw = localStorage.getItem(AUTH_USER_STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.email) effectiveEmail = parsed.email;
+            if (parsed?.name) effectiveName = parsed.name;
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+      return normalizeAuthUser(data, effectiveEmail, effectiveName);
     } catch (err: unknown) {
       // বাংলা মন্তব্য: কেবল 401/403 হলেই সেশন ইনভ্যালিড ধরা হবে; নেটওয়ার্ক টাইমআউট, 429 বা 502/503 হলে থ্রো করা হবে যাতে restoreSession ইউজারকে অটো-লগআউট না করে!
       if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
