@@ -221,7 +221,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         const res = await authService.login(email, password);
         localStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
         const isAllowedAdmin = hasAdminAccess(res.user);
-        const roleToSet = isAllowedAdmin && res.user.role === 'admin' ? 'admin' : 'user';
+        const roleToSet = isAllowedAdmin ? 'admin' : 'user';
         localStorage.setItem(ROLE_KEY, roleToSet);
 
         set({

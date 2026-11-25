@@ -19,6 +19,7 @@ import {
   Lock,
   LogIn,
   MessageSquare,
+  ShieldCheck,
   Sparkles,
   X,
   ChevronDown,
@@ -32,6 +33,7 @@ import { ThemeControlPopover } from './theme/ThemeControlPopover';
 import { PlatformDownloadsCard } from './common/PlatformDownloadsCard';
 import { useI18n } from '../utils/i18n';
 import { useAuthStore } from '../stores/useAuthStore';
+import { isAuthorizedAdminEmail } from '../services/authService';
 import { clearUserMemory, loadUserMemory } from '../services/intentOrchestrator';
 
 interface SidebarProps {
@@ -367,6 +369,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             {isGuest && <Lock className="w-3 h-3 text-slate-400" />}
           </button>
+
+          {/* Direct Admin Studio Switcher for Authorized Admins */}
+          {Boolean(
+            authUser &&
+              (isAuthorizedAdminEmail(authUser.email) ||
+                authUser.isAdminEligible ||
+                authUser.role === 'admin')
+          ) && (
+            <button
+              type="button"
+              data-testid="sidebar-admin-console-btn"
+              onClick={() => {
+                useAuthStore.setState({ currentRole: 'admin' });
+                localStorage.setItem('supremeai_studio_user_role', 'admin');
+                onSelectTab('admin-overview');
+              }}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer ${
+                activeTab.startsWith('admin-') || activeTab === 'admin-overview'
+                  ? 'bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-semibold'
+                  : 'hover:bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="w-4 h-4 text-amber-500" />
+                <span>অ্যাডমিন কনসোল</span>
+              </div>
+              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                Admin
+              </span>
+            </button>
+          )}
 
           {enableKnowledgeGrounding && (
             <button
@@ -739,7 +772,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       {authUser?.name || 'User'}
                     </div>
                     <div className="text-[10px] theme-accent-text font-medium truncate">
-                      {authUser?.plan || 'Pro'}
+                      {isAuthorizedAdminEmail(authUser?.email) || authUser?.isAdminEligible
+                        ? 'Admin · Enterprise'
+                        : authUser?.plan || 'Pro'}
                     </div>
                   </div>
                 </div>
