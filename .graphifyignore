@@ -1,0 +1,27 @@
+# ========================================================
+# SupremeAI Public Graphify Ignore — Fast & Clean AST
+# ========================================================
+
+# Build outputs & caches
+dist/
+build/
+out/
+target/
+src-tauri/target/
+node_modules/
+.svelte-kit/
+.next/
+.cache/
+.functions-build*
+
+# Test files & mocks
+tests/
+**/tests/**
+**/*.test.*
+**/*.spec.*
+**/__tests__/**
+
+# Patch files & logs
+*.patch
+*.log
+*.dump

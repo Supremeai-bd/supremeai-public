@@ -8,24 +8,14 @@ import {
   fetchWithTimeout,
   callMcpTowerRpc,
 } from '../../../_lib/edgeHelpers';
-
-function categorizeTool(name: string): string {
-  if (name.startsWith('memory_')) return 'memory';
-  if (name.startsWith('bridge_') || name.startsWith('work_')) return 'bridge';
-  if (name.startsWith('github_')) return 'github';
-  if (name.startsWith('qdrant_') || name.startsWith('supabase_')) return 'qdrant';
-  if (
-    name.startsWith('devtools_') ||
-    name.startsWith('firecrawl_') ||
-    name.startsWith('graphify_') ||
-    name.startsWith('codebase_')
-  )
-    return 'devtools';
-  if (name.startsWith('misc_kaggle') || name.startsWith('harness_') || name.startsWith('misc_'))
-    return 'compute';
-  if (name.startsWith('notify_')) return 'notifications';
-  return 'system';
-}
+import {
+  categorizeTool,
+  transformMcpToolsList,
+  FALLBACK_MCP_TOOLS,
+  FALLBACK_GITHUB_COMMIT,
+  parseDeepDiagnoseResult,
+  parseEcosystemDiagnosticsResult,
+} from '../../../../src/shared/controlPlaneShared';
 
 async function fetchGithubHead(env?: Record<string, string | undefined>) {
   try {
@@ -335,39 +325,12 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   if (sub === 'mcp-tools') {
     try {
       const result = await callMcpTowerRpc(env, 'tools/list', {}, 7500);
-      const rawTools = Array.isArray(result?.tools) ? result.tools : [];
-      const tools = rawTools.map((t: any) => ({
-        name: String(t.name),
-        description: String(t.description || ''),
-        category: categorizeTool(String(t.name)),
-        readOnlyHint: t?.annotations?.readOnlyHint !== false,
-        destructiveHint: Boolean(t?.annotations?.destructiveHint),
-        inputSchema: t.inputSchema,
-      }));
-      return jsonEdgeResponse(
-        { tools, provenance: 'live-mcp', endpoint: mcpEndpoint },
-        200,
-        request
-      );
+      const payload = transformMcpToolsList(result?.tools, mcpEndpoint);
+      return jsonEdgeResponse(payload, 200, request);
     } catch {
       return jsonEdgeResponse(
         {
-          tools: [
-            {
-              name: 'status',
-              description: 'Unified system health inspection tool',
-              category: 'system',
-              readOnlyHint: true,
-              destructiveHint: false,
-            },
-            {
-              name: 'system_deep_diagnose',
-              description: '5-layer parallel diagnostic and ReleaseGate evaluator',
-              category: 'system',
-              readOnlyHint: true,
-              destructiveHint: false,
-            },
-          ],
+          tools: FALLBACK_MCP_TOOLS,
           provenance: 'local-snapshot',
           endpoint: mcpEndpoint,
         },
@@ -444,12 +407,10 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     const body = (await request.json().catch(() => ({}))) as { service?: string; intent?: string };
     const service = body.service || 'api';
     const intent = body.intent || 'is_healthy';
-    let provenance = 'live-gateway';
-    let summary = `Diagnostic check executed for ${service}`;
-    let releaseGate = 'GO';
 
+    let mcpResult: any = null;
     try {
-      const mcpResult = await callMcpTowerRpc(
+      mcpResult = await callMcpTowerRpc(
         env,
         'tools/call',
         {
@@ -458,47 +419,12 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         },
         8500
       );
-      provenance = 'live-mcp';
-      const contentText = mcpResult?.content?.[0]?.text;
-      if (typeof contentText === 'string') {
-        try {
-          const parsed = JSON.parse(contentText);
-          if (parsed?.summary) summary = String(parsed.summary);
-          if (parsed?.releaseGate) releaseGate = String(parsed.releaseGate);
-        } catch {
-          summary = contentText.slice(0, 260);
-        }
-      }
     } catch {
-      provenance = 'live-gateway';
+      // Handled via parseDeepDiagnoseResult fallback
     }
 
-    return jsonEdgeResponse(
-      {
-        report: {
-          id: `diag_${Date.now()}`,
-          service,
-          intent,
-          releaseGate,
-          summary,
-          evidenceHash: Date.now().toString(16),
-          checkedAt: new Date().toISOString(),
-          provenance,
-          truthMatrix: [
-            {
-              dimension: 'health',
-              label: '5-Layer Probe',
-              status: releaseGate === 'GO' ? 'pass' : 'warn',
-              latencyMs: 42,
-              summary,
-              evidence: `${service} · ${intent}`,
-            },
-          ],
-        },
-      },
-      200,
-      request
-    );
+    const report = parseDeepDiagnoseResult(mcpResult, service, intent);
+    return jsonEdgeResponse({ report }, 200, request);
   }
 
   if (sub === 'release-gate') {
@@ -625,34 +551,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       // Non-fatal fallback
     }
 
-    const findings = [
-      {
-        id: 'mcp-live',
-        severity: statusPayload || parityPayload ? 'healthy' : 'warning',
-        surface: 'MCP Tower',
-        title:
-          statusPayload || parityPayload
-            ? 'Live MCP Tower connected'
-            : 'Live MCP Tower unreachable from edge adapter',
-        detail: `Active endpoint: ${mcpEndpoint}`,
-        recommendation: 'Endpoint is centralized in src/config/platformEndpoints.ts.',
-      },
-    ];
-
-    return jsonEdgeResponse(
-      {
-        checkedAt: new Date().toISOString(),
-        mcpEndpoint,
-        mcpReachable: Boolean(statusPayload || parityPayload),
-        backendGateway: upstreamOrigin,
-        ssotConfigPath: 'src/config/platformEndpoints.ts',
-        findings,
-        rawStatus: statusPayload,
-        rawParity: parityPayload,
-      },
-      200,
-      request
+    const payload = parseEcosystemDiagnosticsResult(
+      statusPayload,
+      parityPayload,
+      mcpEndpoint,
+      upstreamOrigin
     );
+    return jsonEdgeResponse(payload, 200, request);
   }
 
   // Generic action/mutation acknowledgment for edge-handled control plane actions

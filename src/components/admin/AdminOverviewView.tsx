@@ -313,7 +313,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <ShieldCheck className="w-4 h-4 text-blue-500 shrink-0" />
                 <span className="font-semibold text-sm text-slate-900 dark:text-white">
-                  5-Layer Deep Diagnose & ReleaseGate
+                  5-Layer Deep Diagnose &amp; ReleaseGate
                 </span>
                 <span aria-hidden="true">·</span>
                 <span
@@ -433,7 +433,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
             <div>
               <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Radio className="w-4 h-4 text-emerald-500" />
-                <span>Live MCP Diagnostics & SSOT Maintainability</span>
+                <span>Live MCP Diagnostics &amp; SSOT Maintainability</span>
                 {ecosystemDiagnostics && (
                   <>
                     <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">

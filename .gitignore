@@ -49,3 +49,6 @@ packages/vscode-extension/out/
 
 # Test coverage output
 coverage/
+
+# Local Graphify AST cache
+graphify-out/

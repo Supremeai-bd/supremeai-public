@@ -697,7 +697,7 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
                 Unified Multi-Account Provider Hub
               </h1>
               <p className="text-[13px] text-[#c2cfe5] leading-relaxed">
-                Manage multiple accounts per provider in one view — monitor free-tier & paid quota
+                Manage multiple accounts per provider in one view — monitor free-tier &amp; paid quota
                 runways, 429/402 rate-limit heatmaps, reset dates, key rotations, and instant
                 auto-failover without switching dashboards.
               </p>
