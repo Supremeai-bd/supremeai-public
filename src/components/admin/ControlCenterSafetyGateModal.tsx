@@ -133,7 +133,7 @@ export const ControlCenterSafetyGateModal: React.FC = () => {
                 {pendingGate.title}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Risk: {pendingGate.riskLevel.toUpperCase()} · Posture: {safetyMode}
+                Risk: {String(pendingGate.riskLevel || 'medium').toUpperCase()} · Posture: {safetyMode}
               </p>
             </div>
           </div>

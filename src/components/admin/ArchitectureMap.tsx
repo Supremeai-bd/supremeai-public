@@ -497,7 +497,7 @@ export const AuditRadarChart: React.FC<{
               fill="currentColor"
               className="text-[9px] font-mono fill-slate-500 dark:fill-slate-400 select-none"
             >
-              {d.label.toUpperCase()} ({d.value})
+              {String(d.label || '').toUpperCase()} ({d.value})
             </text>
           );
         })}

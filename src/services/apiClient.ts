@@ -115,12 +115,29 @@ class ApiClient {
 
   private getAdminToken(): string | null {
     try {
-      return typeof sessionStorage !== 'undefined'
-        ? sessionStorage.getItem('supremeai_admin_token')
-        : null;
+      const explicit =
+        typeof sessionStorage !== 'undefined'
+          ? sessionStorage.getItem('supremeai_admin_token')
+          : null;
+      if (explicit) return explicit;
+
+      // বাংলা মন্তব্য: অনুমোদিত প্রোজেক্ট অ্যাডমিনের ক্ষেত্রে সেশন টোকেনটিকেই অ্যাডমিন টোকেন হিসেবে ব্রিজ করা হচ্ছে
+      const userRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('supremeai_auth_user') : null;
+      if (userRaw) {
+        const user = JSON.parse(userRaw);
+        const email = String(user?.email || '').trim().toLowerCase();
+        const isHardcodedAdmin =
+          email === 'niloyjoy7@gmail.com' ||
+          email === 'paykaribazaronline@gmail.com' ||
+          email === 'operator@supremeai.bd';
+        if (user?.role === 'admin' || user?.isAdminEligible || isHardcodedAdmin) {
+          return this.getAuthToken();
+        }
+      }
     } catch {
       return null;
     }
+    return null;
   }
 
   public async request<T = unknown>(endpoint: string, options: ApiRequestOptions = {}): Promise<T> {

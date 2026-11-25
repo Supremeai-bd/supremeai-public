@@ -493,7 +493,7 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
         kind: 'alert',
         severity: a.severity === 'critical' ? 'critical' : 'warning',
         source: a.displayName,
-        title: `${a.metric.toUpperCase()} threshold breach (${a.valueLabel})`,
+        title: `${String(a.metric || 'METRIC').toUpperCase()} threshold breach (${a.valueLabel})`,
         detail: a.message,
         timestamp: a.detectedAt || 'Live',
         meta: `Limit ${a.thresholdLabel}`,
@@ -509,7 +509,7 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
           kind: 'alert',
           severity: s.status === 'critical' ? 'critical' : 'warning',
           source: s.displayName,
-          title: `Service ${s.rawStatus.toUpperCase()} (${s.latencyMs}ms)`,
+          title: `Service ${String(s.rawStatus || s.status || 'degraded').toUpperCase()} (${s.latencyMs}ms)`,
           detail:
             s.errorMessage ||
             s.evidenceSummary ||
@@ -533,7 +533,7 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
                 ? 'success'
                 : 'info',
         source: w.name,
-        title: `${w.type} · ${w.status.toUpperCase()}`,
+        title: `${w.type} · ${String(w.status || 'unknown').toUpperCase()}`,
         detail: w.currentTask || w.logs?.[w.logs.length - 1] || 'Awaiting queued tasks',
         timestamp: w.uptime,
         meta: `${w.processedCount} done · ${w.successRate}% ok`,
@@ -554,7 +554,7 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
                 ? 'success'
                 : 'warning',
         source: j.queueName,
-        title: `${j.taskType} (${j.status.toUpperCase()})`,
+        title: `${j.taskType} (${String(j.status || 'unknown').toUpperCase()})`,
         detail: j.errorDetails || j.payloadSummary,
         timestamp: j.createdAt,
         meta: `${j.latencyMs}ms · try ${j.attempts}/${j.maxAttempts}`,
@@ -569,7 +569,7 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
           kind: 'log',
           severity: log.level === 'error' ? 'critical' : log.level === 'warn' ? 'warning' : 'info',
           source: s.displayName,
-          title: `[${log.level.toUpperCase()}] Runtime Event`,
+          title: `[${String(log.level || 'INFO').toUpperCase()}] Runtime Event`,
           detail: log.message,
           timestamp: log.timestamp,
           meta: s.category,
@@ -1366,7 +1366,7 @@ export const AdminLiveServicesCommandMatrix: React.FC<AdminLiveServicesCommandMa
                                   : 'text-rose-600 dark:text-rose-400 font-semibold'
                             }
                           >
-                            {svc.rawStatus.toUpperCase()}
+                            {String(svc.rawStatus || svc.status || 'unknown').toUpperCase()}
                           </span>
                         </div>
                       </div>

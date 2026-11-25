@@ -192,7 +192,7 @@ export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
                               : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                           }`}
                         >
-                          {worker.status.toUpperCase()}
+                          {String(worker.status || 'unknown').toUpperCase()}
                         </span>
                         <button
                           type="button"

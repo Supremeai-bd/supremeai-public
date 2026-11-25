@@ -390,7 +390,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
                     ) : (
                       <XCircle className="w-3.5 h-3.5" />
                     )}
-                    {dim.status.toUpperCase()} · {dim.latencyMs}ms
+                    {String(dim.status || 'UNKNOWN').toUpperCase()} · {dim.latencyMs ?? 0}ms
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
@@ -507,7 +507,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
                     ) : (
                       <XCircle className="w-3.5 h-3.5" />
                     )}
-                    {finding.severity.toUpperCase()}
+                    {String(finding.severity || 'INFO').toUpperCase()}
                   </span>
                 </div>
                 <div className="text-xs font-semibold text-slate-900 dark:text-white">

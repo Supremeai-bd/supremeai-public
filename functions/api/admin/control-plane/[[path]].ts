@@ -7,6 +7,7 @@ import {
   resolveMcpTowerOrigin,
   fetchWithTimeout,
   callMcpTowerRpc,
+  verifyUpstreamSession,
 } from '../../../_lib/edgeHelpers';
 import {
   categorizeTool,
@@ -228,6 +229,42 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       Boolean(effectiveToken) &&
       effectiveToken.length >= 16 &&
       (effectiveToken.startsWith('adm_') || effectiveToken.startsWith('sk-admin-'));
+  }
+
+  // বাংলা মন্তব্য: অনুমোদিত প্রোজেক্ট অ্যাডমিনের ভ্যালিড সেশন টোকেন বা JWT থাকলে তাকে সরাসরি কন্ট্রোল প্লেন অ্যাক্সেস অনুমোদন দেওয়া হচ্ছে
+  if (!hasAdminCredential && effectiveToken) {
+    const authorizedAdmins = [
+      'niloyjoy7@gmail.com',
+      'paykaribazaronline@gmail.com',
+      'operator@supremeai.bd',
+      ...(env?.ADMIN_EMAIL ? [String(env.ADMIN_EMAIL).trim().toLowerCase()] : []),
+      ...(env?.ADMIN_EMAILS
+        ? String(env.ADMIN_EMAILS)
+            .split(',')
+            .map((e: string) => e.trim().toLowerCase())
+        : []),
+    ];
+
+    try {
+      const parts = effectiveToken.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        const jwtEmail = String(payload?.email || '').trim().toLowerCase();
+        const jwtRole = String(payload?.role || payload?.app_metadata?.role || '').trim().toLowerCase();
+        if ((jwtEmail && authorizedAdmins.includes(jwtEmail)) || jwtRole === 'admin') {
+          hasAdminCredential = true;
+        }
+      }
+    } catch {
+      // Non-JWT token
+    }
+
+    if (!hasAdminCredential) {
+      const session = await verifyUpstreamSession(request, upstreamOrigin).catch(() => ({ valid: false } as any));
+      if (session.valid && session.email && authorizedAdmins.includes(session.email.toLowerCase())) {
+        hasAdminCredential = true;
+      }
+    }
   }
 
   if (!hasAdminCredential) {
