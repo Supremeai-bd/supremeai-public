@@ -43,6 +43,11 @@ export interface ControlPlaneRouterDeps {
 }
 
 import {
+  categorizeTool,
+  transformMcpToolsList,
+  FALLBACK_MCP_TOOLS,
+} from '../shared/controlPlaneShared';
+import {
   DEFAULT_BACKEND_ORIGIN,
   DEFAULT_MCP_AGENT_KEY,
   DEFAULT_MCP_TOWER_ORIGIN,
@@ -77,23 +82,7 @@ let cachedGithubSha: {
   fetchedAt: number;
 } | null = null;
 
-function categorizeTool(name: string): McpToolDescriptor['category'] {
-  if (name.startsWith('memory_')) return 'memory';
-  if (name.startsWith('bridge_') || name.startsWith('work_')) return 'bridge';
-  if (name.startsWith('github_')) return 'github';
-  if (name.startsWith('qdrant_') || name.startsWith('supabase_')) return 'qdrant';
-  if (
-    name.startsWith('devtools_') ||
-    name.startsWith('firecrawl_') ||
-    name.startsWith('graphify_') ||
-    name.startsWith('codebase_')
-  )
-    return 'devtools';
-  if (name.startsWith('misc_kaggle') || name.startsWith('harness_') || name.startsWith('misc_'))
-    return 'compute';
-  if (name.startsWith('notify_')) return 'notifications';
-  return 'system';
-}
+
 
 function parseSseOrJson(raw: string): any {
   const trimmed = raw.trim();
@@ -1238,15 +1227,7 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
 
     try {
       const result = await callMcpJsonRpc('tools/list', {}, 7500);
-      const rawTools = Array.isArray(result?.tools) ? result.tools : [];
-      const tools: McpToolDescriptor[] = rawTools.map((t: any) => ({
-        name: String(t.name),
-        description: String(t.description || ''),
-        category: categorizeTool(String(t.name)),
-        readOnlyHint: t?.annotations?.readOnlyHint !== false,
-        destructiveHint: Boolean(t?.annotations?.destructiveHint),
-        inputSchema: t.inputSchema,
-      }));
+      const { tools } = transformMcpToolsList(result?.tools, MCP_TOWER_URL);
       cachedMcpTools = { tools, fetchedAt: Date.now() };
       res.json({ tools, provenance: 'live-mcp' as DataProvenance, endpoint: MCP_TOWER_URL });
     } catch (err: unknown) {

@@ -216,7 +216,7 @@ export const AdminSystemAuditView: React.FC<AdminSystemAuditViewProps> = ({ audi
             />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Track administrative actions, verify GitHub release parity, and monitor MCP Federation &
+            Track administrative actions, verify GitHub release parity, and monitor MCP Federation &amp;
             Security audit findings.
           </p>
         </div>
