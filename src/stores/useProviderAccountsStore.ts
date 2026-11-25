@@ -1063,7 +1063,7 @@ export const useProviderAccountsStore = create<ProviderAccountsStoreState>((set,
       timestamp: nowTimeStr(),
       actor,
       providerId,
-      accountAlias: `${providerId.toUpperCase()} Pool`,
+      accountAlias: `${String(providerId || 'Provider').toUpperCase()} Pool`,
       action: 'policy',
       summary: `Updated pool failover policy: Auto-Failover ${nextPolicy.autoFailoverEnabled ? 'ON' : 'OFF'} at ${nextPolicy.switchThresholdPct}% (${nextPolicy.routingStrategy}).`,
     };

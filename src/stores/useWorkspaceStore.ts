@@ -507,7 +507,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         sandboxAutoRunNonce: autoRun ? s.sandboxAutoRunNonce + 1 : s.sandboxAutoRunNonce,
       }));
       persistWorkspaceBrowserState(get());
-      toast.info('Loaded in Sandbox', `Opened ${cleanLang.toUpperCase()} snippet in sandbox tab.`);
+      toast.info('Loaded in Sandbox', `Opened ${String(cleanLang || 'code').toUpperCase()} snippet in sandbox tab.`);
       return;
     }
 
@@ -516,7 +516,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         s.previewCode && s.previewCode !== code ? s.previewCode : s.previousPreviewCode,
       previewCode: code,
       previewLang: cleanLang,
-      previewTitle: `${cleanLang.toUpperCase()} Buffer`,
+      previewTitle: `${String(cleanLang || 'code').toUpperCase()} Buffer`,
       mermaidGraphSource: cleanLang === 'mermaid' ? code : s.mermaidGraphSource,
       activeDockTab: openTab,
       isDockOpen: true,
@@ -525,7 +525,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     persistWorkspaceBrowserState(get());
     toast.info(
       'Loaded in Workspace',
-      `Opened ${cleanLang.toUpperCase()} snippet in ${openTab} tab.`
+      `Opened ${String(cleanLang || 'code').toUpperCase()} snippet in ${openTab} tab.`
     );
   },
 
@@ -535,7 +535,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       previousPreviewCode: '',
       previewCode: code,
       previewLang: cleanLang,
-      previewTitle: title?.trim() || `${cleanLang.toUpperCase()} Shared App`,
+      previewTitle: title?.trim() || `${String(cleanLang || 'app').toUpperCase()} Shared App`,
       mermaidGraphSource: cleanLang === 'mermaid' ? code : s.mermaidGraphSource,
       activeDockTab: 'preview',
       isDockOpen: true,
@@ -572,7 +572,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           : s.previousPreviewCode,
       previewCode: code,
       previewLang: cleanLang,
-      previewTitle: `${cleanLang.toUpperCase()} Buffer`,
+      previewTitle: `${String(cleanLang || 'code').toUpperCase()} Buffer`,
       mermaidGraphSource: cleanLang === 'mermaid' ? code : s.mermaidGraphSource,
       isArtifactStreaming: !isFinal,
       ...(autoOpenDock
@@ -618,7 +618,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
                   : s.previousPreviewCode,
               previewCode: entry.content,
               previewLang: entry.lang,
-              previewTitle: project.title || `${project.runtime.toUpperCase()} Project`,
+              previewTitle: project.title || `${String(project.runtime || 'app').toUpperCase()} Project`,
             }
           : {}),
         isArtifactStreaming: !isFinal,

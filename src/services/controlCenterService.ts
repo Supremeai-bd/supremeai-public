@@ -82,6 +82,19 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   if (adminToken) {
     headers['X-Admin-Token'] = adminToken;
   }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const rawUser = localStorage.getItem('supremeai_auth_user');
+      if (rawUser) {
+        const parsed = JSON.parse(rawUser);
+        if (parsed?.email) {
+          headers['X-Admin-Email'] = String(parsed.email).trim().toLowerCase();
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
 
   const res = await fetch(url, { credentials: 'same-origin', ...init, headers });
   const data = await res.json().catch(() => ({}));

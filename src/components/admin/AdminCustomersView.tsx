@@ -354,7 +354,7 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({
                       <td className="p-3.5">
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-full bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 flex items-center justify-center font-bold text-xs shrink-0">
-                            {cust.name.charAt(0).toUpperCase()}
+                            {String(cust.name || 'U').charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0">
                             <div className="font-semibold text-slate-900 dark:text-white truncate">

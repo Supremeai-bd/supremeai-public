@@ -435,7 +435,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                         {extractedProject.title || t.wsProjectCardReady}
                       </div>
                       <div className="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400 truncate">
-                        {t.wsProjectCardReady} · {extractedProject.runtime.toUpperCase()} ·{' '}
+                        {t.wsProjectCardReady} · {String(extractedProject.runtime || 'app').toUpperCase()} ·{' '}
                         {extractedProject.files.length} files
                       </div>
                     </div>

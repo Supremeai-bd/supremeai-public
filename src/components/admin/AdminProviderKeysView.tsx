@@ -282,7 +282,7 @@ export const AdminProviderKeysView: React.FC = () => {
       displayName: p.displayName,
       rawKey: '',
       rateLimitTpm: p.rateLimitTpm || '2,000,000 TPM',
-      infisicalPath: p.infisicalPath || `/ai-providers/${p.provider.toUpperCase()}_API_KEY`,
+      infisicalPath: p.infisicalPath || `/ai-providers/${String(p.provider || '').toUpperCase()}_API_KEY`,
       infisicalEnv: p.infisicalEnv || 'prod',
       region: p.region || 'global-edge',
       priority: p.priority,
@@ -295,7 +295,7 @@ export const AdminProviderKeysView: React.FC = () => {
     setFormState((prev) => ({
       ...prev,
       provider: providerId,
-      infisicalPath: def?.defaultPath || `/ai-providers/${providerId.toUpperCase()}_API_KEY`,
+      infisicalPath: def?.defaultPath || `/ai-providers/${String(providerId || '').toUpperCase()}_API_KEY`,
       displayName: editingProvider ? prev.displayName : prev.displayName || def?.label || '',
     }));
   };
@@ -715,7 +715,7 @@ export const AdminProviderKeysView: React.FC = () => {
 
                       <td className="py-3.5 px-4 font-mono text-[11px]">
                         <div className="text-slate-700 dark:text-slate-300">
-                          {p.infisicalPath || `/ai-providers/${p.provider.toUpperCase()}_API_KEY`}
+                          {p.infisicalPath || `/ai-providers/${String(p.provider || '').toUpperCase()}_API_KEY`}
                         </div>
                         <div className="text-[10px] text-slate-400 mt-0.5">
                           env: {p.infisicalEnv || 'prod'} · v{p.vaultVersion || 1}

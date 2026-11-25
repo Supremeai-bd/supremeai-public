@@ -561,7 +561,7 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
     setFormResetDay('1');
     setFormRegion('global-edge');
     setFormKeyMask('');
-    setFormInfisicalPath(`/${meta.category}/${pid.toUpperCase()}_ACC_NEW`);
+    setFormInfisicalPath(`/${meta.category}/${String(pid || '').toUpperCase()}_ACC_NEW`);
     setFormLinkedServices('Chat Gateway');
     setFormConsoleUrl(meta.defaultConsole);
     setIsAccountModalOpen(true);
@@ -652,7 +652,7 @@ export const AdminMultiAccountProviderHub: React.FC = () => {
           region: formRegion.trim() || 'global-edge',
           keyMask: formKeyMask.trim() ? maskNewSecret(formKeyMask) : 'key_••••new1',
           infisicalPath:
-            formInfisicalPath.trim() || `/${meta.category}/${formProviderId.toUpperCase()}`,
+            formInfisicalPath.trim() || `/${meta.category}/${String(formProviderId || '').toUpperCase()}`,
           latencyMs: 140,
           linkedServices: linked.length > 0 ? linked : ['Core Platform'],
           consoleUrl: formConsoleUrl.trim() || meta.defaultConsole,

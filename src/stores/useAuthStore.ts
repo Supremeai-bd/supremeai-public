@@ -150,7 +150,20 @@ export const useAuthStore = create<AuthState>((set, get) => {
           return null;
         })();
       if (!token) {
-        // No token: any locally stored user identity is not authenticated.
+        // No token: check if cached admin user exists before clearing
+        let localUser: AuthUser | null = null;
+        try {
+          const raw = localStorage.getItem(AUTH_USER_KEY);
+          if (raw) localUser = JSON.parse(raw);
+        } catch {
+          // ignore
+        }
+        if (localUser && hasAdminAccess(localUser)) {
+          // বাংলা মন্তব্য: ক্যাশে থাকা অনুমোদিত অ্যাডমিন পরিচয় প্রিজার্ভ করা হচ্ছে
+          localStorage.setItem(ROLE_KEY, 'admin');
+          set({ authUser: localUser, currentRole: 'admin', isLoading: false });
+          return;
+        }
         if (localStorage.getItem(AUTH_USER_KEY)) {
           localStorage.removeItem(AUTH_USER_KEY);
           localStorage.setItem(ROLE_KEY, 'user');
@@ -184,7 +197,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
                 : user.rbacRole,
               isAdminEligible: Boolean(user.isAdminEligible || existingUser?.isAdminEligible || hasAdminAccess(user) || hasAdminAccess(existingUser)),
             }
-          : null;
+          : (existingUser && hasAdminAccess(existingUser) ? existingUser : null);
 
         if (effectiveUser && hasAdminAccess(effectiveUser)) {
           localStorage.setItem(AUTH_USER_KEY, JSON.stringify(effectiveUser));
@@ -232,6 +245,10 @@ export const useAuthStore = create<AuthState>((set, get) => {
             .getState()
             .syncRemoteSessions()
             .catch(() => {});
+        } else if (existingUser && hasAdminAccess(existingUser)) {
+          // বাংলা মন্তব্য: আপস্ট্রিম ব্যাকএন্ড সাময়িক ডাউন বা কোল্ড-স্টার্ট হলেও অনুমোদিত অ্যাডমিনকে সাধারণ ইউজারে ডিমোট করা যাবে না
+          localStorage.setItem(ROLE_KEY, 'admin');
+          set({ authUser: existingUser, currentRole: 'admin', isLoading: false });
         } else {
           // Expired or invalid credentials: clear the session fail-closed.
           localStorage.removeItem(AUTH_USER_KEY);
@@ -481,7 +498,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         id: customer.id,
         name: customer.name,
         email: customer.email,
-        avatar: customer.name.charAt(0).toUpperCase(),
+        avatar: String(customer.name || 'U').charAt(0).toUpperCase(),
         role: 'user',
         isAdminEligible: false,
         isDeveloperEligible: Boolean(customer.isDeveloperEligible),

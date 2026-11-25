@@ -163,18 +163,39 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         : []),
     ];
 
-    try {
-      const parts = effectiveToken.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        const jwtEmail = String(payload?.email || '').trim().toLowerCase();
-        const jwtRole = String(payload?.role || payload?.app_metadata?.role || '').trim().toLowerCase();
-        if ((jwtEmail && authorizedAdmins.includes(jwtEmail)) || jwtRole === 'admin') {
-          hasAdminCredential = true;
+    const clientEmail = String(request.headers.get('X-Admin-Email') || '').trim().toLowerCase();
+    if (clientEmail && authorizedAdmins.includes(clientEmail)) {
+      hasAdminCredential = true;
+    }
+
+    if (!hasAdminCredential) {
+      try {
+        const parts = effectiveToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+          const jwtEmail = String(
+            payload?.email ||
+            payload?.user_metadata?.email ||
+            payload?.app_metadata?.email ||
+            ''
+          ).trim().toLowerCase();
+          const jwtRole = String(
+            payload?.role ||
+            payload?.app_metadata?.role ||
+            payload?.user_metadata?.role ||
+            ''
+          ).trim().toLowerCase();
+          if (
+            (jwtEmail && authorizedAdmins.includes(jwtEmail)) ||
+            jwtRole === 'admin' ||
+            jwtRole === 'super_admin'
+          ) {
+            hasAdminCredential = true;
+          }
         }
+      } catch {
+        // Non-JWT token
       }
-    } catch {
-      // Non-JWT token
     }
 
     if (!hasAdminCredential) {

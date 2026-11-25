@@ -341,7 +341,7 @@ export const UserKnowledgeBaseView: React.FC<UserKnowledgeBaseViewProps> = ({
 
             <div className="space-y-3">
               <div className="flex items-center gap-4 text-xs text-slate-500 font-mono">
-                <span>Format: {previewDoc.type.toUpperCase()}</span>
+                <span>Format: {String(previewDoc.type || 'TXT').toUpperCase()}</span>
                 <span>Chunks: {previewDoc.chunkCount}</span>
                 <span>Tokens: {previewDoc.tokenCount}</span>
               </div>

@@ -42,7 +42,7 @@ export const ControlCenterReleaseGateView: React.FC = () => {
 
   const handleReleaseAction = (action: 'restart' | 'redeploy' | 'rollback', service: string) => {
     requestGuardedAction({
-      title: `ReleaseGate Action: ${action.toUpperCase()} (${service})`,
+      title: `ReleaseGate Action: ${String(action || '').toUpperCase()} (${service})`,
       description: `Dispatch ${action} through system_execute safety gate for ${service}. Requires approval token and idempotency key in HITL mode.`,
       impactSummary:
         action === 'rollback'

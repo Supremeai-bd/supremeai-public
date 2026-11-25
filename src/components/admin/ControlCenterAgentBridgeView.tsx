@@ -35,7 +35,7 @@ export const ControlCenterAgentBridgeView: React.FC = () => {
 
   const handleBridgeAction = (issueNumber: number, action: 'claim' | 'renew' | 'release') => {
     requestGuardedAction({
-      title: `Bridge Work Order #${issueNumber}: ${action.toUpperCase()}`,
+      title: `Bridge Work Order #${issueNumber}: ${String(action || '').toUpperCase()}`,
       description: `Execute S0.1 atomic lease transition (${action}) on Supremeai-bd/supremeai-open.`,
       impactSummary: `issueNumber=${issueNumber} · action=${action}`,
       riskLevel: 'medium',
