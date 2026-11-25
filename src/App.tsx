@@ -53,7 +53,7 @@ import {
 import { detectPlatform } from './bridge/platform';
 import { toast } from './stores/useToastStore';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { RealtimeSyncClient, loadSyncEnabled, type SyncThemePayload } from './sync/realtimeSync';
+import { startUnifiedPlatformSync } from './sync/unifiedSyncCoordinator';
 import { IntentClarificationCard } from './components/chat/IntentClarificationCard';
 import { TaskApprovalCard } from './components/chat/TaskApprovalCard';
 import {
@@ -270,52 +270,9 @@ export default function App() {
     }
   }, []);
 
-  // Cross-device Real-Time Sync (Web <-> Desktop Tauri <-> Android)
+  // বাংলা মন্তব্য: Web, Desktop, Mobile এবং VS Code Extension-এর মধ্যে একীভূত রিয়েল-টাইম সিঙ্ক ইঞ্জিন সক্রিয় করা হলো
   useEffect(() => {
-    if (!loadSyncEnabled()) return;
-    let applyingRemote = false;
-    const client = new RealtimeSyncClient({
-      onEnvelope: (envelope) => {
-        if (
-          envelope.domain === 'theme' &&
-          envelope.payload &&
-          typeof envelope.payload === 'object'
-        ) {
-          applyingRemote = true;
-          useThemeStore.getState().applyRemoteThemeConfig(envelope.payload as SyncThemePayload);
-          window.setTimeout(() => {
-            applyingRemote = false;
-          }, 50);
-        }
-      },
-    });
-    client.start();
-
-    const unsubTheme = useThemeStore.subscribe((state, prev) => {
-      if (applyingRemote) return;
-      if (
-        state.themeMode !== prev.themeMode ||
-        state.liveTheme !== prev.liveTheme ||
-        state.liveMotion !== prev.liveMotion ||
-        state.motionSpeed !== prev.motionSpeed ||
-        state.surfaceTone !== prev.surfaceTone ||
-        state.scrimIntensity !== prev.scrimIntensity
-      ) {
-        client.publish<SyncThemePayload>('theme', {
-          themeMode: state.themeMode,
-          liveTheme: state.liveTheme,
-          liveMotion: state.liveMotion,
-          motionSpeed: state.motionSpeed,
-          surfaceTone: state.surfaceTone,
-          scrimIntensity: state.scrimIntensity,
-        });
-      }
-    });
-
-    return () => {
-      unsubTheme();
-      client.stop();
-    };
+    return startUnifiedPlatformSync();
   }, []);
 
   const { activeTab, setActiveTab } = useTabRouter('chat');

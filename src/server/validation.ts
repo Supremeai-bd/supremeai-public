@@ -139,3 +139,28 @@ export const verify2faSchema = z.object({
 export const adminPasskeySchema = z.object({
   passkey: z.string().min(1, 'Passkey is required.').max(512, 'Passkey is too long.'),
 });
+
+// ---------------------------------------------------------------------------
+// Cross-platform real-time sync schema
+// ---------------------------------------------------------------------------
+
+export const syncEnvelopeBodySchema = z.object({
+  v: z.number().int().optional(),
+  protocolVersion: z.string().trim().max(32).optional(),
+  domain: z.enum([
+    'chats',
+    'preferences',
+    'theme',
+    'models',
+    'roles',
+    'plugins',
+    'knowledge',
+    'projects',
+    'workspace',
+  ]),
+  deviceId: z.string().trim().max(128).optional(),
+  platform: z.string().trim().max(32).optional(),
+  updatedAt: z.number().finite().optional(),
+  revision: z.number().int().nonnegative().optional(),
+  payload: z.unknown(),
+});

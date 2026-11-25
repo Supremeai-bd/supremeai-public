@@ -40,6 +40,11 @@ import { registerTelemetryRoutes } from './src/server/routes/telemetry';
 import { registerGraphRoutes } from './src/server/routes/graph';
 import { registerTtsRoutes } from './src/server/routes/tts';
 import { registerPreferencesRoutes } from './src/server/routes/preferences';
+import {
+  CANONICAL_SERVER_MODELS,
+  DEFAULT_MODEL_ID,
+  DEFAULT_MODEL_POLICIES,
+} from './src/shared/platformCatalog';
 import { registerKnowledgeRoutes } from './src/server/routes/knowledge';
 import { registerLlmLatencyRoutes } from './src/server/routes/llmLatency';
 import {
@@ -141,47 +146,8 @@ const PORT =
       : Number(process.env.PORT) || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Supported SupremeAI native models
-const SUPPORTED_MODELS: Record<
-  string,
-  { name: string; description: string; tier: 'standard' | 'advanced' }
-> = {
-  auto: {
-    name: 'SupremeAI Auto',
-    description: 'Intelligent adaptive routing across API Pool and Webhook relays',
-    tier: 'standard',
-  },
-  'supreme-core': {
-    name: 'SupremeAI Core',
-    description: 'Flagship multimodal foundation model for general tasks, synthesis & coding',
-    tier: 'standard',
-  },
-  'supreme-spark': {
-    name: 'SupremeAI Spark',
-    description: 'Ultra-low latency model for high-frequency queries and streaming',
-    tier: 'standard',
-  },
-  'supreme-reason': {
-    name: 'SupremeAI Reason',
-    description: 'Deep analytical and architectural reasoning engine',
-    tier: 'advanced',
-  },
-  'supreme-deep': {
-    name: 'SupremeAI Deep',
-    description: 'Complex multi-step logic, code synthesis and autonomous tasks',
-    tier: 'advanced',
-  },
-  'supremeai-web': {
-    name: 'SupremeAI Web',
-    description: 'Stealth web session relay via cookie pool',
-    tier: 'standard',
-  },
-  'supremeai-api': {
-    name: 'SupremeAI API',
-    description: 'High-availability multi-key provider pool',
-    tier: 'standard',
-  },
-};
+// বাংলা মন্তব্য: সব প্ল্যাটফর্মের জন্য একক ক্যানোনিকাল মডেল ম্যাপ (`packages/contracts/models.json`)
+const SUPPORTED_MODELS = CANONICAL_SERVER_MODELS;
 
 const apiKey = process.env.GEMINI_API_KEY || '';
 
@@ -672,15 +638,11 @@ async function startServer() {
       level: 'info' as 'info' | 'warning' | 'critical',
     },
     allowNewSignups: true,
-    defaultModelId: 'supreme-spark',
-    modelPolicies: {
-      'supreme-core': { enabled: true, minTier: 'Free' as PlanTier },
-      'supreme-spark': { enabled: false, minTier: 'Free' as PlanTier },
-      'supreme-reason': { enabled: false, minTier: 'Pro' as PlanTier },
-      'supreme-deep': { enabled: false, minTier: 'Enterprise' as PlanTier },
-      'supremeai-web': { enabled: false, minTier: 'Free' as PlanTier },
-      'supremeai-api': { enabled: false, minTier: 'Free' as PlanTier },
-    } as Record<string, { enabled: boolean; minTier: PlanTier }>,
+    defaultModelId: DEFAULT_MODEL_ID,
+    modelPolicies: { ...DEFAULT_MODEL_POLICIES } as Record<
+      string,
+      { enabled: boolean; minTier: PlanTier }
+    >,
   };
 
   interface ServerAuditRecord {
@@ -2217,6 +2179,7 @@ async function startServer() {
     verifyLocalSessionToken: (token) => verifyLocalSessionToken(token),
     get usersDb() { return usersDb; },
     activeAuthSessions,
+    supabaseRestRequest: (p, m, b, pr) => supabaseRestRequest(p, m, b, pr),
   });
 
   // Admin Schema Parity Endpoints  // Admin Schema Parity Endpoints

@@ -104,7 +104,7 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
         transition={{ delay: 0.15, duration: 0.45 }}
         className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-[11px] @[480px]/chat:text-xs mt-2 @[520px]/chat:mt-2.5 font-sans max-w-full chat-theme-text-muted"
       >
-        <span>{!developerMode || autoModelRouting ? t.autoModelTitle : activeModel.name}</span>
+        <span>{autoModelRouting ? t.autoModelTitle : activeModel.name}</span>
         <span aria-hidden="true">·</span>
         <span>{activeRole.name}</span>
         <span aria-hidden="true">·</span>

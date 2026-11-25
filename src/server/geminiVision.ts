@@ -2,6 +2,7 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import type { Response } from 'express';
 import { isTextReadableMimeOrFilename, decodeBase64AttachmentText } from '../utils/workbenchUtils';
 import { buildFreeVisionCandidates, classifyVisionHttpError, VisionCooldownRegistry, type ClassifiedVisionError } from '../shared/visionRouting';
+import { normalizeModelSelection } from '../shared/platformCatalog';
 interface ChatRunConfigPayload {
   thinking_level?: 'LOW' | 'MEDIUM' | 'HIGH' | 'XHIGH';
   google_search?: boolean;
@@ -70,7 +71,7 @@ export function resolveReasoningEffort(
 export function resolveServerAutoModel(reqModel: string, messages: any[]): string {
   const clean = String(reqModel || '').trim();
   if (clean && clean !== 'auto' && clean !== 'default') {
-    return clean;
+    return normalizeModelSelection(clean, false);
   }
   const lastUserMsgObj = Array.isArray(messages)
     ? [...messages].reverse().find((m: any) => m?.role === 'user')

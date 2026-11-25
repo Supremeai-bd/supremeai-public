@@ -1,25 +1,37 @@
 {
-  "protocolVersion": "1.0.0",
-  "gatewayBaseUrl": "https://supremeai-api-ulw0.onrender.com",
-  "endpoints": {
-    "snapshotGet": "/api/v1/sync/state",
-    "snapshotPut": "/api/v1/sync/state",
-    "realtimeStreamSse": "/api/v1/sync/stream"
-  },
-  "broadcastChannel": "supremeai.realtime.sync.v1",
-  "conflictResolution": {
-    "strategy": "last-write-wins",
-    "chatsMerge": "per-conversation-id-max-updatedAt",
-    "collectionsMerge": "domain-updatedAt-timestamp"
-  },
-  "domains": ["chats", "theme", "roles", "knowledge", "plugins", "voice_avatar"],
-  "platforms": ["web", "desktop", "android", "ios"],
-  "envelopeSchema": {
-    "deviceId": "string (persistent client UUID)",
-    "platform": "web | desktop | android | ios",
-    "domain": "chats | theme | roles | knowledge | plugins | voice_avatar",
-    "updatedAt": "number (epoch ms)",
-    "revision": "number (monotonic per-device counter)",
-    "payload": "unknown (domain-specific JSON state)"
+  "version": "1.1.0",
+  "protocolVersion": 1,
+  "channels": ["broadcast_channel", "sse", "rest_fallback"],
+  "platforms": ["web", "desktop", "android", "ios", "vsix"],
+  "domains": [
+    "chats",
+    "theme",
+    "roles",
+    "models",
+    "preferences",
+    "projects",
+    "knowledge",
+    "plugins",
+    "voice_avatar"
+  ],
+  "conflictResolution": "last_write_wins_by_updated_at_epoch_ms",
+  "heartbeatIntervalMs": 25000,
+  "reconnectBackoffMs": [1000, 2000, 5000, 15000, 30000],
+  "defaultFeatureOptions": {
+    "selectedModelId": "supreme-core",
+    "autoModelRouting": true,
+    "activeRoleId": "supreme-general",
+    "customInstruction": "",
+    "language": "en",
+    "themeMode": "system",
+    "liveTheme": "alpine-dunes",
+    "thinkingLevel": "MEDIUM",
+    "temperature": 0.7,
+    "maxOutputTokens": 8192,
+    "enableSearchGrounding": true,
+    "enableKnowledgeGrounding": true,
+    "enableCodeExecution": false,
+    "liveArtifactSync": true,
+    "streamResponses": true
   }
 }

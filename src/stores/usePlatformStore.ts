@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { PlatformConfig, ModelPolicy, AnnouncementBanner } from '../types';
 import { adminService } from '../services/adminService';
 import { toast } from './useToastStore';
+import { DEFAULT_MODEL_ID, DEFAULT_MODEL_POLICIES } from '../shared/platformCatalog';
 
+// বাংলা মন্তব্য: ডিফল্ট মডেল ও পলিসি এখন ক্যানোনিকাল কন্ট্রাক্ট থেকে লোড হয় যাতে সব প্ল্যাটফর্মে একই আচরণ থাকে
 const DEFAULT_CONFIG: PlatformConfig = {
   maintenanceMode: false,
   maintenanceMessage:
@@ -13,7 +15,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
     level: 'info',
   },
   allowNewSignups: true,
-  defaultModelId: 'supreme-core',
+  defaultModelId: DEFAULT_MODEL_ID,
   featureFlags: {
     enable_supreme_reason: true,
     enable_multimodal_vision: true,
@@ -22,14 +24,7 @@ const DEFAULT_CONFIG: PlatformConfig = {
     enforce_strict_rate_limits: false,
     maintenance_mode: false,
   },
-  modelPolicies: {
-    'supreme-core': { enabled: true, minTier: 'Free' },
-    'supreme-spark': { enabled: false, minTier: 'Free' },
-    'supreme-reason': { enabled: false, minTier: 'Pro' },
-    'supreme-deep': { enabled: false, minTier: 'Enterprise' },
-    'supremeai-web': { enabled: false, minTier: 'Free' },
-    'supremeai-api': { enabled: false, minTier: 'Free' },
-  },
+  modelPolicies: { ...DEFAULT_MODEL_POLICIES },
 };
 
 interface PlatformState {

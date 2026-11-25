@@ -819,7 +819,9 @@ export const chatService = {
     try {
       const res = await apiClient.get<{ models?: Record<string, any> }>('/api/models');
       if (res?.models && typeof res.models === 'object') {
-        const list = Object.entries(res.models).map(([id, raw]): import('../types').ModelDetail => {
+        const list = Object.entries(res.models)
+          .filter(([id]) => id !== 'auto')
+          .map(([id, raw]): import('../types').ModelDetail => {
           const m = raw as Record<string, any>;
           return {
             id,

@@ -1,17 +1,7 @@
 import { PagesContext, handleCorsPreflight, jsonEdgeResponse } from '../_lib/edgeHelpers';
+import { CANONICAL_SERVER_MODELS, DEFAULT_MODEL_ID } from '../../src/shared/platformCatalog';
 
-// বাংলা মন্তব্য: Cloudflare Pages Edge-এর জন্য ইউনিফাইড মডেল ক্যাটালগ (যাতে আপস্ট্রিম 404/429 ছাড়াই মডেল ম্যাট্রিক্স ও ফেডারেশন সিঙ্ক তৎক্ষণাৎ লোড হয়)
-const EDGE_SUPPORTED_MODELS: Record<
-  string,
-  { name: string; description: string; tier: 'standard' | 'advanced' }
-> = {
-  'supreme-core': {
-    name: 'SupremeAI Core',
-    description: 'Flagship multimodal foundation model for general tasks, synthesis & coding',
-    tier: 'standard',
-  },
-};
-
+// বাংলা মন্তব্য: Cloudflare Pages Edge-এ ক্যানোনিকাল মডেল ক্যাটালগ (`auto` + সব ৬টি মডেল) সরবরাহ করা হচ্ছে যাতে সব প্ল্যাটফর্মে একই তালিকা পাওয়া যায়
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
   if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
@@ -21,8 +11,8 @@ export async function onRequest(context: PagesContext): Promise<Response> {
 
   return jsonEdgeResponse(
     {
-      models: EDGE_SUPPORTED_MODELS,
-      defaultModel: 'supreme-core',
+      models: CANONICAL_SERVER_MODELS,
+      defaultModel: DEFAULT_MODEL_ID,
       source: 'edge-studio',
     },
     200,

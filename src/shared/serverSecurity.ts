@@ -331,6 +331,7 @@ export function isAllowedCorsOrigin(
     'http://127.0.0.1:5173',
   ]);
   if (builtInAllowed.has(cleanOrigin)) return true;
+  if (cleanOrigin.startsWith('vscode-webview://')) return true;
 
   if (extraAllowedCsv) {
     const extras = extraAllowedCsv

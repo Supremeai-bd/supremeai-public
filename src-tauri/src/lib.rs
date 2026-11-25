@@ -36,6 +36,12 @@ struct ChatRequest {
     conversation_id: String,
     #[serde(default)]
     history: Vec<ChatTurn>,
+    #[serde(default)]
+    system_instruction: Option<String>,
+    #[serde(default)]
+    temperature: Option<f64>,
+    #[serde(default)]
+    max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,8 +58,15 @@ struct ChatResult {
     conversation_id: Option<String>,
 }
 
+// বাংলা মন্তব্য: Web, Mobile এবং VS Code-এর সাথে অভিন্ন মডেল আইডি ম্যাপিং
 fn model_id(selection: &str) -> &'static str {
-    match selection {
+    match selection.trim() {
+        "supreme-core" | "balanced" => "supreme-core",
+        "supreme-spark" | "fast" => "supreme-spark",
+        "supreme-reason" | "pro" => "supreme-reason",
+        "supreme-deep" | "deep" => "supreme-deep",
+        "supremeai-web" | "supreme-web" => "supremeai-web",
+        "supremeai-api" | "supreme-api" => "supremeai-api",
         "supremeai/openrouter" => "supremeai/openrouter",
         "supremeai/groq" => "supremeai/groq",
         _ => "auto",
@@ -113,9 +126,16 @@ async fn send_chat(
         return Err("The SupremeAI Gateway endpoint must use HTTPS.".to_string());
     }
 
+    let system_prompt = request
+        .system_instruction
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.len() <= MAX_PROMPT_BYTES)
+        .unwrap_or("You are SupremeAI. Be useful, clear, and honest about limitations. Do not claim to have used tools or verified current information unless you actually have.");
+
     let mut messages = vec![json!({
         "role": "system",
-        "content": "You are SupremeAI. Be useful, clear, and honest about limitations. Do not claim to have used tools or verified current information unless you actually have."
+        "content": system_prompt
     })];
     let history_start = request.history.len().saturating_sub(10);
     let mut history_bytes: usize = 0;
@@ -131,12 +151,18 @@ async fn send_chat(
     }
     messages.push(json!({ "role": "user", "content": prompt }));
 
-    let payload = json!({
+    let mut payload = json!({
         "model": model_id(&request.model),
         "messages": messages,
         "stream": true,
         "conversation_id": request.conversation_id,
     });
+    if let Some(temp) = request.temperature {
+        payload["temperature"] = json!(temp.clamp(0.0, 2.0));
+    }
+    if let Some(max_tok) = request.max_tokens {
+        payload["max_tokens"] = json!(max_tok.clamp(64, 65_536));
+    }
 
     let client = reqwest::Client::builder()
         .https_only(true)

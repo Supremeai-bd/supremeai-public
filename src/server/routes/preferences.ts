@@ -1,6 +1,8 @@
 import type { Express, Request, Response } from 'express';
+import crypto from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
+import { registerSyncRoutes, type ServerSyncPlatform } from './sync';
 
 /**
  * Cross-Device User Preferences Vault — `GET/POST/PUT /api(v1)/user/preferences`
@@ -39,6 +41,12 @@ export interface PreferencesContext {
   verifyLocalSessionToken: (token: string) => { email?: string } | null;
   get usersDb(): readonly PreferencesUser[];
   activeAuthSessions: Map<string, string>;
+  supabaseRestRequest?: (
+    pathAndQuery: string,
+    method: string,
+    body?: unknown,
+    prefer?: string
+  ) => Promise<any>;
 }
 
 export function registerPreferencesRoutes(app: Express, ctx: PreferencesContext): void {
@@ -125,8 +133,23 @@ export function registerPreferencesRoutes(app: Express, ctx: PreferencesContext)
     }
 
     const fallbackEmail = ctx.getRequestUserEmail(req);
-    return fallbackEmail && fallbackEmail !== 'guest' ? fallbackEmail : null;
+    if (fallbackEmail && fallbackEmail !== 'guest') return fallbackEmail;
+
+    // বাংলা মন্তব্য: VS Code বা CLI থেকে সরাসরি API Key (`sk-...`) ব্যবহার করলে কী-এর নিরাপদ হ্যাশ দিয়ে সিঙ্ক আইডেন্টিটি তৈরি হয়
+    if (token.startsWith('sk-') && token.length >= 16) {
+      const digest = crypto.createHash('sha256').update(token).digest('hex').slice(0, 24);
+      return `apikey:${digest}`;
+    }
+
+    return null;
   };
+
+  // বাংলা মন্তব্য: রিয়েল-টাইম ক্রস-প্ল্যাটফর্ম সিঙ্ক রুটস (`/api/v1/sync/state`, `/api/v1/sync/stream`) মাউন্ট করা হলো
+  const syncHub = registerSyncRoutes(app, {
+    extractToken: extractBearerOrKeyToken,
+    resolveUserKey: resolveUserEmailForPreferences,
+    supabaseRestRequest: ctx.supabaseRestRequest,
+  });
 
   app.get(
     ['/api/v1/user/preferences', '/api/user/preferences'],
@@ -184,15 +207,28 @@ export function registerPreferencesRoutes(app: Express, ctx: PreferencesContext)
       }
 
       userPreferencesVault = loadUserPrefsVault();
-      const entry = userPreferencesVault[userEmail] || {
+      let entry = userPreferencesVault[userEmail];
+      if (!entry) {
+        const durablePrefs = await syncHub.getMergedPreferences(userEmail);
+        if (durablePrefs) {
+          entry = {
+            user_id: userEmail,
+            preferences: durablePrefs,
+            updated_at: new Date().toISOString(),
+          };
+          userPreferencesVault[userEmail] = entry;
+          saveUserPrefsVault(userPreferencesVault);
+        }
+      }
+      const resolvedEntry = entry || {
         user_id: userEmail,
         preferences: {},
         updated_at: new Date().toISOString(),
       };
       res.json({
-        user_id: entry.user_id,
-        preferences: entry.preferences,
-        updated_at: entry.updated_at,
+        user_id: resolvedEntry.user_id,
+        preferences: resolvedEntry.preferences,
+        updated_at: resolvedEntry.updated_at,
       });
     }
   );
@@ -242,6 +278,13 @@ export function registerPreferencesRoutes(app: Express, ctx: PreferencesContext)
                 updated_at: String(up.updated_at || new Date().toISOString()),
               };
               saveUserPrefsVault(userPreferencesVault);
+              const sourceDevice = String(req.headers['x-device-id'] || 'preferences-api');
+              const sourcePlatform = String(
+                req.headers['x-sync-platform'] || 'web'
+              ) as ServerSyncPlatform;
+              void syncHub
+                .publishPreferencesChange(cacheKey, up.preferences, sourceDevice, sourcePlatform)
+                .catch(() => {});
             }
             res.json(data);
             return;
@@ -276,6 +319,17 @@ export function registerPreferencesRoutes(app: Express, ctx: PreferencesContext)
     };
     userPreferencesVault[userEmail] = updatedEntry;
     saveUserPrefsVault(userPreferencesVault);
+
+    const sourceDevice = String(req.headers['x-device-id'] || 'preferences-api');
+    const sourcePlatform = String(
+      req.headers['x-sync-platform'] || 'web'
+    ) as ServerSyncPlatform;
+    await syncHub.publishPreferencesChange(
+      userEmail,
+      mergedPreferences,
+      sourceDevice,
+      sourcePlatform
+    );
 
     res.json({
       status: 'ok',

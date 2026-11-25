@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 /**
- * Synchronizes the canonical version from package.json into:
- *  - src-tauri/tauri.conf.json (used by both Desktop and Tauri v2 Android)
- *  - src-tauri/Cargo.toml
+ * বাংলা মন্তব্য: package.json থেকে মূল ভার্সন এবং packages/contracts/* থেকে ক্যানোনিকাল কন্ট্রাক্টগুলো
+ * Desktop, Android (Tauri v2), এবং VS Code Extension (.vsix)-এ স্বয়ংক্রিয়ভাবে সিঙ্ক করে।
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,7 +34,18 @@ const vscodePkg = JSON.parse(readFileSync(vscodePkgPath, 'utf8'));
 vscodePkg.version = version;
 writeFileSync(vscodePkgPath, `${JSON.stringify(vscodePkg, null, 2)}\n`);
 
-// 4. Canonical repo version.json
+// 4. Canonical Shared Contracts -> VS Code Extension (so .vsix packaging stays 100% self-contained)
+const contractsSrcDir = path.join(root, 'packages', 'contracts');
+const vscodeContractsDir = path.join(root, 'packages', 'vscode-extension', 'src', 'contracts');
+mkdirSync(vscodeContractsDir, { recursive: true });
+for (const contractFile of ['models.json', 'roles.json', 'themes.json', 'sync-protocol.json']) {
+  copyFileSync(
+    path.join(contractsSrcDir, contractFile),
+    path.join(vscodeContractsDir, contractFile)
+  );
+}
+
+// 5. Canonical repo version.json
 const versionJsonPath = path.join(root, 'version.json');
 let versionJson = {
   version,
@@ -56,5 +66,5 @@ try {
 writeFileSync(versionJsonPath, `${JSON.stringify(versionJson, null, 2)}\n`);
 
 console.log(
-  `Synchronized Web, Desktop, Android APK, VS Code VSIX, and version.json to version ${version}`
+  `Synchronized Web, Desktop, Android APK, VS Code VSIX, shared contracts, and version.json to version ${version}`
 );
