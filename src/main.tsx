@@ -14,7 +14,15 @@ if (
   typeof window !== 'undefined' &&
   !(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
 ) {
-  registerSW({ immediate: true });
+  const scheduleSw = () => registerSW({ immediate: true });
+  if (typeof (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback === 'function') {
+    (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback(
+      scheduleSw,
+      { timeout: 5000 }
+    );
+  } else {
+    setTimeout(scheduleSw, 3000);
+  }
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

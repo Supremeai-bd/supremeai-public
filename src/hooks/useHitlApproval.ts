@@ -3,8 +3,20 @@ import { hitlService, HitlPendingRecord, normalizeHitlPayload } from '../service
 import { env } from '../config/env';
 import { useFederationLive } from './useFederationLive';
 import { getFederationData } from '../services/federationBridge';
+import { useAuthStore } from '../stores/useAuthStore';
+import { isAuthorizedAdminEmail } from '../services/authService';
 
 export function useHitlApproval() {
+  const authUser = useAuthStore((s) => s.authUser);
+  const isAdminEligible = Boolean(
+    authUser &&
+      (authUser.isAdminEligible ||
+        isAuthorizedAdminEmail(authUser.email) ||
+        authUser.role === 'admin' ||
+        authUser.rbacRole === 'admin' ||
+        authUser.rbacRole === 'super_admin')
+  );
+
   const [pendingRequests, setPendingRequests] = useState<HitlPendingRecord[]>([]);
   const [activeRequest, setActiveRequest] = useState<HitlPendingRecord | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -14,7 +26,7 @@ export function useHitlApproval() {
   // subscribes to that snapshot instead of running a second 15s timer.
   const { data: pendingPayload, refresh: refreshPending } = useFederationLive<unknown>(
     'hitl-pending',
-    { maxAgeMs: 20_000, enabled: !env.isMockEnabled }
+    { maxAgeMs: 20_000, enabled: !env.isMockEnabled && isAdminEligible }
   );
 
   useEffect(() => {
@@ -49,49 +61,70 @@ export function useHitlApproval() {
   }, [applyQueue, refreshPending]);
 
   useEffect(() => {
-    if (env.isMockEnabled) return;
+    if (env.isMockEnabled || !isAdminEligible) return;
 
     fetchPending();
 
-    // Optional SSE listener for live push
+    // Optional SSE listener for live push (admin-only)
     let eventSource: EventSource | null = null;
-    try {
-      const sseUrl = `${env.apiBaseUrl}/api/v1/stream/hitl`;
-      eventSource = new EventSource(sseUrl, { withCredentials: true });
-      eventSource.addEventListener('hitl', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          const [newRecord] = normalizeHitlPayload([
-            {
-              id: data.context?.record_id || `hitl_${Date.now()}`,
-              action_name: data.message || 'Sensitive Action Requires Approval',
-              command: data.context?.command,
-              module: data.module,
-              severity: data.severity || 'high',
-              context: data.context,
-              created_at: new Date().toISOString(),
-              status: 'pending',
-            },
-          ]);
-          if (!newRecord) return;
-          setPendingRequests((prev) => [newRecord, ...prev.filter((r) => r.id !== newRecord.id)]);
-          setActiveRequest(newRecord);
-        } catch {
-          // Malformed SSE frame — ignore and keep the last good queue.
-        }
-      });
-    } catch {
-      // EventSource unavailable (SSR, blocked by an extension) — polling covers it.
-    }
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let reconnectAttempt = 0;
+
+    const openSse = () => {
+      try {
+        const sseUrl = `${env.apiBaseUrl}/api/v1/stream/hitl`;
+        eventSource = new EventSource(sseUrl, { withCredentials: true });
+        eventSource.addEventListener('hitl', (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            const [newRecord] = normalizeHitlPayload([
+              {
+                id: data.context?.record_id || `hitl_${Date.now()}`,
+                action_name: data.message || 'Sensitive Action Requires Approval',
+                command: data.context?.command,
+                module: data.module,
+                severity: data.severity || 'high',
+                context: data.context,
+                created_at: new Date().toISOString(),
+                status: 'pending',
+              },
+            ]);
+            if (!newRecord) return;
+            setPendingRequests((prev) => [newRecord, ...prev.filter((r) => r.id !== newRecord.id)]);
+            setActiveRequest(newRecord);
+          } catch {
+            // Malformed SSE frame — ignore and keep the last good queue.
+          }
+        });
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          if (reconnectAttempt < 5) {
+            const delay = Math.min(30_000, 1000 * 2 ** reconnectAttempt);
+            reconnectAttempt += 1;
+            reconnectTimer = setTimeout(openSse, delay);
+          }
+        };
+      } catch {
+        // EventSource unavailable (SSR, blocked by an extension) — polling covers it.
+      }
+    };
+
+    openSse();
 
     return () => {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
       if (eventSource) {
         eventSource.close();
       }
     };
-    // Mount-only: the engine owns cadence, SSE owns push.
+    // Re-run when admin eligibility changes; fetchPending is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAdminEligible]);
 
   const approve = async (recordId: string) => {
     setIsProcessing(true);
