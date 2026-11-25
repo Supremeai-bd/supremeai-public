@@ -67,6 +67,11 @@ const getRuntimeMockOverride = (): boolean | null => {
 
 // বাংলা মন্তব্য: Desktop (Tauri), Mobile (Android APK/iOS), এবং VS Code Webview-এ লোকাল `/api` না থাকায় স্বয়ংক্রিয়ভাবে ক্যানোনিকাল ক্লাউড এন্ডপয়েন্ট ব্যবহৃত হবে
 export function isEmbeddedAppOrigin(loc?: { protocol?: string; hostname?: string } | null): boolean {
+  if (typeof window !== 'undefined') {
+    if ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__) {
+      return true;
+    }
+  }
   const target =
     loc ?? (typeof window !== 'undefined' && window.location ? window.location : null);
   if (!target) return false;
@@ -86,7 +91,7 @@ export function isEmbeddedAppOrigin(loc?: { protocol?: string; hostname?: string
 
 const resolveDefaultApiBaseUrl = (): string => {
   const configured = getEnvString('VITE_API_BASE_URL', '').trim().replace(/\/+$/, '');
-  if (configured) return configured;
+  if (configured) return configured.replace(/\/api$/, '');
   return isEmbeddedAppOrigin() ? DEFAULT_PUBLIC_API_PROXY_URL : '';
 };
 

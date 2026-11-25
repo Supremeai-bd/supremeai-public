@@ -125,7 +125,12 @@ class ApiClient {
 
   public async request<T = unknown>(endpoint: string, options: ApiRequestOptions = {}): Promise<T> {
     const method = ((options.method as string) || 'GET').toUpperCase();
-    const url = endpoint.startsWith('http') ? endpoint : `${env.apiBaseUrl}${endpoint}`;
+    let base = (env.apiBaseUrl || '').trim().replace(/\/+$/, '');
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    if (base.endsWith('/api') && cleanEndpoint.startsWith('/api/')) {
+      base = base.slice(0, -4);
+    }
+    const url = endpoint.startsWith('http') ? endpoint : `${base}${cleanEndpoint}`;
 
     // Single-flight dedup: concurrent identical GETs share one network round
     // trip (the same pattern refreshOnce() uses for token refreshes). Internal
