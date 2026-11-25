@@ -23,7 +23,11 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="manifest" href="/manifest.json" />
+    <!-- Audit F9 (2026-11-25): the manual /manifest.json link was a duplicate —
+         vite-plugin-pwa generates /manifest.webmanifest and injects its own
+         <link rel="manifest"> at build time (both shipped in the deployed HTML).
+         Keep only the generated manifest; public/manifest.json stays for
+         anything that still fetches it directly. -->
     <link rel="canonical" href="https://supremeai-studio.pages.dev/" />
     <link rel="alternate" hreflang="en" href="https://supremeai-studio.pages.dev/" />
     <link rel="alternate" hreflang="bn" href="https://supremeai-studio.pages.dev/?lang=bn" />
