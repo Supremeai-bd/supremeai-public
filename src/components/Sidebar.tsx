@@ -351,6 +351,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </button>
 
+          <button
+            type="button"
+            data-testid="sidebar-universal-inbox-btn"
+            onClick={() => onSelectTab('universal-inbox')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer ${
+              activeTab === 'universal-inbox'
+                ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-900 dark:text-white font-medium'
+                : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <MessageSquare className="w-4 h-4 text-cyan-500" />
+              <span>Universal Inbox</span>
+            </div>
+            {isGuest && <Lock className="w-3 h-3 text-slate-400" />}
+          </button>
+
           {enableKnowledgeGrounding && (
             <button
               type="button"

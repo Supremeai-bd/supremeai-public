@@ -35,6 +35,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { AppLanguage, UserAccountSettings, UserRole, WorkspaceContentLayout } from '../../types';
 import { APP_LANGUAGE_OPTIONS, TranslationKeys, useI18n } from '../../utils/i18n';
 import { AccountSettingsPanel } from './settings/AccountSettingsPanel';
+import { PersonalMcpHubCard } from './PersonalMcpHubCard';
 import { SUPREMEAI_MODELS } from '../../data/models';
 import {
   useThemeStore,
@@ -788,19 +789,13 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                     <span>{t.customInstructionsTitle}</span>
                   </label>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {/* বাংলা মন্তব্য: একক স্বয়ংক্রিয় অ্যাসিস্ট্যান্ট নির্দেশনা */}
                     {t.activePersonaLabel}{' '}
                     <span className="font-medium text-slate-700 dark:text-slate-200">
-                      {activeRole.name}
+                      SupremeAI Autonomous Executive
                     </span>
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsRoleModalOpen(true)}
-                  className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-200 hover:border-[var(--theme-accent)] cursor-pointer shrink-0 whitespace-nowrap"
-                >
-                  {t.switchPersonaBtn}
-                </button>
               </div>
 
               <textarea
@@ -2121,18 +2116,25 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
           SUB-TAB 4: ACCOUNT, SECURITY & FEEDBACK
       ============================================================ */}
       {activeSubTab === 'account' && (
-        <AccountSettingsPanel
-          isAdminEligible={Boolean(isAdminEligible)}
-          trustedUntil={trustedUntil}
-          onRevokeTrustedBrowser={onRevokeTrustedBrowser}
-          onOpenFeedbackSurvey={onOpenFeedbackSurvey}
-          onSignOut={onSignOut}
-          gitOAuthStatus={gitOAuthStatus}
-          gitOAuthConnecting={gitOAuthConnecting}
-          gitTokensState={gitTokensState}
-          setGitTokensState={setGitTokensState}
-          handleSettingsGitOAuthConnect={handleSettingsGitOAuthConnect}
-        />
+        <div className="space-y-6">
+          <PersonalMcpHubCard
+            userId={settings.email}
+            userEmail={settings.email}
+            userName={settings.name}
+          />
+          <AccountSettingsPanel
+            isAdminEligible={Boolean(isAdminEligible)}
+            trustedUntil={trustedUntil}
+            onRevokeTrustedBrowser={onRevokeTrustedBrowser}
+            onOpenFeedbackSurvey={onOpenFeedbackSurvey}
+            onSignOut={onSignOut}
+            gitOAuthStatus={gitOAuthStatus}
+            gitOAuthConnecting={gitOAuthConnecting}
+            gitTokensState={gitTokensState}
+            setGitTokensState={setGitTokensState}
+            handleSettingsGitOAuthConnect={handleSettingsGitOAuthConnect}
+          />
+        </div>
       )}
     </div>
   );

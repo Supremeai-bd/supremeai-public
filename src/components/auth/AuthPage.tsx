@@ -10,7 +10,9 @@ import {
   X,
   Eye,
   EyeOff,
+  Fingerprint,
 } from 'lucide-react';
+import { isPasskeySupported, loginWithPasskey } from '../../services/passkeyService';
 import { AuthUser } from '../../types';
 import { LiveScreenBackdrop } from '../theme/LiveScreenBackdrop';
 import { ThemeControlPopover } from '../theme/ThemeControlPopover';
@@ -52,6 +54,35 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   useEffect(() => {
     fetchConfig();
   }, [fetchConfig]);
+
+  const handlePasskeySignIn = async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const res = await loginWithPasskey(email.trim() || undefined);
+      if (res.ok && res.token) {
+        const uid = res.userId || 'usr_passkey';
+        onLoginSuccess(
+          {
+            id: uid,
+            name: res.deviceName || email.split('@')[0] || 'Passkey User',
+            email: email.trim() || `${uid}@supremeai.local`,
+            role: res.role || 'user',
+            isAdminEligible: res.role === 'admin',
+            plan: 'Free',
+            createdAt: new Date().toISOString(),
+          },
+          res.token
+        );
+      } else {
+        setErrorMessage(res.error || 'Passkey authentication failed.');
+        setIsLoading(false);
+      }
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Passkey error.');
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -319,6 +350,18 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 </>
               )}
             </button>
+
+            {mode === 'login' && isPasskeySupported() && (
+              <button
+                type="button"
+                onClick={handlePasskeySignIn}
+                disabled={isLoading}
+                className="w-full py-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              >
+                <Fingerprint className="w-4 h-4 text-cyan-500" />
+                <span>Sign in with Passkey / Face ID</span>
+              </button>
+            )}
           </form>
 
           {onClose && (

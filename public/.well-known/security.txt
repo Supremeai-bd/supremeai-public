@@ -1,0 +1,6 @@
+Contact: mailto:security@supremeai.com
+Contact: https://github.com/Supremeai-bd/supremeai/security/advisories/new
+Expires: 2027-11-25T00:00:00Z
+Preferred-Languages: en, bn
+Canonical: https://supremeai-studio.pages.dev/.well-known/security.txt
+Policy: https://github.com/Supremeai-bd/supremeai/blob/main/SECURITY.md
