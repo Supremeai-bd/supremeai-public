@@ -1,45 +1,7 @@
 import type { Express, Request, Response } from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { PLAN_CATALOG } from '../../config/plans';
 import { CANONICAL_SERVER_MODELS, DEFAULT_MODEL_ID } from '../../shared/platformCatalog';
 
-/**
- * Health + Models — `GET /api/health` + `GET /api/models`
- *
- * (`POST /api/telemetry/client-error` এখন src/api/routes/telemetry.ts-এ —
- *  Hono, Express ও Edge দুই রানটাইমের জন্য একটাই কপি।)
- *
- * WHY THIS FILE EXISTS
- *   Platform-observability endpoints (health metadata, model catalog with
- *   gateway proxy) lived inline in
- *   `server.ts` (~60 lines). Cohesive (all are public, unauthenticated
- *   telemetry/health probes) and have no other consumer. Moving them keeps the
- *   monolith shrinking.
- *
- * CONTRACT WITH server.ts
- *   - Both handlers OWNED here (no other route reads their state).
- *   - `fetchGatewayJson` injected via ctx (gateway cache helper).
- *   - `SUPPORTED_MODELS` + `APP_VERSION` derived locally (read from fs/package
- *     for version, const model map inlined to avoid cross-file mutation).
- *   - `apiKey` presence checked via env (same as server.ts).
- */
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const APP_VERSION = (() => {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../../package.json'), 'utf8')) as {
-      version?: string;
-    };
-    return String(pkg.version || '2.5.0').trim();
-  } catch {
-    return '2.5.0';
-  }
-})();
-
-// বাংলা মন্তব্য: ক্যানোনিকাল কন্ট্রাক্ট থেকে সব মডেল (`auto` + ৬টি ফাউন্ডেশন মডেল) লোড করা হচ্ছে
+// বাংলা মন্তব্য: health ও client-error এখন Hono-তে; শুধু gateway-cache নির্ভর models এখানে আছে।
 const SUPPORTED_MODELS = CANONICAL_SERVER_MODELS;
 
 export interface TelemetryContext {
@@ -47,24 +9,6 @@ export interface TelemetryContext {
 }
 
 export function registerTelemetryRoutes(app: Express, ctx: TelemetryContext): void {
-  // Health and metadata endpoint
-  app.get('/api/health', (_req: Request, res: Response) => {
-    const apiKey = process.env.GEMINI_API_KEY || '';
-    res.json({
-      status: 'healthy',
-      app: 'SupremeAI Studio',
-      organization: 'Supremeai-bd',
-      version: `v${APP_VERSION}`,
-      modelsCount: Object.keys(SUPPORTED_MODELS).length,
-      plans: PLAN_CATALOG,
-      repositories: {
-        primary: 'https://github.com/Supremeai-bd/supremeai',
-        studio: 'https://github.com/Supremeai-bd/supremeai-studio',
-      },
-      hasApiKey: Boolean(apiKey),
-    });
-  });
-
   // Models endpoint
   app.get('/api/models', async (_req: Request, res: Response) => {
     const remote = await ctx.fetchGatewayJson('/api/v1/models');
