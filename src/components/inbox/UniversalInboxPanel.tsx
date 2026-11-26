@@ -27,26 +27,18 @@ import {
   clearExpiredGmailSession,
   connectGmailWithGooglePopup,
   disconnectGmailAccount,
-  fetchGmailInbox,
-  fetchGmailMessageDetail,
   getGmailCachedEmail,
   getGmailCachedToken,
   subscribeGmailAuthState,
   type GmailMessageDetail,
-  type GmailMessageSummary,
 } from '../../services/gmailOAuthService';
+import { getInboxAdapter } from '../../adapters/inbox/registry';
+import type { InboxItem } from '../../../packages/contracts/inbox-adapter';
 
 export type ChannelType = 'gmail' | 'telegram' | 'whatsapp' | 'messenger' | 'instagram';
 
-export interface UnifiedInboxItem {
-  id: string;
-  channel: ChannelType;
-  sender: string;
-  subject: string;
-  snippet: string;
-  timestamp: string;
-  unread: boolean;
-}
+/** Contract-backed item shape (packages/contracts/inbox-adapter.ts). */
+export type UnifiedInboxItem = InboxItem;
 
 const CHANNEL_META: Record<
   ChannelType,
@@ -108,23 +100,15 @@ export const UniversalInboxPanel: React.FC = () => {
   const [isDraftingAi, setIsDraftingAi] = useState(false);
   const [copiedReply, setCopiedReply] = useState(false);
 
-  const loadGmailMessages = useCallback(async (token: string, query = '') => {
+  const loadGmailMessages = useCallback(async (_token: string, query = '') => {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      const list: GmailMessageSummary[] = await fetchGmailInbox(token, {
-        maxResults: 20,
-        query,
-      });
-      const mapped: UnifiedInboxItem[] = list.map((m) => ({
-        id: m.id,
-        channel: 'gmail',
-        sender: m.from || 'Unknown Sender',
-        subject: m.subject || '(No subject)',
-        snippet: m.snippet || '',
-        timestamp: m.date || '',
-        unread: Boolean(m.isUnread),
-      }));
+      const adapter = getInboxAdapter('gmail');
+      if (!adapter) {
+        throw new Error('Gmail adapter not registered.');
+      }
+      const mapped: UnifiedInboxItem[] = await adapter.list({ limit: 20, query });
       setItems(mapped);
       if (mapped.length > 0) {
         setSelectedId((prev) => prev || mapped[0].id);
@@ -176,9 +160,30 @@ export const UniversalInboxPanel: React.FC = () => {
     }
     let cancelled = false;
     setLoadingDetail(true);
-    fetchGmailMessageDetail(gmailToken, item.id)
-      .then((detail) => {
-        if (!cancelled) setSelectedGmailDetail(detail);
+    const adapter = getInboxAdapter('gmail');
+    if (!adapter) {
+      setSelectedGmailDetail(null);
+      setLoadingDetail(false);
+      return;
+    }
+    adapter
+      .detail(item.id)
+      .then((d) => {
+        if (!cancelled) {
+          // Keep prior Gmail detail type for AI draft body fields.
+          setSelectedGmailDetail({
+            id: d.id,
+            threadId: d.replyRef || d.id,
+            subject: d.subject,
+            from: d.sender,
+            to: '',
+            date: d.timestamp,
+            snippet: d.snippet,
+            isUnread: d.unread,
+            htmlBody: '',
+            textBody: d.body || d.snippet,
+          } satisfies GmailMessageDetail);
+        }
       })
       .catch(() => {
         if (!cancelled) setSelectedGmailDetail(null);
