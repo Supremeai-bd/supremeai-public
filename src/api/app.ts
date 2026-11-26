@@ -27,6 +27,7 @@ import { createReleasesRoutes } from './routes/releases';
 import { createTelemetryRoutes } from './routes/telemetry';
 import { createHealthRoutes } from './routes/health';
 import { createModelsRoutes } from './routes/models';
+import { createShareRoutes } from './routes/share';
 
 /** দুই রানটাইমেই env হলো string ম্যাপ (Cloudflare `context.env` / Node `process.env`)। */
 export type ApiBindings = Record<string, string | undefined>;
@@ -59,6 +60,7 @@ export function createApiApp(deps: ApiDeps = {}): Hono<ApiEnv> {
   app.route('/', createTelemetryRoutes());
   app.route('/', createHealthRoutes());
   app.route('/', createModelsRoutes(deps));
+  app.route('/', createShareRoutes(deps));
 
   return app;
 }

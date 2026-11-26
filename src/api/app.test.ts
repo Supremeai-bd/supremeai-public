@@ -35,6 +35,9 @@ describe('createApiApp — route registry', () => {
       '/api/health',
       '/api/models',
       '/api/releases/latest',
+      '/api/share/:id',
+      '/api/share/artifact',
+      '/api/share/generate',
       '/api/telemetry/client-error',
     ]);
   });
