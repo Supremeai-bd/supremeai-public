@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import {
   AlertTriangle,
   ArrowLeftRight,
-  ArrowUpRight,
   CalendarClock,
   Layers,
   ShieldCheck,
@@ -15,13 +14,7 @@ import {
 } from '../../stores/useProviderAccountsStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 
-interface AdminProviderPoolsOverviewCardProps {
-  onNavigateTab: (tab: string) => void;
-}
-
-export const AdminProviderPoolsOverviewCard: React.FC<AdminProviderPoolsOverviewCardProps> = ({
-  onNavigateTab,
-}) => {
+export const AdminProviderPoolsOverviewCard: React.FC = () => {
   const actor = useAuthStore((s) => s.authUser?.email || 'admin');
   const { accounts, policies, triggerPoolFailover, autoRebalanceAllPools } =
     useProviderAccountsStore();
@@ -116,14 +109,6 @@ export const AdminProviderPoolsOverviewCard: React.FC<AdminProviderPoolsOverview
               <span>Auto-Rebalance</span>
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => onNavigateTab('provider-accounts')}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#162238] dark:bg-white text-white dark:text-slate-900 text-xs font-semibold cursor-pointer hover:opacity-90 transition-opacity"
-          >
-            <span>Open Multi-Account Hub</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
 

@@ -2,14 +2,12 @@ import React, { useState } from 'react';
 import {
   Plus,
   FolderGit2,
-  Puzzle,
   Settings,
   Trash2,
   Edit2,
   Check,
   Users,
   Key,
-  Zap,
   BookOpen,
   CreditCard,
   LogOut,
@@ -51,7 +49,6 @@ interface SidebarProps {
   onSelectTab: (tab: string) => void;
   activeTab: string;
   projectsCount?: number;
-  activePluginsCount?: number;
   authUser?: AuthUser | null;
   onSignOut?: () => void;
   developerMode?: boolean;
@@ -76,7 +73,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   activeTab,
   projectsCount = 2,
-  activePluginsCount = 4,
   authUser,
   onSignOut,
   developerMode = false,
@@ -459,7 +455,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => onSelectTab('user-billing')}
                   className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    activeTab === 'user-billing' || activeTab === 'usage'
+                    activeTab === 'user-billing'
                       ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-900 dark:text-white font-medium'
                       : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
@@ -516,42 +512,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     >
                       <Key className="w-3.5 h-3.5 text-blue-500" />
                       <span>{t.apiKeysProviders}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onSelectTab('boost-limit')}
-                      className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                        activeTab === 'boost-limit'
-                          ? 'bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-semibold shadow-xs'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Zap className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                        <span>⚡ Boost Limit</span>
-                      </div>
-                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                        +150K
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => onSelectTab('user-plugins')}
-                      className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                        activeTab === 'user-plugins'
-                          ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-900 dark:text-white font-medium'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Puzzle className="w-3.5 h-3.5 text-slate-500" />
-                        <span>{t.pluginsTools}</span>
-                      </div>
-                      <span className="text-[10px] font-mono tabular-nums text-slate-400">
-                        {activePluginsCount}
-                      </span>
                     </button>
 
                 <div className="flex items-center justify-between px-3 py-1.5 text-[11px] text-slate-500 dark:text-slate-400">

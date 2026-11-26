@@ -86,7 +86,7 @@ class TestSyncPrerequisites(unittest.TestCase):
         text = workflow.read_text()
         group = text[
             text.index("  sync-cross-repo-patches:") : text.index(
-                "  hardening-patch-check:"
+                "  server-budget-report:"
             )
         ]
         marker = "      - name: Check queued sync prerequisites"

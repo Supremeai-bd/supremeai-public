@@ -83,32 +83,17 @@ const WorkspaceDock = React.lazy(() =>
 const RoleModal = React.lazy(() =>
   import('./components/RoleModal').then((m) => ({ default: m.RoleModal }))
 );
-const RoleLab = React.lazy(() =>
-  import('./components/RoleLab').then((m) => ({ default: m.RoleLab }))
-);
-const ModelMatrix = React.lazy(() =>
-  import('./components/ModelMatrix').then((m) => ({ default: m.ModelMatrix }))
-);
-const RepoHub = React.lazy(() =>
-  import('./components/RepoHub').then((m) => ({ default: m.RepoHub }))
-);
 const UniversalInboxPanel = React.lazy(() =>
   import('./components/inbox/UniversalInboxPanel').then((m) => ({ default: m.UniversalInboxPanel }))
 );
 const UserProjectsView = React.lazy(() =>
   import('./components/user/UserProjectsView').then((m) => ({ default: m.UserProjectsView }))
 );
-const UserPluginsView = React.lazy(() =>
-  import('./components/user/UserPluginsView').then((m) => ({ default: m.UserPluginsView }))
-);
 const UserSettingsView = React.lazy(() =>
   import('./components/user/UserSettingsView').then((m) => ({ default: m.UserSettingsView }))
 );
 const UserApiKeysView = React.lazy(() =>
   import('./components/user/UserApiKeysView').then((m) => ({ default: m.UserApiKeysView }))
-);
-const BoostLimitView = React.lazy(() =>
-  import('./components/user/BoostLimitView').then((m) => ({ default: m.BoostLimitView }))
 );
 const UserKnowledgeBaseView = React.lazy(() =>
   import('./components/user/UserKnowledgeBaseView').then((m) => ({
@@ -120,9 +105,6 @@ const UserTeamView = React.lazy(() =>
 );
 const UserPlanUsageView = React.lazy(() =>
   import('./components/user/UserPlanUsageView').then((m) => ({ default: m.UserPlanUsageView }))
-);
-const UsageView = React.lazy(() =>
-  import('./components/UsageView').then((m) => ({ default: m.UsageView }))
 );
 const PromptLibraryModal = React.lazy(() =>
   import('./components/user/PromptLibraryModal').then((m) => ({ default: m.PromptLibraryModal }))
@@ -136,11 +118,6 @@ const AdminOverviewView = React.lazy(() =>
 const AdminArchitectureTopologyView = React.lazy(() =>
   import('./components/admin/AdminArchitectureTopologyView').then((m) => ({
     default: m.AdminArchitectureTopologyView,
-  }))
-);
-const AdminVisualCockpitView = React.lazy(() =>
-  import('./components/admin/AdminVisualCockpitView').then((m) => ({
-    default: m.AdminVisualCockpitView,
   }))
 );
 const AdminGitHubPipelineView = React.lazy(() =>
@@ -176,19 +153,9 @@ const AdminSystemAuditView = React.lazy(() =>
     default: m.AdminSystemAuditView,
   }))
 );
-const AdminFeatureFlagsView = React.lazy(() =>
-  import('./components/admin/AdminFeatureFlagsView').then((m) => ({
-    default: m.AdminFeatureFlagsView,
-  }))
-);
 const AdminProviderKeysView = React.lazy(() =>
   import('./components/admin/AdminProviderKeysView').then((m) => ({
     default: m.AdminProviderKeysView,
-  }))
-);
-const AdminMultiAccountProviderHub = React.lazy(() =>
-  import('./components/admin/AdminMultiAccountProviderHub').then((m) => ({
-    default: m.AdminMultiAccountProviderHub,
   }))
 );
 const AdminAuthModal = React.lazy(() =>
@@ -376,7 +343,6 @@ export default function App() {
     maxSeats: teamMaxSeats,
     invoices,
     userProjects,
-    userPlugins,
     userSettings,
     fetchApiKeys,
     fetchWebhooks,
@@ -403,8 +369,6 @@ export default function App() {
     forkProject,
     refreshProjectBuildStatus,
     deleteProject,
-    togglePlugin,
-    addCustomPlugin,
     updateSettings,
     recordTokenUsage,
   } = useCustomerStore();
@@ -1174,7 +1138,6 @@ export default function App() {
   };
 
   const mcpAlertCount = getMcpAlertCount();
-  const activePluginsCount = userPlugins.filter((p) => p.isEnabled).length;
   const isChatEmpty = (currentSession?.messages?.length || 0) === 0 && !isStreaming;
   const totalUserMessages = sessions.reduce(
     (sum, s) => sum + (s.messages?.filter((m) => m.role === 'user').length || 0),
@@ -1314,7 +1277,6 @@ export default function App() {
             onSelectTab={handleSelectTab}
             activeTab={activeTab}
             projectsCount={userProjects.length}
-            activePluginsCount={activePluginsCount}
             authUser={authUser}
             onSignOut={handleSignOut}
             developerMode={developerMode}
@@ -1814,8 +1776,7 @@ export default function App() {
 
               <div className="flex-1 min-h-0 min-w-0 flex overflow-hidden">
                 {isProjectAdmin &&
-                  (ADMIN_ONLY_TABS.has(activeTab) ||
-                    (activeTab === 'usage' && effectiveRole === 'admin')) && (
+                  ADMIN_ONLY_TABS.has(activeTab) && (
                     <AdminConsoleNav
                       activeTab={activeTab}
                       onSelectTab={handleSelectTab}
@@ -1883,10 +1844,6 @@ export default function App() {
                         />
                       )}
 
-                      {activeTab === 'boost-limit' && (
-                        <BoostLimitView />
-                      )}
-
                       {activeTab === 'user-knowledge' && (
                         <UserKnowledgeBaseView
                           documents={knowledgeDocs}
@@ -1909,8 +1866,7 @@ export default function App() {
                         />
                       )}
 
-                      {(activeTab === 'user-billing' ||
-                        (activeTab === 'usage' && effectiveRole !== 'admin')) && (
+                      {activeTab === 'user-billing' && (
                         <UserPlanUsageView
                           planTier={authUser?.plan || userSettings.plan}
                           invoices={invoices}
@@ -1920,14 +1876,6 @@ export default function App() {
                           darkMode={darkMode}
                           onTopUpTokens={topUpTokens}
                           developerMode={developerMode}
-                        />
-                      )}
-
-                      {activeTab === 'user-plugins' && (
-                        <UserPluginsView
-                          plugins={userPlugins}
-                          onTogglePlugin={togglePlugin}
-                          onAddCustomPlugin={addCustomPlugin}
                         />
                       )}
 
@@ -1955,12 +1903,7 @@ export default function App() {
                         />
                       )}
 
-                      {/* 3. Admin Usage Analytics */}
-                      {activeTab === 'usage' && currentRole === 'admin' && (
-                        <UsageView sessions={sessions} darkMode={darkMode} />
-                      )}
-
-                      {/* 4. Admin Studio Command Center & Operations */}
+                      {/* 3. Admin Studio Command Center & Operations */}
                       {isProjectAdmin && (
                         <>
                           {activeTab === 'admin-overview' && (
@@ -2019,14 +1962,13 @@ export default function App() {
                               routes={gatewayRoutes}
                               onToggleFailover={toggleFailover}
                               onUpdatePrice={updateGatewayPrice}
+                              activeModel={activeModel}
+                              onSelectModel={selectModel}
+                              onNavigateToChat={() => setActiveTab('chat')}
                             />
                           )}
 
-                          {activeTab === 'feature-flags' && <AdminFeatureFlagsView />}
-
                           {activeTab === 'provider-keys' && <AdminProviderKeysView />}
-
-                          {activeTab === 'provider-accounts' && <AdminMultiAccountProviderHub />}
 
                           {activeTab === 'security' && (
                             <AdminSecurityView
@@ -2057,8 +1999,6 @@ export default function App() {
                           {activeTab === 'health-monitor' && <ControlCenterHealthMonitorView />}
 
                           {activeTab === 'architecture-map' && <AdminArchitectureTopologyView />}
-
-                          {activeTab === 'visual-cockpit' && <AdminVisualCockpitView />}
 
                           {activeTab === 'github-pipeline' && <AdminGitHubPipelineView />}
 
@@ -2094,26 +2034,6 @@ export default function App() {
                           </button>
                         </div>
                       )}
-
-                      {activeTab === 'roles' && (
-                        <RoleLab
-                          onSelectRoleForChat={(role, prompt) => {
-                            selectRole(role, prompt);
-                            setActiveTab('chat');
-                          }}
-                          onNavigateToChat={() => setActiveTab('chat')}
-                        />
-                      )}
-
-                      {activeTab === 'models' && (
-                        <ModelMatrix
-                          activeModel={activeModel}
-                          onSelectModel={selectModel}
-                          onNavigateToChat={() => setActiveTab('chat')}
-                        />
-                      )}
-
-                      {activeTab === 'repos' && <RepoHub />}
 
                       {activeTab === 'universal-inbox' && <UniversalInboxPanel />}
                     </Suspense>

@@ -102,7 +102,7 @@ index 0000000..e5b12b5
 +          if-no-files-found: warn
 +          retention-days: 14
 diff --git a/.github/workflows/unified-pipeline.yml b/.github/workflows/unified-pipeline.yml
-index c44d095..604d09e 100644
+index 447b68a..6f76132 100644
 --- a/.github/workflows/unified-pipeline.yml
 +++ b/.github/workflows/unified-pipeline.yml
 @@ -159,7 +159,7 @@ jobs:
@@ -135,20 +135,20 @@ index c44d095..604d09e 100644
    runtime-readiness:
      name: "Tier 1: Runtime Readiness & Boundaries (<30s, cloud fallback)"
 @@ -335,6 +348,10 @@ jobs:
-           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-           python -m compileall -q core/ gateway/ scripts/
-           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+         if: github.event_name == 'pull_request'
+         shell: pwsh
+         run: |
 +          python scripts/ci/check_mypy_ratchet.py
 +          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 +          python scripts/ci/check_module_budget.py
 +          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
- 
-       - name: Publish CI Attestation to MCP Tower
-         if: always()
+           git fetch origin ${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }} --depth=50
+           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+           $changed = git diff --name-only "origin/$($env:BASE_REF)"...HEAD | Where-Object { $_ -match '\.(py|ts|tsx)$' } | Select-Object -First 20
 @@ -1235,6 +1252,139 @@ jobs:
-           fi
-           python evals/golden/run_eval.py --provider http --min-accuracy 0.90
- 
+       - name: Detect runtime dependency changes
+         if: github.event_name == 'pull_request' || github.event_name == 'push'
+         id: runtime-locks
 +  # =========================================================================
 +  # NIGHTLY FULL REGRESSION BATTERY (restored)
 +  # -------------------------------------------------------------------------
@@ -282,9 +282,21 @@ index c44d095..604d09e 100644
 +          retention-days: 14
 +          if-no-files-found: warn
 +
-   regenerate-architecture-gap-baseline:
-     name: Regenerate architecture gap baseline (auto-commit)
-     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+         with:
+           filters: |
+diff --git a/.gitignore b/.gitignore
+index a0f06fd..80a6e49 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -278,6 +278,7 @@ actionlint
+ !docs/audits/evidence/**
+ !docs/audits/evidence/**/*.txt
+ !scripts/ci/public_surface_manifest.txt
++!config/ci/mypy-ratchet.txt
+ !studio/src/lib/encryption/vendor/THIRD_PARTY_LICENSES.txt
+ 
+ # Generated Firebase deployment artifacts (real URLs must never be committed)
 diff --git a/config/ci/mypy-ratchet.txt b/config/ci/mypy-ratchet.txt
 new file mode 100644
 index 0000000..f585d6a

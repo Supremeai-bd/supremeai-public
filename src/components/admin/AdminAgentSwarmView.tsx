@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bot, Play, Pause, Terminal } from 'lucide-react';
+import { Bot, Play, Pause, Terminal, Minus, Plus } from 'lucide-react';
 import { SwarmWorker } from '../../types';
 import { toast } from '../../stores/useToastStore';
 import { useI18n } from '../../utils/i18n';
@@ -15,10 +15,20 @@ interface AdminAgentSwarmViewProps {
 export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
   workers,
   onToggleWorkerStatus,
+  onScaleConcurrency,
 }) => {
   const { t } = useI18n();
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(workers[0]?.id ?? null);
-  const [isSwarmRunning, setIsSwarmRunning] = useState<boolean>(true);
+
+  // বাংলা মন্তব্য: আগে এখানে লোকাল `isSwarmRunning` useState(true) ফেইক টগল ছিল।
+  // এখন সোয়ার্মের আসল অবস্থা কেবল ওয়ার্কার status থেকেই ডেরিভ করা হচ্ছে —
+  // সবগুলো ওয়ার্কার active থাকলেই সোয়ার্ম চলছে, এলেই paused।
+  const activeCount = workers.filter((w) => w.status === 'active').length;
+  const isSwarmRunning = workers.length > 0 && activeCount === workers.length;
+
+  // বাংলা মন্তব্য: Clear Buffer আগে শুধু toast দিয়ে ফেইক ছিল — লগ খালিই হত না।
+  // এখন নির্দিষ্ট ওয়ার্কারের জন্য স্থানীয় লগ buffer প্রকৃতভাবে পরিষ্কার করা হচ্ছে।
+  const [clearedLogs, setClearedLogs] = useState<Record<string, boolean>>({});
 
   // বাংলা মন্তব্য: সোয়ার্ম ডেটা লাইভ সার্ভার থেকে এসেছে নাকি localStorage fallback —
   // আগে এটা জানার কোনো উপায় ছিল না; এখন ব্যাজ সত্য বলে (fetchAdminSync সফল হলেই LIVE)।
@@ -28,9 +38,10 @@ export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
   );
 
   const selectedWorker = workers.find((w) => w.id === selectedWorkerId) || workers[0] || null;
+  const displayedLogs =
+    selectedWorker && !clearedLogs[selectedWorker.id] ? selectedWorker.logs : [];
 
   const totalProcessed = workers.reduce((acc, w) => acc + (Number(w.processedCount) || 0), 0);
-  const activeCount = workers.filter((w) => w.status === 'active').length;
   const meanVerificationRate =
     workers.length > 0
       ? (
@@ -44,6 +55,22 @@ export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
         )
       : '0.0';
   const totalMemoryMb = workers.reduce((acc, w) => acc + (Number(w.memoryMb) || 0), 0);
+
+  // বাংলা মন্তব্য: গ্লোবাল Pause/Resume আগে ফেইক ছিল — এখন সব ওয়ার্কারের আসল
+  // toggle endpoint (POST /api/admin/swarm/:id/toggle) ডাকে সবাই একসাথে প্রতিক্রিয় করা হচ্ছে।
+  const handleGlobalToggle = () => {
+    if (workers.length === 0) {
+      toast.info(t.swarmTitle, 'সোয়ার্মে কোনো ওয়ার্কার নেই।');
+      return;
+    }
+    workers.forEach((w) => onToggleWorkerStatus(w.id));
+    toast.info(
+      isSwarmRunning ? t.pauseSwarmBtn : t.resumeSwarmBtn,
+      isSwarmRunning
+        ? `সব ${workers.length}টি ওয়ার্কার pause করা হচ্ছে।`
+        : `সব ${workers.length}টি ওয়ার্কার resume করা হচ্ছে।`
+    );
+  };
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-8 max-w-6xl mx-auto space-y-8 text-slate-800 dark:text-slate-200">
@@ -72,7 +99,7 @@ export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setIsSwarmRunning(!isSwarmRunning)}
+            onClick={handleGlobalToggle}
             className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer ${
               isSwarmRunning
                 ? 'bg-amber-600 hover:bg-amber-700 text-white'
@@ -226,6 +253,34 @@ export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
                         Success: {worker.successRate}% ({worker.processedCount} done)
                       </span>
                     </div>
+
+                    {/* বাংলা মন্তব্য: কনকারেন্সি scale বাটন — আগে onScaleConcurrency প্রপ পাওয়া গেছে
+                        কিন্তু ভেতরে কোথাও ব্যবহার হয়নি। এখন সত্যিকার POST
+                        /api/admin/swarm/:id/scale endpoint ডাকে ওয়ার্কারের কানকারেন্সি বাড়ানো/কমানো হচ্ছে। */}
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onScaleConcurrency(worker.id, -1);
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                      >
+                        <Minus className="w-3 h-3" />
+                        <span>{t.swarmScaleDown}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onScaleConcurrency(worker.id, 1);
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/70 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>{t.swarmScaleUp}</span>
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -265,12 +320,16 @@ export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
                   Recent Execution Stream
                 </span>
                 <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-slate-300 space-y-2 max-h-64 overflow-y-auto leading-relaxed">
-                  {selectedWorker.logs.map((log, i) => (
-                    <div key={i} className="flex items-start gap-2">
-                      <span className="text-purple-400 select-none">&gt;</span>
-                      <span>{log}</span>
-                    </div>
-                  ))}
+                  {displayedLogs.length === 0 ? (
+                    <div className="text-slate-500">Buffer cleared — no logs to show.</div>
+                  ) : (
+                    displayedLogs.map((log, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="text-purple-400 select-none">&gt;</span>
+                        <span>{log}</span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -278,15 +337,17 @@ export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
                 <span>Daemon ID: {selectedWorker.id}</span>
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    // বাংলা মন্তব্য: আগে শুধু toast দেখানো হত — এখন আসল লগ buffer পরিষ্কার করা হচ্ছে।
+                    setClearedLogs((prev) => ({ ...prev, [selectedWorker.id]: true }));
                     toast.info(
-                      'Log Buffer Flushed',
-                      `Cleared execution buffer for ${selectedWorker.name}.`
-                    )
-                  }
+                      t.swarmClearBuffer,
+                      `${selectedWorker.name} এর এক্সিকিউশন buffer পরিষ্কার করা হয়েছে।`
+                    );
+                  }}
                   className="text-purple-400 hover:underline cursor-pointer"
                 >
-                  Clear Buffer
+                  {t.swarmClearBuffer}
                 </button>
               </div>
             </div>

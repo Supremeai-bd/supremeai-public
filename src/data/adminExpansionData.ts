@@ -375,14 +375,12 @@ export const INITIAL_AUDIT_RECORDS: SystemAuditRecord[] = [
 ];
 
 export const INITIAL_FEATURE_FLAGS = [
-  {
-    key: 'enable_supreme_reason',
-    name: 'SupremeAI Reason Compute Engine',
-    description:
-      'Enables high-depth multi-step reasoning models for all Enterprise and Pro customers.',
-    enabled: true,
-    category: 'models' as const,
-  },
+  // বাংলা মন্তব্য: এখানে শুধুমাত্র সার্ভারসাইড এনফোর্স করা ফ্ল্যাগগুলোই রাখা হয়েছে —
+  // enable_multimodal_vision (stream.ts) ও enable_rag_grounding (stream.ts)।
+  // enable_supreme_reason, enable_continuous_agent_swarm, enforce_strict_rate_limits —
+  // সার্ভারে কোথাও এনফোর্স হয় না, তাই ডেড ফ্ল্যাগ হিসেবে বাদ দেওয়া হয়েছে।
+  // maintenance_mode ইতিমধ্যেই AdminOverviewView-এর Platform Governance কার্ডে
+  // আলাদা টগল আছে, তাই এখানে পুনরায় রাখা হয়নি।
   {
     key: 'enable_multimodal_vision',
     name: 'Multi-Modal Vision & File Understanding',
@@ -397,28 +395,6 @@ export const INITIAL_FEATURE_FLAGS = [
       'Injects active customer knowledge documentation chunks directly into prompt inference.',
     enabled: true,
     category: 'agents' as const,
-  },
-  {
-    key: 'enable_continuous_agent_swarm',
-    name: 'Autonomous continuous_agent_loop.py Swarm',
-    description:
-      'Runs continuous background GitHub PR solver, AST verifier, and rules-breaker workers.',
-    enabled: true,
-    category: 'agents' as const,
-  },
-  {
-    key: 'enforce_strict_rate_limits',
-    name: 'Strict IP & Token Burst Throttling',
-    description: 'Enforces hard 120 RPM cap on unauthenticated or free-tier API endpoints.',
-    enabled: false,
-    category: 'security' as const,
-  },
-  {
-    key: 'maintenance_mode',
-    name: 'Global Emergency Maintenance Mode',
-    description: 'Gracefully pauses customer chat inference for database schema migrations.',
-    enabled: false,
-    category: 'infra' as const,
   },
 ];
 

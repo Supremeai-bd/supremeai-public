@@ -11,6 +11,7 @@ import {
   XCircle,
   Pencil,
   Trash2,
+  Zap,
 } from 'lucide-react';
 import { ApiKeyItem, WebhookItem, GatewayProviderLatency, AiProviderId } from '../../types';
 import { AI_PROVIDER_DEFINITIONS } from '../../constants/aiProviders';
@@ -20,6 +21,7 @@ import { CreateKeyModal } from './api-keys/CreateKeyModal';
 import { WebhooksTable } from './api-keys/WebhooksTable';
 import { CreateWebhookModal } from './api-keys/CreateWebhookModal';
 import { WebhookDeliveriesModal } from './api-keys/WebhookDeliveriesModal';
+import { BoostLimitView } from './BoostLimitView';
 import { useI18n } from '../../utils/i18n';
 
 interface UserApiKeysViewProps {
@@ -49,7 +51,9 @@ export const UserApiKeysView: React.FC<UserApiKeysViewProps> = ({
   onDeleteWebhook,
   onTestWebhook,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'keys' | 'providers' | 'webhooks'>('keys');
+  const [activeSubTab, setActiveSubTab] = useState<'keys' | 'providers' | 'webhooks' | 'boost'>(
+    'keys'
+  );
   const { t } = useI18n();
   const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
   const [editingKey, setEditingKey] = useState<ApiKeyItem | null>(null);
@@ -202,6 +206,19 @@ export const UserApiKeysView: React.FC<UserApiKeysViewProps> = ({
             <Radio className="w-3.5 h-3.5 text-emerald-500" />
             <span>{t.tabWebhooks}</span>
             <span className="text-[11px] tabular-nums text-slate-400">{activeWebhooksCount}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('boost')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
+              activeSubTab === 'boost'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs font-semibold'
+                : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-500" />
+            <span>{t.tabBoostLimit}</span>
           </button>
         </div>
       </div>
@@ -440,6 +457,10 @@ export const UserApiKeysView: React.FC<UserApiKeysViewProps> = ({
           onOpenDeliveriesModal={() => setIsDeliveriesModalOpen(true)}
         />
       )}
+
+      {/* বাংলা মন্তব্য: আগে আলাদা boost-limit ট্যাবে থাকা BoostLimitView এখন
+          এই ভিউর ৪র্থ সাব-ট্যাব হিসেবে মেরামত করা হয়েছে। */}
+      {activeSubTab === 'boost' && <BoostLimitView />}
 
       {/* Modals */}
       <CreateKeyModal
