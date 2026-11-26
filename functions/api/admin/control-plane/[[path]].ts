@@ -7,6 +7,7 @@ import {
   resolveMcpTowerOrigin,
   fetchWithTimeout,
   callMcpTowerRpc,
+  timingSafeEqualStrings,
   verifyUpstreamSession,
 } from '../../../_lib/edgeHelpers';
 import {
@@ -55,7 +56,7 @@ async function probeServiceMesh(origin: string, env?: Record<string, string | un
   const upstreamOrigin = resolveUpstreamOrigin(env);
   const mcpOrigin = resolveMcpTowerOrigin(env);
 
-  // বাংলা মন্তব্য: ControlCenterHealthMonitorView এবং McpHealthMonitorSnapshot-এর পূর্ণাঙ্গ কন্ট্রাক্ট অনুযায়ী হেলথ অবজেক্ট তৈরি করা হচ্ছে।
+  // বাংলা মন্তব্য: ControlCenterHealthMonitorView এবং McpHealthMonitorSnapshot-এর পূর্ণাঙ্গ কন্ট্রাক্ট অনুযায়ী হেলথ অবজেক্ট তৈরি করা হচ্ছে।
   const probe = async (id: string, name: string, provider: string, url: string) => {
     const start = Date.now();
     const nowIso = new Date().toISOString();
@@ -220,78 +221,34 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     .filter(Boolean)
     .map((k: any) => String(k).trim());
 
-  let hasAdminCredential = false;
-  if (configuredKeys.length > 0) {
-    hasAdminCredential = Boolean(effectiveToken && configuredKeys.includes(effectiveToken));
-  } else {
-    // When no edge secrets configured, require valid non-trivial admin token
-    hasAdminCredential =
-      Boolean(effectiveToken) &&
-      effectiveToken.length >= 16 &&
-      (effectiveToken.startsWith('adm_') || effectiveToken.startsWith('sk-admin-'));
-  }
+  let hasAdminCredential =
+    configuredKeys.length > 0 &&
+    Boolean(effectiveToken) &&
+    configuredKeys.some((configured) => timingSafeEqualStrings(effectiveToken, configured));
 
-  // বাংলা মন্তব্য: অনুমোদিত প্রোজেক্ট অ্যাডমিনের ভ্যালিড সেশন টোকেন বা JWT থাকলে তাকে সরাসরি কন্ট্রোল প্লেন অ্যাক্সেস অনুমোদন দেওয়া হচ্ছে
+  // বাংলা মন্তব্য: P0 নিরাপত্তা শক্তিশালীকরণ — ক্লায়েন্ট-কন্ট্রোলড X-Admin-Email হেডার এবং
+  // অস্বাক্ষরিত JWT পেলোড থেকে অ্যাডমিন এলিভেশন সম্পূর্ণ বন্ধ করা হয়েছে। 'adm_'/'sk-admin-'
+  // প্রিফিক্স ফলব্যাকও সরানো হয়েছে — সিক্রেট কনফিগার না থাকলে এখন fail-closed। হার্ডকোডেড
+  // অ্যাডমিন ইমেইল সরিয়ে শুধু ADMIN_EMAIL / ADMIN_EMAILS এনভায়রনমেন্ট ব্যবহার করা হচ্ছে।
+  const authorizedAdmins = [
+    ...(env?.ADMIN_EMAIL ? [String(env.ADMIN_EMAIL).trim().toLowerCase()] : []),
+    ...(env?.ADMIN_EMAILS
+      ? String(env.ADMIN_EMAILS)
+          .split(',')
+          .map((e: string) => e.trim().toLowerCase())
+      : []),
+  ].filter(Boolean);
+
   if (!hasAdminCredential && effectiveToken) {
-    const authorizedAdmins = [
-      'niloyjoy7@gmail.com',
-      'paykaribazaronline@gmail.com',
-      'operator@supremeai.bd',
-      ...(env?.ADMIN_EMAIL ? [String(env.ADMIN_EMAIL).trim().toLowerCase()] : []),
-      ...(env?.ADMIN_EMAILS
-        ? String(env.ADMIN_EMAILS)
-            .split(',')
-            .map((e: string) => e.trim().toLowerCase())
-        : []),
-    ];
-
-    const clientEmail = String(request.headers.get('X-Admin-Email') || '').trim().toLowerCase();
-    if (clientEmail && authorizedAdmins.includes(clientEmail)) {
+    const upstreamOrigin = resolveUpstreamOrigin(env);
+    const session = await verifyUpstreamSession(request, upstreamOrigin).catch(() => ({ valid: false } as any));
+    if (
+      session.valid &&
+      ((session.email && authorizedAdmins.includes(session.email.toLowerCase())) ||
+        session.role === 'admin' ||
+        (Array.isArray(session.permissions) && session.permissions.includes('admin')))
+    ) {
       hasAdminCredential = true;
-    }
-
-    if (!hasAdminCredential) {
-      try {
-        const parts = effectiveToken.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-          const jwtEmail = String(
-            payload?.email ||
-            payload?.user_metadata?.email ||
-            payload?.app_metadata?.email ||
-            ''
-          ).trim().toLowerCase();
-          const jwtRole = String(
-            payload?.role ||
-            payload?.app_metadata?.role ||
-            payload?.user_metadata?.role ||
-            ''
-          ).trim().toLowerCase();
-          if (
-            (jwtEmail && authorizedAdmins.includes(jwtEmail)) ||
-            jwtRole === 'admin' ||
-            jwtRole === 'super_admin'
-          ) {
-            hasAdminCredential = true;
-          }
-        }
-      } catch {
-        // Non-JWT token
-      }
-    }
-
-    if (!hasAdminCredential) {
-      const upstreamOrigin = resolveUpstreamOrigin(env);
-      const session = await verifyUpstreamSession(request, upstreamOrigin).catch(() => ({ valid: false } as any));
-      if (
-        session.valid &&
-        ((session.email && authorizedAdmins.includes(session.email.toLowerCase())) ||
-          session.role === 'admin' ||
-          session.user_id === 'usr-admin-primary' ||
-          (Array.isArray(session.permissions) && session.permissions.includes('admin')))
-      ) {
-        hasAdminCredential = true;
-      }
     }
   }
 
