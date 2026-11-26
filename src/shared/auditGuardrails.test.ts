@@ -9,7 +9,7 @@ const ROOT = path.resolve(__dirname, '../..');
 // ম্যানুয়ালি ফিক্স করতে না হয়, তার জন্য অটোমেটেড CI গার্ডরেইল টেস্ট।
 describe('Automated Audit Guardrails (SA-02, SA-04, SA-08, SA-12)', () => {
   it('SA-02: edge /api/health derives modelsCount from CANONICAL_SERVER_MODELS and avoids hasApiKey leak', () => {
-    const healthSrc = fs.readFileSync(path.join(ROOT, 'functions/api/health.ts'), 'utf-8');
+    const healthSrc = fs.readFileSync(path.join(ROOT, 'src/api/routes/health.ts'), 'utf-8');
     expect(healthSrc).toContain('CANONICAL_SERVER_MODELS');
     expect(healthSrc).not.toMatch(/modelsCount:\s*1\b/);
     expect(healthSrc).not.toContain('hasApiKey');

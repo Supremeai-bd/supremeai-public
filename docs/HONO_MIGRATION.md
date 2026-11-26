@@ -51,7 +51,8 @@ src/api/node.ts           → Node: Express-এ mount (@hono/node-server)
 |---|---|---|---|
 | `GET /api/releases/latest` | ২০৪ → ২ | `routes/releases.ts` (২০০, মুছে ফেলা) | ✅ Hono |
 | `POST /api/telemetry/client-error` | ৭৩ → ২ | `routes/telemetry.ts`-এর অংশ | ✅ Hono (Edge-এর ৮ KB সীমা, 413 আর 405 এখন Node-এও আছে) |
-| `GET /api/health`, `GET /api/models` | ৩৫ + ২৩ | `routes/telemetry.ts` | ⏳ পরের ধাপ (gateway catalog cache দুই রানটাইমে আলাদা) |
+| `GET /api/health` | ৩৭ → ২ | `routes/telemetry.ts`-এর health অংশ সরানো | ✅ Hono; version package.json থেকে; providerReadiness, no-store, HEAD ও 405 |
+| `GET /api/models` | ২৩ | `routes/telemetry.ts` | ⏳ পরের ধাপ (gateway catalog cache দুই রানটাইমে আলাদা; এই PR-এ অপরিবর্তিত) |
 | `GET /api/platform/config` | ৪০ | `routes/admin/platform.ts` | ⏳ (Express-এ admin store থেকে পড়ে, Edge-এ static) |
 | `/api/llm-gateway/latency` | ১১০ | `routes/llmLatency.ts` | ⚠️ দুই কপির ডেটা আলাদা: Express-এ স্থির সংখ্যা, Edge-এ সত্যিকারের probe। আগে product সিদ্ধান্ত লাগবে |
 | `/api/share/*`, `/api/research/*` | ১২৭ + ২৫৪ | — (শুধু Edge-এ) | ⏳ সরাসরি Hono-তে নেওয়া যায় |
