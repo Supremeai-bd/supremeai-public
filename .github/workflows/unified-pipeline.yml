@@ -574,3 +574,17 @@ jobs:
             echo "Checking $p..."
             git apply --check "$p" || echo "::warning::Patch drift detected in $p"
           done
+
+  server-budget-report:
+    name: Server Budget Report (A6)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report server.ts line count and router count
+        run: |
+          LINES=$(wc -l < server.ts)
+          ROUTERS=$(ls -1 src/server/routes/*.ts 2>/dev/null | wc -l)
+          echo "### Server Budget Report (A6)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`server.ts\` lines: **$LINES**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Registered route modules (\`src/server/routes/*.ts\`): **$ROUTERS**" >> "$GITHUB_STEP_SUMMARY"
