@@ -149,66 +149,30 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     Boolean(effectiveToken) &&
     configuredKeys.some((configured) => timingSafeEqualStrings(effectiveToken, configured));
 
-  // বাংলা মন্তব্য: অথরাইজড প্রোজেক্ট অ্যাডমিনের ভ্যালিড সেশন টোকেন বা JWT থাকলে তাকে সরাসরি অ্যাডমিন অ্যাক্সেস অনুমোদন দেওয়া হচ্ছে
+  // বাংলা মন্তব্য: P0 নিরাপত্তা শক্তিশালীকরণ — ক্লায়েন্ট-কন্ট্রোলড X-Admin-Email হেডার এবং
+  // অস্বাক্ষরিত JWT পেলোড থেকে অ্যাডমিন এলিভেশন সম্পূর্ণ বন্ধ করা হয়েছে (দুটোই যে কেউ
+  // অনুকরণ করতে পারত)। হার্ডকোডেড অ্যাডমিন ইমেইলও সরানো হয়েছে — অনুমোদিত ইমেইল শুধু
+  // ADMIN_EMAIL / ADMIN_EMAILS এনভায়রনমেন্ট ভেরিয়েবল থেকে আসবে। এখন অ্যাডমিন এলিভেশন
+  // শুধু দুইভাবে সম্ভব: (১) কনফিগার করা অ্যাডমিন কী, (২) আপস্ট্রিম গেটওয়ে দ্বারা
+  // সার্ভার-সাইডে যাচাইকৃত বৈধ সেশন।
+  const authorizedAdmins = [
+    ...(env?.ADMIN_EMAIL ? [String(env.ADMIN_EMAIL).trim().toLowerCase()] : []),
+    ...(env?.ADMIN_EMAILS
+      ? String(env.ADMIN_EMAILS)
+          .split(',')
+          .map((e: string) => e.trim().toLowerCase())
+      : []),
+  ].filter(Boolean);
+
   if (!hasAdminCredential && effectiveToken) {
-    const authorizedAdmins = [
-      'niloyjoy7@gmail.com',
-      'paykaribazaronline@gmail.com',
-      'operator@supremeai.bd',
-      ...(env?.ADMIN_EMAIL ? [String(env.ADMIN_EMAIL).trim().toLowerCase()] : []),
-      ...(env?.ADMIN_EMAILS
-        ? String(env.ADMIN_EMAILS)
-            .split(',')
-            .map((e: string) => e.trim().toLowerCase())
-        : []),
-    ];
-
-    const clientEmail = String(request.headers.get('X-Admin-Email') || '').trim().toLowerCase();
-    if (clientEmail && authorizedAdmins.includes(clientEmail)) {
+    const session = await verifyUpstreamSession(request, upstreamOrigin).catch(() => ({ valid: false } as any));
+    if (
+      session.valid &&
+      ((session.email && authorizedAdmins.includes(session.email.toLowerCase())) ||
+        session.role === 'admin' ||
+        (Array.isArray(session.permissions) && session.permissions.includes('admin')))
+    ) {
       hasAdminCredential = true;
-    }
-
-    if (!hasAdminCredential) {
-      try {
-        const parts = effectiveToken.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-          const jwtEmail = String(
-            payload?.email ||
-            payload?.user_metadata?.email ||
-            payload?.app_metadata?.email ||
-            ''
-          ).trim().toLowerCase();
-          const jwtRole = String(
-            payload?.role ||
-            payload?.app_metadata?.role ||
-            payload?.user_metadata?.role ||
-            ''
-          ).trim().toLowerCase();
-          if (
-            (jwtEmail && authorizedAdmins.includes(jwtEmail)) ||
-            jwtRole === 'admin' ||
-            jwtRole === 'super_admin'
-          ) {
-            hasAdminCredential = true;
-          }
-        }
-      } catch {
-        // Non-JWT token
-      }
-    }
-
-    if (!hasAdminCredential) {
-      const session = await verifyUpstreamSession(request, upstreamOrigin).catch(() => ({ valid: false } as any));
-      if (
-        session.valid &&
-        ((session.email && authorizedAdmins.includes(session.email.toLowerCase())) ||
-          session.role === 'admin' ||
-          session.user_id === 'usr-admin-primary' ||
-          (Array.isArray(session.permissions) && session.permissions.includes('admin')))
-      ) {
-        hasAdminCredential = true;
-      }
     }
   }
 
