@@ -13,16 +13,20 @@
 import type { Express, Request, Response } from 'express';
 import { getRequestListener } from '@hono/node-server';
 import type { Hono } from 'hono';
-import { createApiApp, listApiPaths, type ApiBindings, type ApiEnv } from './app';
+import { createApiApp, listApiPaths, type ApiBindings, type ApiDeps, type ApiEnv } from './app';
 
 export interface MountApiOptions {
   api?: Hono<ApiEnv>;
+  fetchGatewayJson?: ApiDeps['fetchGatewayJson'];
   /** ডিফল্ট `process.env` — হ্যান্ডলার `readEnv()` দিয়ে পড়ে। */
   env?: ApiBindings;
 }
 
 export function mountApiOnExpress(app: Express, options: MountApiOptions = {}): string[] {
-  const api = options.api ?? createApiApp();
+  // বাংলা মন্তব্য: callback না থাকলেও Node-এর canonical source রাখা; Edge-এর source আলাদা থাকে।
+  const api =
+    options.api ??
+    createApiApp({ fetchGatewayJson: options.fetchGatewayJson ?? (async () => null) });
   const env = options.env ?? (process.env as ApiBindings);
   const paths = listApiPaths(api);
   if (paths.length === 0) return paths;

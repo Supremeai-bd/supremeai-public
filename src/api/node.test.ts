@@ -76,3 +76,41 @@ describe('mountApiOnExpress', () => {
     );
   });
 });
+
+// বাংলা মন্তব্য: server.ts-এর dependency injection HTTP boundary পার হয় এবং Node source অক্ষত থাকে।
+describe('Node models gateway injection', () => {
+  it('cached gateway callback-এর ফল Hono-তে পৌঁছায়', async () => {
+    const gateway = vi.fn(async () => ({
+      models: { custom: { name: 'Gateway' } },
+      default_model: 'custom',
+    }));
+    await withServer(
+      (app) => {
+        mountApiOnExpress(app, { env: {}, fetchGatewayJson: gateway });
+      },
+      async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/api/models`);
+        const body = await res.json();
+        expect(res.status).toBe(200);
+        expect(body.source).toBe('gateway+canonical');
+        expect(body.defaultModel).toBe('custom');
+        expect(body.models.custom.name).toBe('Gateway');
+        expect(gateway).toHaveBeenCalledWith('/api/v1/models');
+      }
+    );
+  });
+
+  it('gateway না থাকলে Node source canonical থাকে এবং HEAD body খালি', async () => {
+    await withServer(
+      (app) => {
+        mountApiOnExpress(app, { env: {} });
+      },
+      async (baseUrl) => {
+        expect((await (await fetch(`${baseUrl}/api/models`)).json()).source).toBe('canonical');
+        const head = await fetch(`${baseUrl}/api/models`, { method: 'HEAD' });
+        expect(head.status).toBe(200);
+        expect(await head.text()).toBe('');
+      }
+    );
+  });
+});

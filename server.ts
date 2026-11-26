@@ -35,8 +35,8 @@ import { registerMediaRoutes } from './src/server/routes/media';
 import { registerAuthRoutes } from './src/server/routes/auth';
 import { registerFeedbackRoutes } from './src/server/routes/feedback';
 import { mountApiOnExpress } from './src/api/node';
+import { createGatewayCatalogFetcher } from './src/server/routes/telemetry';
 import { registerStreamRoutes } from './src/server/routes/stream';
-import { registerTelemetryRoutes } from './src/server/routes/telemetry';
 import { registerGraphRoutes } from './src/server/routes/graph';
 import { registerTtsRoutes } from './src/server/routes/tts';
 import { registerPreferencesRoutes } from './src/server/routes/preferences';
@@ -317,7 +317,8 @@ async function startServer() {
     next();
   });
   // বাংলা মন্তব্য: Unified Hono API (src/api, Edge-এর সাথে একই কোড) — express.json()-এর আগে, body অক্ষত রাখতে
-  mountApiOnExpress(app);
+  // বাংলা মন্তব্য: callback request-time-এ চলে; তখন নিচের gateway cache সম্পূর্ণ initialized।
+  mountApiOnExpress(app, { fetchGatewayJson: (p, t) => fetchGatewayJson(p, t) });
   app.use(express.json({ limit: '15mb' }));
 
   // Zero-dependency in-memory sliding-window rate limiter (per client IP).
@@ -360,27 +361,7 @@ async function startServer() {
   const GATEWAY_BASE = (
     process.env.SUPREMEAI_BACKEND_URL?.trim() || 'https://supremeai-api-ulw0.onrender.com'
   ).replace(/\/$/, '');
-  const catalogCache = new Map<string, { data: any; expiresAt: number }>();
-  const fetchGatewayJson = async (pathAndQuery: string, ttlMs = 60_000): Promise<any | null> => {
-    const cached = catalogCache.get(pathAndQuery);
-    if (cached && cached.expiresAt > Date.now()) return cached.data;
-    try {
-      const res = await fetch(`${GATEWAY_BASE}${pathAndQuery}`, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(4500),
-      });
-      if (!res.ok) return cached?.data ?? null;
-      const data = await res.json();
-      catalogCache.set(pathAndQuery, { data, expiresAt: Date.now() + ttlMs });
-      return data;
-    } catch {
-      return cached?.data ?? null;
-    }
-  };
-
-  registerTelemetryRoutes(app, {
-    fetchGatewayJson: (p, t) => fetchGatewayJson(p, t),
-  });
+  const fetchGatewayJson = createGatewayCatalogFetcher(GATEWAY_BASE);
 
   // --- MCP Tower Services & Health Orchestration Endpoints ---  // --- MCP Tower Services & Health Orchestration Endpoints ---
   const mcpClusterServices = [

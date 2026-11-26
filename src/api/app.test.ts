@@ -33,13 +33,14 @@ describe('createApiApp — route registry', () => {
   it('lists every concrete migrated path (used by the Express mount)', () => {
     expect(listApiPaths(createApiApp())).toEqual([
       '/api/health',
+      '/api/models',
       '/api/releases/latest',
       '/api/telemetry/client-error',
     ]);
   });
 
   it('returns 404 for paths that are not migrated yet', async () => {
-    const res = await createApiApp().request('/api/models');
+    const res = await createApiApp().request('/api/not-migrated');
     expect(res.status).toBe(404);
   });
 });

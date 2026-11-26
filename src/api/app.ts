@@ -26,6 +26,7 @@ import { Hono, type Context } from 'hono';
 import { createReleasesRoutes } from './routes/releases';
 import { createTelemetryRoutes } from './routes/telemetry';
 import { createHealthRoutes } from './routes/health';
+import { createModelsRoutes } from './routes/models';
 
 /** দুই রানটাইমেই env হলো string ম্যাপ (Cloudflare `context.env` / Node `process.env`)। */
 export type ApiBindings = Record<string, string | undefined>;
@@ -40,6 +41,8 @@ export type ApiContext = Context<ApiEnv>;
 export interface ApiDeps {
   fetch?: typeof fetch;
   now?: () => number;
+  /** বাংলা মন্তব্য: শুধু Node-এর বিদ্যমান catalog cache; Edge-এ কোনো upstream fetch নয়। */
+  fetchGatewayJson?: (pathAndQuery: string, ttlMs?: number) => Promise<unknown>;
 }
 
 /** বাংলা মন্তব্য: env থেকে নিরাপদে string মান পড়া — দুই রানটাইমেই একই আচরণ। */
@@ -55,6 +58,7 @@ export function createApiApp(deps: ApiDeps = {}): Hono<ApiEnv> {
   app.route('/', createReleasesRoutes(deps));
   app.route('/', createTelemetryRoutes());
   app.route('/', createHealthRoutes());
+  app.route('/', createModelsRoutes(deps));
 
   return app;
 }
