@@ -7,7 +7,8 @@ use tauri::{AppHandle, State};
 use crate::secure_vault::{config_dir_file, read_encrypted_json_or_migrate, write_encrypted_json};
 
 const DEFAULT_GATEWAY_API: &str = "https://supremeai-api-ulw0.onrender.com";
-const DEFAULT_CORE_API: &str = "https://supremeai-primary-node.onrender.com";
+// বাংলা মন্তব্য: পুরনো supremeai-primary-node হোস্টটি আর বিদ্যমান নেই (মৃত লিংক) — লাইভ core API এখন -5xso Render ইনস্ট্যান্সে চলছে। SUPREMEAI_CORE_URL দিয়ে ওভাররাইড করা যাবে।
+const DEFAULT_CORE_API: &str = "https://supremeai-primary-node-5xso.onrender.com";
 const MAX_ADMIN_RESPONSE_BYTES: u64 = 1_000_000;
 
 fn resolve_https_endpoint(env_key: &str, default_url: &str) -> Result<String, String> {
