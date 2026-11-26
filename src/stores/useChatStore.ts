@@ -826,7 +826,7 @@ export const useChatStore = create<ChatState>((set, get) => {
             'Initializing Deep Research pipeline...\nSynthesizing multi-source empirical intelligence...\n',
         });
         try {
-          const res = await researchService.execute(text, 8, preferredLanguage);
+          const res = await researchService.execute(text, 8, preferredLanguage as 'en' | 'bn');
           const assistantMsg: ChatMessage = {
             id: `msg_${Date.now()}`,
             role: 'assistant',
@@ -1422,7 +1422,7 @@ When the user asks to create, build, design, or fix a project, app, website, das
         systemInstruction: effectiveSystemInstruction,
         groundingContext,
         deepResearch: effectiveDeepResearch,
-        language: preferredLanguage,
+        language: preferredLanguage as 'en' | 'bn',
         temperature: customerSettings.temperature,
         topP: customerSettings.topP,
         maxTokens: customerSettings.maxTokens,
@@ -1591,7 +1591,7 @@ When the user asks to create, build, design, or fix a project, app, website, das
             sessionId: current.id,
             systemInstruction: effectiveSystemInstruction,
             groundingContext,
-            language: preferredLanguage,
+            language: preferredLanguage as 'en' | 'bn',
             temperature: customerSettings.temperature,
             topP: customerSettings.topP,
             maxTokens: customerSettings.maxTokens,
@@ -1688,7 +1688,7 @@ When the user asks to create, build, design, or fix a project, app, website, das
           finalContent,
           browserIntent,
           finalBrowserSnapshot,
-          preferredLanguage
+          preferredLanguage as 'en' | 'bn'
         );
         browserSnapshot = finalBrowserSnapshot;
       }

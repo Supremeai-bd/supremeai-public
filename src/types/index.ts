@@ -170,7 +170,7 @@ export interface PluginItem {
 }
 
 export type WorkspaceContentLayout = 'compact' | 'fluid' | 'maximized';
-export type AppLanguage = 'en' | 'bn';
+export type AppLanguage = 'en' | 'bn' | 'es' | 'fr' | 'ar' | 'hi' | 'zh' | 'ja' | 'de' | 'pt' | (string & {});
 
 export interface UserAccountSettings {
   name: string;

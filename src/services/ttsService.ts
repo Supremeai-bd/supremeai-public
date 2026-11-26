@@ -20,7 +20,7 @@ import {
 } from '../utils/speechUtils';
 import { schedulePreferencesPatch } from './userPreferencesSyncBus';
 
-export type TtsLocale = 'en-US' | 'bn-BD' | 'bn-IN';
+export type TtsLocale = 'en-US' | 'bn-BD' | 'bn-IN' | (string & {});
 
 export const TTS_CONFIG_STORAGE_KEY = 'supremeai_global_tts_config_v1';
 export const TTS_CONFIG_SYNC_EVENT = 'supremeai:tts-config-updated';

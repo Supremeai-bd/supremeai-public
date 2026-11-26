@@ -10,7 +10,12 @@ export interface AppPreferencesState {
   setRole: (role: UserRole) => void;
 }
 
-const normalizeLanguage = (lang?: unknown): AppLanguage => (lang === 'bn' ? 'bn' : 'en');
+const normalizeLanguage = (lang?: unknown): AppLanguage => {
+  if (typeof lang === 'string' && /^[a-z]{2,3}(?:-[a-zA-Z0-9]{2,4})?$/.test(lang.trim())) {
+    return lang.trim().toLowerCase() as AppLanguage;
+  }
+  return 'en';
+};
 
 export const useAppPreferencesStore = create<AppPreferencesState>((set, get) => ({
   language: normalizeLanguage(useCustomerStore?.getState?.().userSettings?.language),

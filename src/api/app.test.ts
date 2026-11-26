@@ -33,6 +33,7 @@ describe('createApiApp — route registry', () => {
   it('lists every concrete migrated path (used by the Express mount)', () => {
     expect(listApiPaths(createApiApp())).toEqual([
       '/api/health',
+      '/api/i18n/:lang',
       '/api/models',
       '/api/releases/latest',
       '/api/share/:id',

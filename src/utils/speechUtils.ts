@@ -354,19 +354,40 @@ export function pickNativeSpeechVoice<T extends MinimalSpeechVoice>(
   );
 }
 
+const INTERNATIONAL_EDGE_VOICES: Record<string, { male: string; female: string; lang: string }> = {
+  es: { male: 'es-ES-AlvaroNeural', female: 'es-ES-ElviraNeural', lang: 'es-ES' },
+  fr: { male: 'fr-FR-HenriNeural', female: 'fr-FR-DeniseNeural', lang: 'fr-FR' },
+  ar: { male: 'ar-SA-HamedNeural', female: 'ar-SA-ZariyahNeural', lang: 'ar-SA' },
+  hi: { male: 'hi-IN-MadhurNeural', female: 'hi-IN-SwaraNeural', lang: 'hi-IN' },
+  zh: { male: 'zh-CN-YunxiNeural', female: 'zh-CN-XiaoxiaoNeural', lang: 'zh-CN' },
+  ja: { male: 'ja-JP-KeitaNeural', female: 'ja-JP-NanamiNeural', lang: 'ja-JP' },
+  de: { male: 'de-DE-ConradNeural', female: 'de-DE-KatjaNeural', lang: 'de-DE' },
+  pt: { male: 'pt-BR-AntonioNeural', female: 'pt-BR-FranciscaNeural', lang: 'pt-BR' },
+};
+
 export function resolveEdgeNeuralVoice(
   text: string,
   preferredPersona: LiveVoiceName,
   language: AppLanguage,
   banglaAccent: BanglaAccentId = DEFAULT_BANGLA_ACCENT
-): { voice: string; lang: 'bn-BD' | 'bn-IN' | 'en-US' } {
-  const hasBengali = /[\u0980-\u09FF]/.test(text) || detectBengaliOrBanglish(text);
+): { voice: string; lang: string } {
+  const hasBengaliScript = /[\u0980-\u09FF]/.test(text);
+  const isBanglaFamily = language === 'bn' || language.startsWith('bn-');
   const preferMale =
     preferredPersona === 'Puck' || preferredPersona === 'Charon' || preferredPersona === 'Fenrir';
   const accent = normalizeBanglaAccent(banglaAccent);
 
-  if (hasBengali || (language === 'bn' && !/[A-Za-z]{2,}/.test(text))) {
-    if (accent === 'bn-in') {
+  // Respect explicit international language selection first unless text actually contains Bengali script
+  const intlVoice = INTERNATIONAL_EDGE_VOICES[language];
+  if (intlVoice && !hasBengaliScript) {
+    return {
+      voice: preferMale ? intlVoice.male : intlVoice.female,
+      lang: intlVoice.lang,
+    };
+  }
+
+  if (hasBengaliScript || (isBanglaFamily && !/[A-Za-z]{2,}/.test(text)) || (isBanglaFamily && detectBengaliOrBanglish(text))) {
+    if (accent === 'bn-in' && language === 'bn') {
       return {
         voice: preferMale ? 'bn-IN-BashkarNeural' : 'bn-IN-TanishaaNeural',
         lang: 'bn-IN',
