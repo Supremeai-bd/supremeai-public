@@ -259,6 +259,30 @@ export const UniversalInboxPanel: React.FC = () => {
         localStorage.getItem('supremeai_token') ||
         '';
       const bodyText = selectedGmailDetail?.textBody || selectedItem.snippet;
+      // বাংলা মন্তব্য: Phase 1–2 — ড্রাফট রিপ্লাই তৈরির আগে প্রাসঙ্গিক মেমোরি (knowledge/search) থেকে রিকল করা
+      let memoryContext = '';
+      try {
+        const memRes = await fetch(`${getGatewayBase()}/api/v1/knowledge/search`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            query: `${selectedItem.subject} ${bodyText.slice(0, 200)}`.trim(),
+            limit: 3,
+          }),
+        });
+        if (memRes.ok) {
+          const memData = (await memRes.json()) as { results?: Array<{ content?: string }> };
+          const snippets = (memData.results || []).map((r) => r.content).filter(Boolean).slice(0, 3);
+          if (snippets.length > 0) {
+            memoryContext = `\n\nRelevant Memories:\n${snippets.map((s, i) => `[${i + 1}] ${s}`).join('\n')}`;
+          }
+        }
+      } catch {
+        // মেমোরি রিকল ব্যর্থ হলেও মূল ড্রাফট রিপ্লাই চলবে
+      }
       const res = await fetch(`${getGatewayBase()}/v1/chat/completions`, {
         method: 'POST',
         headers: {
@@ -277,7 +301,7 @@ export const UniversalInboxPanel: React.FC = () => {
             },
             {
               role: 'user',
-              content: `From: ${selectedItem.sender}\nSubject: ${selectedItem.subject}\nMessage:\n${bodyText.slice(0, 2000)}`,
+              content: `From: ${selectedItem.sender}\nSubject: ${selectedItem.subject}\nMessage:\n${bodyText.slice(0, 2000)}${memoryContext}`,
             },
           ],
         }),
