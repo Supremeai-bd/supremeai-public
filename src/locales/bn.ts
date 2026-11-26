@@ -984,7 +984,6 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   visionOcrPreviewLabel: 'OCR থেকে পাওয়া লেখা (পাঠানোর আগে যাচাই/এডিট করুন)',
   visionOcrDismiss: 'বন্ধ করুন',
   // Live Data Fabric (Federation auto-sync)
-  subviewLiveSync: 'লাইভ ডেটা ফ্যাব্রিক ও সিঙ্ক',
   syncTier1Title: 'Tier 1: কোর ও অপরিহার্য সার্ভিস',
   syncTier1Desc:
     'চ্যাট ইঞ্জিন, এআই মডেল ড্রপডাউন এবং কোর রানটাইম হেলথ — স্বাভাবিক ব্যবহারের জন্য এগুলো ১০০% লাইভ থাকা আবশ্যক।',

@@ -77,21 +77,17 @@
 তিনটে আলাদা সত্য মিলিয়ে অবস্থা ঠিক করে: মক মোড, অনুরোধের সাফল্য, ডেটার বয়স।
 আগে এগুলোর কোনোটাই দৃশ্যমান ছিল না।
 
-### ৪.৩ `featureFlagConsumers` — ফ্ল্যাগের সত্যের একমাত্র উৎস
+### ৪.৩ ফ্ল্যাগের সত্য — এখন কোড থেকেই মাপা হয়
 
-`src/data/featureFlagConsumers.ts`
+> **হালনাগাদ (২০২৬-১১-২৭):** আগের হাতে-লেখা `src/data/featureFlagConsumers.ts` তালিকা
+> সরানো হয়েছে — feature-flags ট্যাব মুছে যাওয়ার পর ফাইলটা কোথাও import হত না
+> (নিজেই ডেড কোড ছিল)। Admin Overview এখন শুধু সেই ফ্ল্যাগ দেখায় যেগুলো সত্যিই
+> রানটাইমে পড়া হয় (`INITIAL_FEATURE_FLAGS`: `enable_multimodal_vision`,
+> `enable_rag_grounding`)। `src/data/featureFlags.test.ts` সোর্স স্ক্যান করে যাচাই
+> করে যে প্রতিটি দেখানো ফ্ল্যাগ অন্তত একবার `featureFlags.<key>` /
+> `runtimeFeatureFlags.<key>` হিসেবে পড়া হয় — ডেড ফ্ল্যাগ যোগ করলে CI লাল হবে।
 
-এখন কোডই বলে দেয় কোন ফ্ল্যাগ কোথায় পড়া হয়। যে ফ্ল্যাগ কোথাও পড়া হয় না,
-টগল করলে সৎ বার্তা আসে:
-
-```
-Flag "X" ENABLED হয়েছে ও সংরক্ষিত হচ্ছে —
-তবে এই ফ্ল্যাগটা এখনো কোনো UI ফিচার গেট করে না।
-```
-
-হার্ডকোড "Server Enforced" বদলে এখন গোনা সংখ্যা: **`1/25 flag কোনো UI ফিচার গেট করে`**।
-
-### ৪.৪ `AdminFeatureFlagsView` আপডেট
+### ৪.৪ `AdminFeatureFlagsView` আপডেট (ঐতিহাসিক — ট্যাবটি PR #122-এ মুছে Admin Overview-এ একীভূত)
 
 - হার্ডকোড `"Server Enforced"` → `DataSourceBadge` (আসল `isLoaded` থেকে)
 - হার্ডকড `"Live Server Sync Active"` → সত্যিকারের wired-flag গণনা

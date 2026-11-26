@@ -53,8 +53,20 @@ export const SUBVIEW_TITLES: Record<string, string> = {
   'system-audit': 'System Audit Log',
   customers: 'Customer Directory',
   'mcp-tower': 'MCP Service Tower',
-  'live-sync': 'Live Data Fabric',
 };
+
+/**
+ * বাংলা মন্তব্য: App.tsx যে ট্যাবগুলো সত্যিই রেন্ডার করে তার একমাত্র উৎস (SSOT)।
+ * `chat` + প্রতিটি সাব-ভিউ। এর বাইরে কোনো নাম (পুরনো বুকমার্ক `?tab=repos`,
+ * `?tab=models`, `?tab=usage`, অপসারিত `live-sync` ইত্যাদি) এলে App ফাঁকা পেজ
+ * না দেখিয়ে `chat`-এ ফিরে যায়। নতুন ট্যাব যোগ করলে SUBVIEW_TITLES-এ যোগ করুন —
+ * navigationTabs.test.ts App.tsx-এর রেন্ডার শাখার সাথে এটা মিলিয়ে দেখে।
+ */
+export const ROUTABLE_TABS: ReadonlySet<string> = new Set(['chat', ...Object.keys(SUBVIEW_TITLES)]);
+
+export function isRoutableTab(tab: string | null | undefined): tab is string {
+  return typeof tab === 'string' && ROUTABLE_TABS.has(tab);
+}
 
 export function getLocalizedSubviewTitle(
   tab: string,
@@ -87,7 +99,6 @@ export function getLocalizedSubviewTitle(
     'system-audit': t.subviewSystemAudit,
     customers: t.subviewCustomers,
     'mcp-tower': t.subviewMcpTower,
-    'live-sync': t.subviewLiveSync,
   };
   return localizedMap[tab] || SUBVIEW_TITLES[tab] || t.workspaceFallbackTitle;
 }

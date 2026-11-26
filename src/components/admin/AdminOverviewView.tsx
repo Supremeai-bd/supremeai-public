@@ -830,7 +830,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => onNavigateTab('models')}
+                onClick={() => onNavigateTab('llm-gateway')}
                 className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
               >
                 {t.ovModelMatrix}

@@ -1004,7 +1004,6 @@ export const EN_DICT = {
   visionOcrPreviewLabel: 'Extracted OCR Text (Inspect & Edit before sending)',
   visionOcrDismiss: 'Dismiss',
   // Live Data Fabric (Federation auto-sync)
-  subviewLiveSync: 'Live Data Fabric & Sync',
   syncTier1Title: 'Tier 1: Core & Mission-Critical',
   syncTier1Desc:
     'Chat engine, model catalogue, and core runtime health. Required 100% live for normal operation.',
