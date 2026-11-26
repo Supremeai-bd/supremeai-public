@@ -591,7 +591,9 @@ export async function verifyUpstreamSession(
     return { valid: true, email: 'operator@supremeai.bd', isGuest: false, status: 200 };
   }
 
-  const cacheKey = token ? `t:${await hashTokenForCache(token)}` : `c:${await hashTokenForCache(cookie)}`;
+  // বাংলা মন্তব্য: upstream-এ পাঠানো সম্পূর্ণ auth context দিয়েই verdict আলাদা রাখি;
+  // শুধু token ধরলে ভিন্ন origin/cookie-র সেশন একই cached পরিচয় পেত। JSON tuple অস্পষ্ট যোগ এড়ায়।
+  const cacheKey = await hashTokenForCache(JSON.stringify([upstreamOrigin, token, cookie]));
   const cached = sessionVerifyCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) {
     return {
