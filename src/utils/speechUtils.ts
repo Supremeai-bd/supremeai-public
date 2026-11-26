@@ -371,13 +371,23 @@ export function resolveEdgeNeuralVoice(
   language: AppLanguage,
   banglaAccent: BanglaAccentId = DEFAULT_BANGLA_ACCENT
 ): { voice: string; lang: string } {
-  const hasBengali = /[\u0980-\u09FF]/.test(text) || detectBengaliOrBanglish(text);
+  const hasBengaliScript = /[\u0980-\u09FF]/.test(text);
+  const isBanglaFamily = language === 'bn' || language.startsWith('bn-');
   const preferMale =
     preferredPersona === 'Puck' || preferredPersona === 'Charon' || preferredPersona === 'Fenrir';
   const accent = normalizeBanglaAccent(banglaAccent);
 
-  if (hasBengali || (language === 'bn' && !/[A-Za-z]{2,}/.test(text))) {
-    if (accent === 'bn-in') {
+  // Respect explicit international language selection first unless text actually contains Bengali script
+  const intlVoice = INTERNATIONAL_EDGE_VOICES[language];
+  if (intlVoice && !hasBengaliScript) {
+    return {
+      voice: preferMale ? intlVoice.male : intlVoice.female,
+      lang: intlVoice.lang,
+    };
+  }
+
+  if (hasBengaliScript || (isBanglaFamily && !/[A-Za-z]{2,}/.test(text)) || (isBanglaFamily && detectBengaliOrBanglish(text))) {
+    if (accent === 'bn-in' && language === 'bn') {
       return {
         voice: preferMale ? 'bn-IN-BashkarNeural' : 'bn-IN-TanishaaNeural',
         lang: 'bn-IN',
@@ -386,14 +396,6 @@ export function resolveEdgeNeuralVoice(
     return {
       voice: preferMale ? 'bn-BD-PradeepNeural' : 'bn-BD-NabanitaNeural',
       lang: 'bn-BD',
-    };
-  }
-
-  const intlVoice = INTERNATIONAL_EDGE_VOICES[language];
-  if (intlVoice) {
-    return {
-      voice: preferMale ? intlVoice.male : intlVoice.female,
-      lang: intlVoice.lang,
     };
   }
 

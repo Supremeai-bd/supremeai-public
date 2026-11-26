@@ -82,7 +82,7 @@ async function translateViaLlm(
         messages: [
           {
             role: 'system',
-            content: `You are a UI localization engine. Translate the JSON values from English to language code "${targetLang}". Preserve all JSON keys, placeholders (like {count}, {{name}}), and markdown/emoji intact. Return ONLY valid JSON.`,
+            content: `You are a UI localization engine. Translate the JSON values from English to language code "${targetLang}". If "${targetLang}" is a Bangladeshi regional dialect (e.g. bn-ctg = Chittagonian, bn-syl = Sylheti, bn-raj = Rajshahi, bn-nkh = Noakhali), translate naturally into Bengali script using that region's authentic spoken dialect. Preserve all JSON keys, placeholders (like {count}, {{name}}), and markdown/emoji intact. Return ONLY valid JSON.`,
           },
           {
             role: 'user',
