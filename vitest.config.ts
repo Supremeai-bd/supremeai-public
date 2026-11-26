@@ -20,6 +20,7 @@ export default defineConfig({
         'src/stores/**/*.{ts,tsx}',
         'src/shared/**/*.{ts,tsx}',
         'src/server/**/*.{ts,tsx}',
+        'src/api/**/*.{ts,tsx}',
         'src/lib/**/*.{ts,tsx}',
         'src/data/**/*.{ts,tsx}',
         'functions/**/*.{ts,tsx}',

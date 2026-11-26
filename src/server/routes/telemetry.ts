@@ -6,17 +6,20 @@ import { PLAN_CATALOG } from '../../config/plans';
 import { CANONICAL_SERVER_MODELS, DEFAULT_MODEL_ID } from '../../shared/platformCatalog';
 
 /**
- * Telemetry + Health + Models — `POST /api/telemetry/client-error` + `GET /api/health` + `GET /api/models`
+ * Health + Models — `GET /api/health` + `GET /api/models`
+ *
+ * (`POST /api/telemetry/client-error` এখন src/api/routes/telemetry.ts-এ —
+ *  Hono, Express ও Edge দুই রানটাইমের জন্য একটাই কপি।)
  *
  * WHY THIS FILE EXISTS
- *   Three platform-observability endpoints (health metadata, model catalog with
- *   gateway proxy, fire-and-forget client-error sink) lived inline in
+ *   Platform-observability endpoints (health metadata, model catalog with
+ *   gateway proxy) lived inline in
  *   `server.ts` (~60 lines). Cohesive (all are public, unauthenticated
  *   telemetry/health probes) and have no other consumer. Moving them keeps the
  *   monolith shrinking.
  *
  * CONTRACT WITH server.ts
- *   - All 3 handlers OWNED here (no other route reads their state).
+ *   - Both handlers OWNED here (no other route reads their state).
  *   - `fetchGatewayJson` injected via ctx (gateway cache helper).
  *   - `SUPPORTED_MODELS` + `APP_VERSION` derived locally (read from fs/package
  *     for version, const model map inlined to avoid cross-file mutation).
@@ -74,24 +77,5 @@ export function registerTelemetryRoutes(app: Express, ctx: TelemetryContext): vo
         (hasRemoteMap && (remote?.defaultModel || remote?.default_model)) || DEFAULT_MODEL_ID,
       source: hasRemoteMap ? 'gateway+canonical' : 'canonical',
     });
-  });
-
-  // Client error sink (mirrors functions/api/telemetry/client-error.ts).
-  // The browser reporter is fire-and-forget; never fail it noisily.
-  app.post('/api/telemetry/client-error', (req: Request, res: Response) => {
-    const body =
-      req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
-    const summary = {
-      message: String(body.message ?? 'unknown').slice(0, 300),
-      source: String(body.source ?? 'app').slice(0, 40),
-      route: body.route ? String(body.route).slice(0, 120) : undefined,
-      at: body.at ? String(body.at).slice(0, 40) : new Date().toISOString(),
-      contextKeys:
-        body.context && typeof body.context === 'object'
-          ? Object.keys(body.context as Record<string, unknown>).slice(0, 10)
-          : [],
-    };
-    console.warn('[client-error]', JSON.stringify(summary));
-    res.status(204).end();
   });
 }

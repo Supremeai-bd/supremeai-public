@@ -34,7 +34,7 @@ import { registerGitOauthRoutes } from './src/server/routes/gitOauth';
 import { registerMediaRoutes } from './src/server/routes/media';
 import { registerAuthRoutes } from './src/server/routes/auth';
 import { registerFeedbackRoutes } from './src/server/routes/feedback';
-import { registerReleasesRoutes } from './src/server/routes/releases';
+import { mountApiOnExpress } from './src/api/node';
 import { registerStreamRoutes } from './src/server/routes/stream';
 import { registerTelemetryRoutes } from './src/server/routes/telemetry';
 import { registerGraphRoutes } from './src/server/routes/graph';
@@ -226,7 +226,6 @@ async function startServer() {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
-  app.use(express.json({ limit: '15mb' }));
 
   const isHttpsRequest = (req: Request): boolean => {
     const protoHeader = String(req.header('x-forwarded-proto') || '').toLowerCase();
@@ -317,6 +316,9 @@ async function startServer() {
     });
     next();
   });
+  // বাংলা মন্তব্য: Unified Hono API (src/api, Edge-এর সাথে একই কোড) — express.json()-এর আগে, body অক্ষত রাখতে
+  mountApiOnExpress(app);
+  app.use(express.json({ limit: '15mb' }));
 
   // Zero-dependency in-memory sliding-window rate limiter (per client IP).
   const rateBuckets = new Map<string, number[]>();
@@ -1786,8 +1788,6 @@ async function startServer() {
     recordAudit: (a, b, c, d, e) => recordAudit(a, b, c, d, e),
     persistDevUsersDb: (u) => persistDevUsersDb(u),
   });
-
-  registerReleasesRoutes(app);
 
   registerFeedbackRoutes(app, {
     verifyAdminAuthorization: (req) => verifyAdminAuthorization(req),
