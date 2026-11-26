@@ -124,7 +124,10 @@ const TARGET = 'server.ts';
 // 2797 → 2559 after extracting knowledge CRUD (4 routes), llm-gateway latency
 //         (2 routes), and agent-swarm SSE stream into src/server/routes/{knowledge,llmLatency}.ts
 //         and admin/swarmQueue.ts (−238 lines; zero inline feature routes left).
-const BUDGET = 2559;
+// 2559 → 2527 after the week-2 cleanup and the first Hono step: GET /api/releases/latest
+//         and POST /api/telemetry/client-error now live in src/api/routes (shared with
+//         Cloudflare Pages), mounted via mountApiOnExpress (docs/HONO_MIGRATION.md).
+const BUDGET = 2527;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

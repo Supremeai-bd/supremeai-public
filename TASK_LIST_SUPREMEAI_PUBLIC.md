@@ -113,6 +113,12 @@
 
 ### 8. Cloudflare Pages Functions ↔ Express `server.ts` ডুপ্লিকেট লজিক (P2)
 
+> 🚧 **চলছে (২০২৬-১১-২৬):** পদ্ধতি ঠিক হয়েছে — রুট হ্যান্ডলার একবার লেখা হবে
+> **Hono**-তে (`src/api/`), Cloudflare (`functions/_lib/honoAdapter.ts`) আর Express
+> (`src/api/node.ts`) দুই জায়গা থেকেই সেটা চলবে। প্রথম ধাপে `GET /api/releases/latest`
+> আর `POST /api/telemetry/client-error` সরানো হয়েছে। রুট-গ্রুপের তালিকা ও অবস্থা:
+> `docs/HONO_MIGRATION.md`।
+
 **সমস্যা:** `functions/api/mcp-tower/[[path]].ts` (Cloudflare) এবং `server.ts` (Express) — দুইޫটে একই MCP Tower লজিক।
 **অ্যাকশন:**
 
