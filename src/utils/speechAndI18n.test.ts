@@ -276,14 +276,12 @@ describe('speechUtils (Unified Voice & Bilingual Speech)', () => {
 });
 
 describe('i18n translation parity', () => {
-  it('maintains identical non-empty EN and BN translation dictionaries', () => {
+  it('maintains non-empty EN base translation dictionary for dynamic DB localization', () => {
     const enKeys = Object.keys(TRANSLATIONS.en).sort();
-    const bnKeys = Object.keys(TRANSLATIONS.bn).sort();
-    expect(bnKeys).toEqual(enKeys);
+    expect(enKeys.length).toBeGreaterThan(0);
 
     for (const key of enKeys as Array<keyof typeof TRANSLATIONS.en>) {
       expect(TRANSLATIONS.en[key].trim().length).toBeGreaterThan(0);
-      expect(TRANSLATIONS.bn[key].trim().length).toBeGreaterThan(0);
     }
   });
 });

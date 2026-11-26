@@ -372,7 +372,7 @@ export function registerTtsRoutes(app: Express, ctx: TtsContext): void {
           {
             audioBase64: audioBuffer.toString('base64'),
             mimeType: 'audio/mpeg',
-            lang: edgeLang,
+            lang: edgeLang as 'en-US' | 'bn-BD' | 'bn-IN',
           },
         ];
       } catch (wsErr) {

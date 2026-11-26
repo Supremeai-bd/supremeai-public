@@ -26,6 +26,7 @@ import {
   type TtsAudioChunk,
 } from '../utils/speechUtils';
 import { logger } from '../utils/logger';
+import type { AppLanguage } from '../types';
 
 export type LiveVoiceName = 'Zephyr' | 'Puck' | 'Kore' | 'Charon' | 'Fenrir';
 
@@ -65,7 +66,7 @@ interface LiveServerMessage {
 
 interface UseLiveVoiceSessionOptions {
   systemInstruction?: string;
-  language?: 'en' | 'bn';
+  language?: AppLanguage;
   onTurnCommitted?: (
     userText: string,
     assistantText: string,
@@ -273,7 +274,7 @@ export function useLiveVoiceSession({
   const systemInstructionRef = useRef<string | undefined>(systemInstruction);
   systemInstructionRef.current = systemInstruction;
 
-  const languageRef = useRef<'en' | 'bn'>(language);
+  const languageRef = useRef<AppLanguage>(language);
   languageRef.current = language;
 
   const onTurnCommittedRef = useRef(onTurnCommitted);
@@ -1226,7 +1227,7 @@ export function useLiveVoiceSession({
             {
               audioBase64: base64Audio,
               mimeType: typeof data.mimeType === 'string' ? data.mimeType : 'audio/mpeg',
-              lang: payload.locale,
+              lang: payload.locale as 'en-US' | 'bn-BD' | 'bn-IN',
             },
           ],
           genId,
