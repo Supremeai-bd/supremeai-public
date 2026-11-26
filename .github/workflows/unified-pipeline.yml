@@ -22,6 +22,8 @@ on:
       - 'package-lock.json'
       - 'version.json'
       - 'deploy/admin-redirect/**'
+      # বাংলা মন্তব্য: শুধু Rule 10 patch merge হলেও reverse-sync job চালু হবে।
+      - '.patches/private/**'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -77,7 +79,10 @@ jobs:
       - name: Run Intelligent PR Guard Preflight
         id: guard
         shell: bash
-        run: node scripts/smart-pr-guard.mjs
+        run: |
+          node scripts/smart-pr-guard.mjs
+          # বাংলা মন্তব্য: dependency ছাড়াই sync lifecycle regression বিদ্যমান gate-এ চলবে।
+          python3 -m unittest discover -s scripts/ci -p 'test_*.py'
 
   build-web:
     name: '1/4 Build & Deploy Web Studio'

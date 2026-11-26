@@ -1,0 +1,692 @@
+diff --git a/scripts/ci/apply_cross_repo_patch.py b/scripts/ci/apply_cross_repo_patch.py
+--- a/scripts/ci/apply_cross_repo_patch.py
++++ b/scripts/ci/apply_cross_repo_patch.py
+@@ -17,6 +17,8 @@
+ from __future__ import annotations
+ 
+ import argparse
++import hashlib
++import json
+ import os
+ import subprocess
+ import sys
+@@ -26,11 +28,9 @@
+ 
+ 
+ def is_loop_prevented(actor: str | None = None) -> bool:
+-    """বাংলা মন্তব্য: বটের তৈরি PR বা অ্যাকশন থেকে সার্কুলার লুপ প্রতিরোধে গার্ড ফাংশন।"""
++    """বাংলা মন্তব্য: dependency-bot নীতি অপরিবর্তিত; canonical sync bot-কে আটকাব না।"""
+     current_actor = actor or os.getenv("GITHUB_ACTOR", "")
+     blocked_actors = {
+-        "github-actions[bot]",
+-        "app/github-actions",
+         "dependabot[bot]",
+         "renovate[bot]",
+     }
+@@ -139,8 +139,8 @@
+     applied_patches: list[Path],
+     source_dir: Path | None = None,
+ ) -> bool:
+-    """Rule #10 loop-stop: after target auto-sync PR opens, open a source-repo PR
+-    that deletes the consumed .patches/ inputs so later pushes do not re-sync.
++    """বাংলা মন্তব্য: clean target main-এ reverse-check সফল হওয়ার পরেই source cleanup PR।
++    শুধু target PR খোলা input মুছে ফেলার প্রমাণ নয়।
+ 
+     Requires GH_TOKEN (CI). source_dir defaults to cwd (pipeline source root).
+     Missing files → no-op success (already consumed).
+@@ -165,8 +165,11 @@
+         print("  [cleanup] patch file(s) already removed from source; nothing to do.")
+         return True
+ 
+-    slug = "-".join(Path(r).stem for r in existing[:3])[:30]
++    slug = sync_branch_name([src / r for r in existing]).removeprefix("sync/patch-")
+     branch_name = f"sync/consume-{slug}"
++    state = sync_pr_state(src, source_repo, branch_name, legacy_branch=f"sync/consume-{'-'.join(Path(r).stem for r in existing[:3])[:30]}")
++    if state != "new":
++        return state == "open"
+ 
+     print(f"  [cleanup] Opening source PR to consume patches on {source_repo} ({branch_name})...")
+     try:
+@@ -180,7 +183,7 @@
+ 
+     commit_msg = (
+         "chore(sync): consume cross-repo patches (Rule #10 loop-stop)\n\n"
+-        "Auto-removed after target auto-sync PR opened:\n"
++        "Target main-এ content যাচাইয়ের পরে অপসারণ:\n"
+         + "\n".join(f"- {r}" for r in existing)
+     )
+     try:
+@@ -190,26 +193,14 @@
+         print(f"  [cleanup-error] git commit/push failed: {exc}")
+         return False
+ 
+-    try:
+-        existing_pr = subprocess.check_output(
+-            ["gh", "pr", "list", "--repo", source_repo, "--head", branch_name, "--state", "open", "--json", "number", "--jq", ".[0].number"],
+-            cwd=src,
+-            text=True,
+-        ).strip()
+-    except Exception:
+-        existing_pr = ""
+-    if existing_pr and existing_pr != "null":
+-        print(f"  [cleanup-ok] Source cleanup PR #{existing_pr} already open for {branch_name}.")
+-        return True
+-
+     pr_body = (
+         "## Rule #10 loop-stop — consume cross-repo patch inputs\n\n"
+-        "Target auto-sync PR has been opened (or content already landed). "
++        "Target main-এ patch-এর content reverse-check দিয়ে যাচাই হয়েছে। "
+         "This PR deletes the input patch file(s) from `.patches/` so future pushes "
+-        "do not re-sync (force-push same branch).\n\n"
++        "পুনরায় sync না হয়।\n\n"
+         "### Removed\n"
+         + "\n".join(f"- `{r}`" for r in existing)
+-        + "\n\n> Loop-guard: merge only after the corresponding target PR is healthy (open or merged)."
++        + "\n\n> Loop-guard: target main-এ content থাকা যাচাই ছাড়া source input মুছবেন না।"
+     )
+     try:
+         subprocess.run(
+@@ -231,6 +222,43 @@
+         return False
+ 
+ 
++def sync_branch_name(patches: list[Path]) -> str:
++    """বাংলা মন্তব্য: ফাইলের নাম ও bytes দিয়ে branch; truncated slug collision নয়।"""
++    digest = hashlib.sha256()
++    for patch in sorted(patches, key=lambda p: p.name):
++        for part in (patch.name.encode("utf-8"), patch.read_bytes()):
++            digest.update(len(part).to_bytes(8, "big"))
++            digest.update(part)
++    return f"sync/patch-{digest.hexdigest()[:24]}"
++
++
++def sync_pr_state(work_dir: Path, repo: str, branch_name: str, *, legacy_branch: str | None = None, query_state: str = "all") -> str:
++    """বাংলা মন্তব্য: target ও cleanup উভয়ের এক lookup; ব্যর্থতায় কোনো git write নয়।"""
++    try:
++        prs = json.loads(subprocess.check_output(
++            ["gh", "pr", "list", "--repo", repo, "--head", branch_name,
++             "--state", query_state, "--json", "number,state"],
++            cwd=work_dir, text=True,
++        ))
++        if not isinstance(prs, list):
++            raise ValueError("PR lookup did not return a list")
++        if prs:
++            if len(prs) == 1 and prs[0].get("state") == "OPEN":
++                print(f"  [reuse] PR #{prs[0]['number']} already open; no push needed.")
++                return "open"
++            print("  [blocked] Prior PR is not uniquely open; review before reapplying this patch.")
++            return "blocked"
++    except (subprocess.CalledProcessError, OSError, ValueError, TypeError, AttributeError, KeyError) as exc:
++        print(f"  [error] PR lookup failed; refusing duplicate submission: {exc}")
++        return "blocked"
++
++    # বাংলা মন্তব্য: পুরনো slug-branch-এর PR খোলা থাকলে দ্বিতীয় hash-branch খুলব না।
++    if legacy_branch and sync_pr_state(work_dir, repo, legacy_branch, query_state="open") != "new":
++        print("  [blocked] Legacy branch has an open/unknown PR; resolve it before changing branch format.")
++        return "blocked"
++    return "new"
++
++
+ def create_sync_pr(
+     target_dir: Path,
+     target_repo: str,
+@@ -244,6 +272,13 @@
+         print("  [skip] No file diff in target repo after applying patches.")
+         return False
+ 
++    # বাংলা মন্তব্য: একই content-এর open PR থাকলে কোনো branch/commit/push নয়।
++    # lookup ব্যর্থ বা পুরনো PR বন্ধ/merged অথচ content অনুপস্থিত হলে মানুষের যাচাই লাগবে।
++    branch_name = sync_branch_name(applied_patches)
++    state = sync_pr_state(target_dir, target_repo, branch_name, legacy_branch=f"sync/patch-{'-'.join(p.stem for p in applied_patches[:3])[:30]}")
++    if state != "new":
++        return state == "open"
++
+     # বাংলা মন্তব্য: git apply --numstat থেকে নিখুঁতভাবে শুধুমাত্র প্যাচের টার্গেট ফাইলগুলো স্টেজ করা
+     files_to_stage = set()
+     for p in applied_patches:
+@@ -260,8 +295,6 @@
+         return False
+ 
+     patch_names = [p.name for p in applied_patches]
+-    slug = "-".join([p.stem for p in applied_patches[:3]])
+-    branch_name = f"sync/patch-{slug[:30]}"
+ 
+     print(f"  [git] Configuring bot identity and checkout branch '{branch_name}'...")
+     subprocess.run(["git", "config", "user.name", "github-actions[bot]"], cwd=target_dir, check=True)
+@@ -273,30 +306,16 @@
+ 
+     commit_msg = f"chore(sync): cross-repo patch sync from {source_repo}\n\nApplied patches:\n" + "\n".join(f"- {p}" for p in patch_names)
+     subprocess.run(["git", "commit", "-m", commit_msg], cwd=target_dir, check=True)
+-    subprocess.run(["git", "push", "-u", "origin", branch_name, "--force"], cwd=target_dir, check=True)
+-
+-    # Check if PR already exists
+-    try:
+-        existing_pr = subprocess.check_output(
+-            ["gh", "pr", "list", "--repo", target_repo, "--head", branch_name, "--state", "open", "--json", "number", "--jq", ".[0].number"],
+-            cwd=target_dir,
+-            text=True,
+-        ).strip()
+-    except Exception:
+-        existing_pr = ""
+-
+-    if existing_pr and existing_pr != "null":
+-        print(f"  [ok] Open PR #{existing_pr} already exists for {branch_name}; updated via push.")
+-        return True
++    subprocess.run(["git", "push", "-u", "origin", branch_name], cwd=target_dir, check=True)
+ 
+     pr_body = (
+         f"## Automated Cross-Repo Patch Synchronization\n\n"
+         f"- **Source Repo:** `{source_repo}` (`{source_ref}`)\n"
+         f"- **Applied Patches:**\n"
+-        + "\n".join(f"  - `{p}`" for p in applied_patches)
++        + "\n".join(f"  - `{p}`" for p in patch_names)
+         + "\n\n### বাংলা বিবরণ\n"
+         f"সোর্স রিপোজিটরি `{source_repo}`-এর পরিবর্তনের পরিপ্রেক্ষিতে এই প্যাচটি স্বয়ংক্রিয়ভাবে প্রয়োগ করে PR তৈরি করা হয়েছে।\n\n"
+-        f"> 🛡️ **Loop Guard Active:** Tagged with `auto-sync` label to prevent circular triggers.\n"
++        f"> 🛡️ একই content-এর PR reuse হয়; source cleanup শুধু target main-এ reverse-check-এর পরে।\n"
+     )
+ 
+     # বাংলা মন্তব্য: রিমোট টার্গেট রিপোতে auto-sync লেবেল নিশ্চিত করা
+@@ -353,31 +372,32 @@
+     parser.add_argument("--create-pr", action="store_true", help="Commit applied changes and create GitHub PR")
+     args = parser.parse_args()
+ 
+-    # 1. Loop Guard
+     if is_loop_prevented():
+-        print("[apply_cross_repo_patch] Loop guard active (bot actor detected). Skipping to prevent circular ping-pong.")
++        print("[apply_cross_repo_patch] Dependency-bot actor skipped by policy.")
+         return 0
+ 
+     patch_dir = Path(args.patch_dir).resolve()
+     target_dir = Path(args.target_dir).resolve()
+-
+     if not target_dir.exists():
+         print(f"Error: Target directory does not exist: {target_dir}")
+         return 1
+-
+     patches = find_patches(patch_dir)
+     if not patches:
+-        print(f"[apply_cross_repo_patch] No patch files found in {patch_dir}. Nothing to apply.")
++        print(f"[apply_cross_repo_patch] No patch files found in {patch_dir}.")
+         return 0
+ 
+-    print(f"=== SupremeAI Cross-Repo Patch Applicator ===")
+-    print(f"Found {len(patches)} patch file(s) in {patch_dir.name}:")
+-    for p in patches:
+-        print(f"  - {p.name}")
+-
+-    # Validate all patches first. Already-landed content (reverse-check) is
+-    # NOT a conflict — it means the target auto-sync PR already merged; we
+-    # only need Rule #10 loop-stop cleanup on the source side.
++    # বাংলা মন্তব্য: local dirty work merge-এর প্রমাণ নয়, অন্যের ফাইল sync-এ যাবে না।
++    # target clone অবশ্যই main-এ থাকবে; apply হওয়ার আগেই এই check করতে হবে।
++    try:
++        dirty = subprocess.check_output(["git", "status", "--porcelain"], cwd=target_dir, text=True)
++        branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=target_dir, text=True).strip()
++        if dirty.strip() or branch != "main":
++            print("[blocked] Target must be a clean main checkout before patch processing.")
++            return 1
++    except (subprocess.CalledProcessError, OSError) as exc:
++        print(f"[error] Target checkout verification failed: {exc}")
++        return 1
++
+     pending: list[Path] = []
+     already: list[Path] = []
+     for p in patches:
+@@ -389,71 +409,38 @@
+         if can_apply:
+             pending.append(p)
+         elif is_already_applied(target_dir, p):
+-            print(f"  [already-landed] {p.name} — reverse-check OK; source cleanup only.")
++            print(f"  [already-landed] {p.name}: reverse-check OK on clean main.")
+             already.append(p)
+         else:
+-            print(f"Conflict error for {p.name} on {target_dir.name}:\n{check_msg}")
++            print(f"Conflict error for {p.name}: {check_msg}")
+             return 1
+ 
+-    if pending:
+-        print(f"All pending patches validated cleanly ({len(pending)} to apply).")
+-
+-    if args.dry_run:
+-        if already and not pending:
+-            print("[dry-run] All patches already landed on target; source cleanup would run on --create-pr.")
+-        else:
+-            print("[dry-run] Dry run completed successfully. All pending patches apply cleanly.")
++    if args.dry_run or not (args.apply or args.create_pr):
++        print("[read-only] Validation completed; no files/PRs changed.")
+         return 0
+ 
+-    if already and not pending:
+-        # Target content already merged (auto-sync PR landed) — Rule #10 loop-stop:
+-        # consume the input patch files on the source side only.
+-        # Cleanup is BEST-EFFORT: a push/PR failure here must not fail the sync job
+-        # (the target side is already consistent).
+-        print("All patches already landed on target — running source cleanup only.")
++    for p in pending:
++        success, msg = apply_patch(target_dir, p)
++        if not success:
++            print(f"Failed to apply {p.name}: {msg}")
++            return 1
++
++    if args.create_pr and pending:
++        if not create_sync_pr(
++            target_dir=target_dir, target_repo=args.target_repo,
++            source_repo=args.source_repo, applied_patches=pending, source_ref=args.source_ref,
++        ):
++            return 1
++
++    # বাংলা মন্তব্য: এই run-এ নতুন apply করা patch এখনো merged নয়; শুধু পূর্বপ্রমাণিত
++    # already তালিকাই consume হবে। --apply/validation কখনো GitHub-এ mutation করবে না।
++    if args.create_pr and already:
+         try:
+-            cleaned = create_source_cleanup_pr(args.source_repo, already, source_dir=ROOT)
+-            if not cleaned:
+-                print("  [cleanup-warn] source cleanup did not complete; open a delete PR for the patch file(s) manually.")
++            if not create_source_cleanup_pr(args.source_repo, already, source_dir=ROOT):
++                print("[cleanup-warn] Source cleanup incomplete; inputs retained for retry.")
+         except Exception as exc:
+-            print(f"  [cleanup-warn] source cleanup raised: {exc}")
+-        print("\n[apply_cross_repo_patch] Execution completed successfully.")
+-        return 0
+-
+-    applied: list[Path] = []
+-    if args.apply or args.create_pr:
+-        for p in pending:
+-            success, apply_msg = apply_patch(target_dir, p)
+-            if not success:
+-                print(f"Failed to apply {p.name}: {apply_msg}")
+-                return 1
+-            print(f"  [applied] {p.name}")
+-            applied.append(p)
+-
+-    if args.create_pr and applied:
+-        pr_ok = create_sync_pr(
+-            target_dir=target_dir,
+-            target_repo=args.target_repo,
+-            source_repo=args.source_repo,
+-            applied_patches=applied,
+-            source_ref=args.source_ref,
+-        )
+-        if not pr_ok:
+-            return 1
+-        # Rule #10 loop-stop: target auto-sync PR is open → consume source inputs
+-        # (include any already-landed siblings from a mixed batch). Best-effort:
+-        # target PR is already open — cleanup failure must not fail this job.
+-        try:
+-            create_source_cleanup_pr(args.source_repo, applied + already, source_dir=ROOT)
+-        except Exception as exc:
+-            print(f"  [cleanup-warn] source cleanup raised: {exc}")
+-    elif already:
+-        try:
+-            create_source_cleanup_pr(args.source_repo, already, source_dir=ROOT)
+-        except Exception as exc:
+-            print(f"  [cleanup-warn] source cleanup raised: {exc}")
+-
+-    print("\n[apply_cross_repo_patch] Execution completed successfully.")
++            print(f"[cleanup-warn] Source cleanup failed: {exc}")
++    print("[apply_cross_repo_patch] Execution completed successfully.")
+     return 0
+ 
+ 
+diff --git a/scripts/ci/create_cross_repo_patch.py b/scripts/ci/create_cross_repo_patch.py
+--- a/scripts/ci/create_cross_repo_patch.py
++++ b/scripts/ci/create_cross_repo_patch.py
+@@ -81,21 +81,21 @@
+         if not diff_path.exists():
+             print(f"Error: Specified diff file does not exist: {diff_path}")
+             return 1
+-        diff_content = diff_path.read_text(encoding="utf-8")
++        diff_content = diff_path.read_bytes().decode("utf-8")
+     elif args.from_staged:
+-        diff_content = subprocess.check_output(["git", "diff", "--cached"], cwd=ROOT, text=True)
++        diff_content = subprocess.check_output(["git", "diff", "--cached"], cwd=ROOT).decode("utf-8")
+     elif args.from_head:
+-        diff_content = subprocess.check_output(["git", "diff", "HEAD~1", "HEAD"], cwd=ROOT, text=True)
++        diff_content = subprocess.check_output(["git", "diff", "HEAD~1", "HEAD"], cwd=ROOT).decode("utf-8")
+     elif not sys.stdin.isatty():
+-        diff_content = sys.stdin.read()
++        diff_content = sys.stdin.buffer.read().decode("utf-8")
+     else:
+         # Default: try uncommitted changes first, then HEAD
+-        diff_content = subprocess.check_output(["git", "diff"], cwd=ROOT, text=True)
++        diff_content = subprocess.check_output(["git", "diff"], cwd=ROOT).decode("utf-8")
+         if not diff_content.strip():
+-            diff_content = subprocess.check_output(["git", "diff", "--cached"], cwd=ROOT, text=True)
++            diff_content = subprocess.check_output(["git", "diff", "--cached"], cwd=ROOT).decode("utf-8")
+ 
+-    diff_content = diff_content.strip()
+-    if not diff_content:
++    # বাংলা মন্তব্য: strip/newline normalization করলে CRLF ও শেষ context নষ্ট হয়।
++    if not diff_content.strip():
+         print("Error: No diff content found. Provide via stdin, --diff-file, --from-staged, or make local changes.")
+         return 1
+ 
+@@ -103,7 +103,7 @@
+     if not any(marker in diff_content for marker in ("diff --git", "--- ", "+++ ", "PATCH")):
+         print("Warning: Input does not appear to be a standard unified git diff.")
+ 
+-    out_path.write_text(diff_content + "\n", encoding="utf-8")
++    out_path.write_bytes((diff_content if diff_content.endswith("\n") else diff_content + "\n").encode("utf-8"))
+     print(f"✅ Cross-repo patch created successfully:")
+     print(f"   Path: {out_path.relative_to(ROOT)}")
+     print(f"   Size: {len(diff_content)} bytes")
+diff --git a/scripts/ci/test_apply_cross_repo_patch.py b/scripts/ci/test_apply_cross_repo_patch.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/ci/test_apply_cross_repo_patch.py
+@@ -0,0 +1,270 @@
++# বাংলা মন্তব্য: শুধু অস্থায়ী git repo ও mocked gh দিয়ে Rule 10 lifecycle যাচাই; নেটওয়ার্ক/push নয়।
++from __future__ import annotations
++
++import contextlib
++import importlib.util
++import io
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++import tempfile
++import unittest
++from unittest.mock import patch
++
++SCRIPT = Path(os.environ.get("CROSS_REPO_SYNC_SCRIPT", Path(__file__).with_name("apply_cross_repo_patch.py")))
++SPEC = importlib.util.spec_from_file_location("sync_under_test", SCRIPT)
++sync = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(sync)
++CREATE_SYNC_PR = sync.create_sync_pr
++CREATE_CLEANUP_PR = sync.create_source_cleanup_pr
++
++
++class TestSyncLifecycle(unittest.TestCase):
++    def setUp(self):
++        self.temp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temp.cleanup)
++        self.root = Path(self.temp.name)
++        self.target = self.root / "target"
++        self.target.mkdir()
++        self.source = self.root / "source"
++        self.patch_dir = self.source / ".patches" / "public"
++        self.patch_dir.mkdir(parents=True)
++        self.git("init", "-b", "main")
++        self.git("config", "user.name", "Local Test")
++        self.git("config", "user.email", "local-test@example.invalid")
++        (self.target / "hello.txt").write_text("before\n", encoding="utf-8")
++        self.git("add", "hello.txt")
++        self.git("commit", "-m", "initial")
++        self.patch_file = self.patch_dir / "change.patch"
++        self.patch_file.write_text(
++            "diff --git a/hello.txt b/hello.txt\n--- a/hello.txt\n+++ b/hello.txt\n"
++            "@@ -1 +1 @@\n-before\n+after\n",
++            encoding="utf-8",
++        )
++        for name, value in [("ROOT", self.source), ("create_sync_pr", None), ("create_source_cleanup_pr", None)]:
++            stub = patch.object(sync, name, value, create=True) if value is not None else patch.object(sync, name, return_value=True, create=True)
++            mock = stub.start()
++            self.addCleanup(stub.stop)
++            if name == "create_sync_pr":
++                self.submit = mock
++            elif name == "create_source_cleanup_pr":
++                self.cleanup = mock
++
++    def git(self, *args):
++        return subprocess.check_output(["git", *args], cwd=self.target, stderr=subprocess.STDOUT, text=True)
++
++    def cli(self, *flags, actor="human"):
++        argv = [str(SCRIPT), "--patch-dir", str(self.patch_dir), "--target-dir", str(self.target), "--source-repo", "Supremeai-bd/supremeai"]
++        with patch.object(sys, "argv", argv + list(flags)), patch.dict(os.environ, {"GITHUB_ACTOR": actor}), contextlib.redirect_stdout(io.StringIO()):
++            return sync.main()
++
++    def land_patch(self):
++        self.git("apply", str(self.patch_file))
++        self.git("add", "hello.txt")
++        self.git("commit", "-m", "land patch")
++
++    def test_actions_bot_processes_pending_patch(self):
++        self.assertEqual(self.cli("--create-pr", actor="github-actions[bot]"), 0)
++        self.assertEqual((self.target / "hello.txt").read_text(), "after\n")
++        self.submit.assert_called_once()
++
++    def test_dependency_bot_policy_is_unchanged(self):
++        self.assertEqual(self.cli("--create-pr", actor="dependabot[bot]"), 0)
++        self.assertEqual((self.target / "hello.txt").read_text(), "before\n")
++        self.submit.assert_not_called()
++        self.cleanup.assert_not_called()
++
++    def test_new_target_pr_never_consumes_source_patch(self):
++        self.assertEqual(self.cli("--create-pr"), 0)
++        self.submit.assert_called_once()
++        self.cleanup.assert_not_called()
++        self.assertTrue(self.patch_file.exists())
++
++    def test_already_landed_patch_only_requests_cleanup(self):
++        self.land_patch()
++        self.assertEqual(self.cli("--create-pr", actor="github-actions[bot]"), 0)
++        self.submit.assert_not_called()
++        self.cleanup.assert_called_once()
++
++    def test_already_landed_dry_run_never_writes(self):
++        self.land_patch()
++        self.assertEqual(self.cli("--dry-run"), 0)
++        self.submit.assert_not_called()
++        self.cleanup.assert_not_called()
++
++    def test_validation_only_never_requests_cleanup(self):
++        self.land_patch()
++        self.assertEqual(self.cli(), 0)
++        self.submit.assert_not_called()
++        self.cleanup.assert_not_called()
++
++    def test_apply_only_never_requests_cleanup(self):
++        self.land_patch()
++        self.assertEqual(self.cli("--apply"), 0)
++        self.cleanup.assert_not_called()
++
++    def test_conflict_fails_without_writes(self):
++        (self.target / "hello.txt").write_text("unrelated\n")
++        self.git("add", "hello.txt")
++        self.git("commit", "-m", "conflict")
++        self.assertEqual(self.cli("--create-pr"), 1)
++        self.submit.assert_not_called()
++        self.cleanup.assert_not_called()
++
++    def test_dirty_target_cannot_be_taken_as_merge_proof(self):
++        self.git("apply", str(self.patch_file))
++        self.assertEqual(self.cli("--create-pr"), 1)
++        self.submit.assert_not_called()
++        self.cleanup.assert_not_called()
++
++    def test_non_main_branch_is_not_merge_proof(self):
++        self.land_patch()
++        self.git("checkout", "-b", "unmerged-work")
++        self.assertEqual(self.cli("--create-pr"), 1)
++        self.submit.assert_not_called()
++        self.cleanup.assert_not_called()
++
++    def test_cleanup_failure_never_deletes_input_in_the_caller(self):
++        self.land_patch()
++        self.cleanup.return_value = False
++        self.assertEqual(self.cli("--create-pr"), 0)
++        self.assertTrue(self.patch_file.exists())
++        self.submit.assert_not_called()
++
++    def test_unrelated_dirty_file_cannot_leak_into_sync(self):
++        (self.target / "unrelated.txt").write_text("private local work\n")
++        self.assertEqual(self.cli("--create-pr"), 1)
++        self.assertEqual((self.target / "hello.txt").read_text(), "before\n")
++        self.submit.assert_not_called()
++        self.cleanup.assert_not_called()
++
++    def test_mixed_batch_only_consumes_landed_sibling(self):
++        self.land_patch()
++        pending = self.patch_dir / "second.patch"
++        pending.write_text("diff --git a/new.txt b/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1 @@\n+new\n")
++        self.assertEqual(self.cli("--create-pr"), 0)
++        self.submit.assert_called_once()
++        self.cleanup.assert_called_once_with("Supremeai-bd/supremeai", [self.patch_file], source_dir=self.source)
++
++    def test_failed_target_pr_does_not_consume_pending_patch(self):
++        self.submit.return_value = False
++        self.assertEqual(self.cli("--create-pr"), 1)
++        self.cleanup.assert_not_called()
++        self.assertTrue(self.patch_file.exists())
++
++    def test_packager_preserves_crlf_and_final_blank_context(self):
++        path = Path(__file__).with_name('create_cross_repo_patch.py')
++        spec = importlib.util.spec_from_file_location('packager_under_test', path)
++        packager = importlib.util.module_from_spec(spec)
++        spec.loader.exec_module(packager)
++        raw = b'diff --git a/crlf.txt b/crlf.txt\n--- a/crlf.txt\n+++ b/crlf.txt\n@@ -1,3 +1,3 @@\n one\r\n-two\r\n+TWO\r\n \r\n'
++        original = self.root / 'original.diff'
++        original.write_bytes(raw)
++        (self.target / 'crlf.txt').write_bytes(b'one\r\ntwo\r\n\r\n')
++        argv = [str(path), '--target', 'private', '--slug', 'crlf', '--diff-file', str(original)]
++        with patch.object(packager, 'ROOT', self.source), patch.object(sys, 'argv', argv), contextlib.redirect_stdout(io.StringIO()):
++            self.assertEqual(packager.main(), 0)
++        output = self.source / '.patches/private/crlf.patch'
++        self.assertEqual(output.read_bytes(), raw)
++        self.git('apply', '--check', str(output))
++
++    def test_packager_preserves_git_diff_input_bytes(self):
++        path = Path(__file__).with_name('create_cross_repo_patch.py')
++        spec = importlib.util.spec_from_file_location('packager_staged_under_test', path)
++        packager = importlib.util.module_from_spec(spec)
++        spec.loader.exec_module(packager)
++        (self.target / 'crlf.txt').write_bytes(b'one\r\ntwo\r\n')
++        self.git('add', 'crlf.txt')
++        self.git('commit', '-m', 'CRLF fixture')
++        (self.target / 'crlf.txt').write_bytes(b'one\r\nTWO\r\n')
++        self.git('add', 'crlf.txt')
++        raw = subprocess.check_output(['git', 'diff', '--cached'], cwd=self.target)
++        argv = [str(path), '--target', 'private', '--slug', 'staged', '--from-staged']
++        with patch.object(packager, 'ROOT', self.target), patch.object(sys, 'argv', argv), contextlib.redirect_stdout(io.StringIO()):
++            self.assertEqual(packager.main(), 0)
++        self.assertEqual((self.target / '.patches/private/staged.patch').read_bytes(), raw)
++
++    def test_branch_identity_changes_with_patch_bytes(self):
++        first = sync.sync_branch_name([self.patch_file])
++        self.patch_file.write_text(self.patch_file.read_text() + "\n")
++        self.assertNotEqual(first, sync.sync_branch_name([self.patch_file]))
++
++    def test_branch_identity_changes_with_same_prefix_filename(self):
++        prefix = "same-truncated-prefix-" * 3
++        first = self.patch_dir / (prefix + "a.patch")
++        other = self.patch_dir / (prefix + "b.patch")
++        first.write_bytes(self.patch_file.read_bytes())
++        other.write_bytes(self.patch_file.read_bytes())
++        self.assertNotEqual(sync.sync_branch_name([first]), sync.sync_branch_name([other]))
++
++    def test_branch_identity_is_order_independent(self):
++        other = self.patch_dir / "other.patch"
++        other.write_text("other content")
++        self.assertEqual(sync.sync_branch_name([self.patch_file, other]), sync.sync_branch_name([other, self.patch_file]))
++
++    def test_existing_cleanup_pr_is_reused_before_git_writes(self):
++        with patch.dict(os.environ, {"GH_TOKEN": "unit"}), patch.object(sync.subprocess, "check_output", return_value=json.dumps([{"number": 19, "state": "OPEN"}])), patch.object(sync.subprocess, "run") as run, contextlib.redirect_stdout(io.StringIO()):
++            self.assertTrue(CREATE_CLEANUP_PR("Supremeai-bd/source", [self.patch_file], source_dir=self.source))
++        run.assert_not_called()
++
++    def test_cleanup_lookup_failure_never_writes(self):
++        with patch.dict(os.environ, {"GH_TOKEN": "unit"}), patch.object(sync.subprocess, "check_output", side_effect=subprocess.CalledProcessError(1, "gh")), patch.object(sync.subprocess, "run") as run, contextlib.redirect_stdout(io.StringIO()):
++            self.assertFalse(CREATE_CLEANUP_PR("Supremeai-bd/source", [self.patch_file], source_dir=self.source))
++        run.assert_not_called()
++        self.assertTrue(self.patch_file.exists())
++
++    def test_legacy_open_pr_blocks_a_second_branch(self):
++        with patch.object(sync.subprocess, "check_output", side_effect=["[]", json.dumps([{"number": 107, "state": "OPEN"}])]), patch.object(sync.subprocess, "run") as run, contextlib.redirect_stdout(io.StringIO()):
++            state = sync.sync_pr_state(self.target, "Supremeai-bd/target", "sync/patch-hash", legacy_branch="sync/patch-old")
++        self.assertEqual(state, "blocked")
++        run.assert_not_called()
++
++    def run_submit(self, prs=None, lookup_error=None):
++        def output(command, **kwargs):
++            if command[:3] == ["git", "status", "--porcelain"]:
++                return " M hello.txt\n"
++            if command[:3] == ["gh", "pr", "list"]:
++                if lookup_error:
++                    raise lookup_error
++                return json.dumps(prs or [])
++            raise AssertionError(f"অপ্রত্যাশিত subprocess: {command}")
++
++        with patch.object(sync.subprocess, "check_output", side_effect=output), patch.object(sync.subprocess, "run") as run, contextlib.redirect_stdout(io.StringIO()):
++            ok = CREATE_SYNC_PR(self.target, "Supremeai-bd/target", "Supremeai-bd/source", [self.patch_file])
++        return ok, run
++
++    def test_existing_open_pr_is_reused_without_git_writes(self):
++        ok, run = self.run_submit([{"number": 17, "state": "OPEN"}])
++        self.assertTrue(ok)
++        run.assert_not_called()
++
++    def test_closed_pr_requires_review_instead_of_reopening(self):
++        ok, run = self.run_submit([{"number": 17, "state": "CLOSED"}])
++        self.assertFalse(ok)
++        run.assert_not_called()
++
++    def test_previously_merged_but_now_missing_content_requires_review(self):
++        ok, run = self.run_submit([{"number": 17, "state": "MERGED"}])
++        self.assertFalse(ok)
++        run.assert_not_called()
++
++    def test_lookup_failure_does_not_push_or_create_duplicate_pr(self):
++        ok, run = self.run_submit(lookup_error=subprocess.CalledProcessError(1, "gh"))
++        self.assertFalse(ok)
++        run.assert_not_called()
++
++    def test_new_pr_uses_non_forced_push(self):
++        ok, run = self.run_submit()
++        self.assertTrue(ok)
++        commands = [call.args[0] for call in run.call_args_list]
++        pushes = [cmd for cmd in commands if cmd[:2] == ["git", "push"]]
++        self.assertEqual(len(pushes), 1)
++        self.assertNotIn("--force", pushes[0])
++        self.assertNotIn("--force-with-lease", pushes[0])
++        self.assertTrue(any(cmd[:3] == ["gh", "pr", "create"] for cmd in commands))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_apply_cross_repo_patch.py b/tests/test_apply_cross_repo_patch.py
+--- a/tests/test_apply_cross_repo_patch.py
++++ b/tests/test_apply_cross_repo_patch.py
+@@ -2,6 +2,7 @@
+ # বাংলা মন্তব্য: apply_cross_repo_patch.py-এর ক্রস-রেপো প্যাচ ভ্যালিডেশন ও অ্যাপ্লিকেশন লজিকের পূর্ণ ইউনিট টেস্ট
+ 
+ import subprocess
++from scripts.ci.test_apply_cross_repo_patch import TestSyncLifecycle
+ from pathlib import Path
+ from scripts.ci.apply_cross_repo_patch import (
+     is_loop_prevented,
+@@ -16,8 +17,9 @@
+ 
+ 
+ def test_is_loop_prevented():
+-    # বাংলা মন্তব্য: বট অ্যাক্টরে লুপ গার্ড ট্রু দেবে
+-    assert is_loop_prevented("github-actions[bot]") is True
++    # বাংলা মন্তব্য: canonical sync bot চলবে; dependency-bot নীতি আগের মতোই বন্ধ।
++    assert is_loop_prevented("github-actions[bot]") is False
++    assert is_loop_prevented("app/github-actions") is False
+     assert is_loop_prevented("dependabot[bot]") is True
+     assert is_loop_prevented("renovate[bot]") is True
+     # সাধারণ এজেন্ট বা হিউম্যানে ফলস দেবে
+diff --git a/.github/workflows/unified-pipeline.yml b/.github/workflows/unified-pipeline.yml
+--- a/.github/workflows/unified-pipeline.yml
++++ b/.github/workflows/unified-pipeline.yml
+@@ -169,7 +169,7 @@
+ 
+       - name: Critical Security & Architecture Guards Suite
+         run: |
+-          pytest -q tests/unit/test_telemetry_event_bus_guard.py tests/security/test_code_review_remediation_guards.py tests/test_satellite_workflow_triggers.py tests/test_tiny_brain_guard.py tests/test_tiny_brain_service.py tests/ci/test_render_deploy_attestation.py tests/ci/test_deploy_environment_split.py tests/test_web_engine_providers.py tests/test_web_engine_health.py tests/test_free_route_policy_tool.py browser/tests/test_relay_session_state.py browser/tests/test_relay_streaming.py browser/tests/test_relay_kill_switch.py gateway/tests/test_web_engine_stream.py gateway/tests/test_injury_hysteresis.py tests/test_web_surfaces_controls.py core/tests/agents/test_agents_unified.py tests/test_observability_telemetry_endpoint.py
++          pytest -q tests/unit/test_telemetry_event_bus_guard.py tests/security/test_code_review_remediation_guards.py tests/test_satellite_workflow_triggers.py tests/test_tiny_brain_guard.py tests/test_tiny_brain_service.py tests/ci/test_render_deploy_attestation.py tests/ci/test_deploy_environment_split.py tests/test_web_engine_providers.py tests/test_web_engine_health.py tests/test_free_route_policy_tool.py browser/tests/test_relay_session_state.py browser/tests/test_relay_streaming.py browser/tests/test_relay_kill_switch.py gateway/tests/test_web_engine_stream.py gateway/tests/test_injury_hysteresis.py tests/test_web_surfaces_controls.py core/tests/agents/test_agents_unified.py tests/test_observability_telemetry_endpoint.py tests/test_apply_cross_repo_patch.py
+           python scripts/ops/wiring_atlas.py --check
+ 
+       # Core and Gateway changes can break satellite contracts without touching
+@@ -291,7 +291,7 @@
+       - name: Tier 1 — Critical Security & Architecture Guards Suite
+         shell: powershell
+         run: |
+-          pytest -q tests/unit/test_telemetry_event_bus_guard.py tests/security/test_code_review_remediation_guards.py tests/test_satellite_workflow_triggers.py tests/test_tiny_brain_guard.py tests/test_tiny_brain_service.py tests/ci/test_render_deploy_attestation.py tests/ci/test_deploy_environment_split.py tests/test_web_engine_providers.py tests/test_web_engine_health.py tests/test_free_route_policy_tool.py browser/tests/test_relay_session_state.py browser/tests/test_relay_streaming.py browser/tests/test_relay_kill_switch.py gateway/tests/test_web_engine_stream.py gateway/tests/test_injury_hysteresis.py tests/test_web_surfaces_controls.py core/tests/agents/test_agents_unified.py tests/test_observability_telemetry_endpoint.py
++          pytest -q tests/unit/test_telemetry_event_bus_guard.py tests/security/test_code_review_remediation_guards.py tests/test_satellite_workflow_triggers.py tests/test_tiny_brain_guard.py tests/test_tiny_brain_service.py tests/ci/test_render_deploy_attestation.py tests/ci/test_deploy_environment_split.py tests/test_web_engine_providers.py tests/test_web_engine_health.py tests/test_free_route_policy_tool.py browser/tests/test_relay_session_state.py browser/tests/test_relay_streaming.py browser/tests/test_relay_kill_switch.py gateway/tests/test_web_engine_stream.py gateway/tests/test_injury_hysteresis.py tests/test_web_surfaces_controls.py core/tests/agents/test_agents_unified.py tests/test_observability_telemetry_endpoint.py tests/test_apply_cross_repo_patch.py
+           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+           python scripts/ops/wiring_atlas.py --check
+           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
