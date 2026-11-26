@@ -547,6 +547,11 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
+      # বাংলা মন্তব্য: queued patch credential ছাড়া skip হলে job সবুজ দেখাবে না।
+      - name: Check queued sync prerequisites
+        env:
+          GH_TOKEN: ${{ secrets.SELF_HEAL_PAT || secrets.ORGANIZATION_SYNC_TOKEN }}
+        run: python scripts/ci/check_sync_prerequisites.py --patch-dir .patches/private
       - name: Apply patches to supremeai
         if: env.GH_TOKEN != ''
         env:
