@@ -561,3 +561,16 @@ jobs:
           else
             echo "::notice title=Cross-Repo Sync::No cross-repo patches (*.patch, *.diff) in .patches/private; clean state."
           fi
+
+  hardening-patch-check:
+    name: Hardening Patch Apply Check (B8)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check hardening/backend/*.patch apply cleanly
+        run: |
+          for p in hardening/backend/*.patch; do
+            echo "Checking $p..."
+            git apply --check "$p" || echo "::warning::Patch drift detected in $p"
+          done
