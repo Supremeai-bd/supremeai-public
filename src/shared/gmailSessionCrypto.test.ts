@@ -1,3 +1,6 @@
+// @vitest-environment node
+// বাংলা মন্তব্য: jsdom-এর Uint8Array/TextEncoder আলাদা realm-এর, তাই Node-এর WebCrypto (SubtleCrypto) AES-GCM
+// unseal-এ null দেয়। এই স্যুট DOM-নির্ভর নয় — Node environment-এ চালানো হয় (localStorage নিজস্ব polyfill)।
 import { describe, expect, it } from 'vitest';
 import {
   buildGmailSessionSetCookie,

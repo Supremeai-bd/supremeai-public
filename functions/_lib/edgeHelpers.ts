@@ -547,6 +547,11 @@ const sessionVerifyCache = new Map<
   }
 >();
 
+// বাংলা মন্তব্য: শুধু vitest/Node test runtime-এ true — প্রোডাকশন edge-এ সবসময় false।
+function isUnitTestRuntime(): boolean {
+  return typeof process !== 'undefined' && process?.env?.NODE_ENV === 'test';
+}
+
 async function hashTokenForCache(token: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
   return Array.from(new Uint8Array(digest))
@@ -578,7 +583,11 @@ export async function verifyUpstreamSession(
   }
 
   // Canonical unit test session bypass (src/test/edgePreferences.ts)
-  if (token === 'test-user-session' || (process.env.NODE_ENV === 'test' && token.startsWith('test-'))) {
+  // বাংলা মন্তব্য: নিরাপত্তা fix — আগে `token === 'test-user-session'` শর্তটি NODE_ENV
+  // যাচাইয়ের বাইরে ছিল, তাই প্রোডাকশনে যে কেউ `Bearer test-user-session` পাঠিয়ে
+  // বৈধ সেশন পেত (লাইভে browser-proxy খুলে যেত)। এখন বাইপাস শুধু test runtime-এ;
+  // Cloudflare-এ `process` না থাকলেও নিরাপদ (typeof guard)।
+  if (isUnitTestRuntime() && (token === 'test-user-session' || token.startsWith('test-'))) {
     return { valid: true, email: 'operator@supremeai.bd', isGuest: false, status: 200 };
   }
 
@@ -640,6 +649,13 @@ export async function verifyUpstreamSession(
     ok = false;
   }
 
+  // বাংলা মন্তব্য: আগে এই cleanup একটি return-এর পরে ছিল (unreachable) — ফলে
+  // isolate-এর আয়ুষ্কালে cache সীমাহীনভাবে বাড়ত। এখন set করার আগেই সীমা রাখা হয়।
+  if (sessionVerifyCache.size >= 5000) {
+    for (const stale of Array.from(sessionVerifyCache.keys()).slice(0, 2500)) {
+      sessionVerifyCache.delete(stale);
+    }
+  }
   sessionVerifyCache.set(cacheKey, {
     ok,
     email,
@@ -650,12 +666,6 @@ export async function verifyUpstreamSession(
     expires: Date.now() + SESSION_VERIFY_CACHE_TTL_MS,
   });
   return { valid: ok, email, isGuest, role, user_id: userId, permissions, status: ok ? 200 : 401 };
-  if (sessionVerifyCache.size > 5000) {
-    for (const stale of Array.from(sessionVerifyCache.keys()).slice(0, 2500)) {
-      sessionVerifyCache.delete(stale);
-    }
-  }
-  return { valid: ok, email, isGuest, status: ok ? 200 : 401 };
 }
 
 export async function forwardRawUpstream(
