@@ -6,7 +6,10 @@
 
 ---
 
-## 🔴 P0 —今天是 2026-11-20 — 今天立刻开始
+## 🔴 P0 — 今天是 2026-11-26 — 今天立刻开始
+
+> re-audit (২০২৬-১১-২৬): #2 ভার্সন-সিঙ্ক ও #3 লাইসেন্স verify করে ✅ করা হয়েছে।
+> বাকি P0 = #1 `server.ts` monolith ভাঙা (চলছে — Hono migration দেখুন #8)।
 
 ### 1. `server.ts`eleaf-monolith ভেঙে রাউটার মডিউলে ভাগ করা (১১,৭২৫ লাইন, ১৪১ রুট)
 
@@ -36,25 +39,14 @@
 4. `registerAuthRoutes(app, deps);` কল যোগ
 5. একইভাবে Admin, Billing, Workspace, Git, Project, Conversation, Vision, API Keys, Providers, Release, Telemetry, MCP, Main-static-dist—সবগুলো ভাগ করা।
 
-### 2.ভার্সন সিঙ্ক (P0)
+### 2.ভার্সন সিঙ্ক (P0) — ✅ সম্পন্ন (২০২৬-১১-২৬ re-audit verify)
 
-**সমস্যা:** `package.json` = 2.5.0, Release = `v0.1.0`, `version.json` = 2.5.0, `Cargo.toml` = 2.5.0, `tauri.conf.json` = 2.5.0 — Release-এ ম্যাচ নেই।
-**অ্যাকশন:**
+**verify:** `package.json` = 2.5.0 · `version.json` = `v2.5.0` · `npm run version:sync` (`scripts/sync-versions.mjs`) live আছে।
+Release tag `v2.5.0` — `version.json.releaseTag` সাথে ম্যাচ করে।
 
-- `npm run sync:version` (বা `node scripts/sync-versions.mjs`)
-- `git add package.json version.json src-tauri/Cargo.toml src-tauri/tauri.conf.json packages/vscode-extension/package.json`
-- `git commit -m "chore(version): sync 2.5.0 across Web/Desktop/Android/VSIX/version.json"`
-- `git push origin arena/af2516f6-supremeai-public`
+### 3. লাইসেন্স যোগ (P0) — ✅ সম্পন্ন (২০২৬-১১-২৬ re-audit verify)
 
-### 3. লাইসেন্স যোগ (P0)
-
-**সমস্যা:** ফ্রন্টএন্ডে লাইসেন্স ফাইল নেই (ব্যাকএন্ডে MIT আছে)।
-**অ্যাকশন:**
-
-- `LICENSE` (MIT) তৈরি (ব্যাকএন্ড থেকে কপি)
-- `git add LICENSE`
-- `git commit -m "docs(license): add MIT license matching backend"`
-- `git push origin arena/af2516f6-supremeai-public`
+**verify:** `LICENSE` (MIT) রেপো root-এ আছে — backend-এর সাথে ম্যাচ করে।
 
 ---
 
