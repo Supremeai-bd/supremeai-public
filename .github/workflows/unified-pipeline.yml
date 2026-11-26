@@ -1,4 +1,4 @@
-name: 'SupremeAI Unified CI & Release Pipeline (Web + Desktop + Android + VSIX + Admin)'
+name: 'SupremeAI Unified CI & Release Pipeline (Web + Desktop + Android + VSIX)'
 
 on:
   pull_request:
@@ -21,6 +21,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'version.json'
+      - 'deploy/admin-redirect/**'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -447,42 +448,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  deploy-admin:
-    name: "Build & Deploy Admin Dashboard"
+  deploy-admin-redirect:
+    # বাংলা মন্তব্য: আলাদা Next.js অ্যাডমিন অ্যাপ (admin/) মুছে ফেলা হয়েছে — এর API রুট আগেই
+    # সরানো ছিল, তাই লাইভ supremeai-admin.pages.dev-এর সব /api/admin/* কল 404 দিত।
+    # এখন supremeai-admin প্রজেক্টে শুধু ২টা স্ট্যাটিক ফাইল (_redirects + index.html) ডিপ্লয় হয়,
+    # যা মূল স্টুডিওর অ্যাডমিন প্যানেলে (?tab=admin-overview) 301 redirect করে।
+    # শুধু redirect ফোল্ডার বদলালে অথবা হাতে workflow_dispatch চালালে চলে।
+    name: "Deploy Admin Redirect (supremeai-admin → studio)"
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: admin/package.json
+          fetch-depth: 2
 
-      - name: Install Dependencies
+      - name: Detect redirect changes
+        id: changed
         shell: bash
-        working-directory: admin
-        run: npm install --no-audit --no-fund
-
-      - name: Build Next.js Static Export
-        shell: bash
-        working-directory: admin
         run: |
-          export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
-          npx next build
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || \
+             git diff --name-only HEAD~1 HEAD -- deploy/admin-redirect | grep -q .; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Deploy to Cloudflare Pages (supremeai-admin)
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+      - name: Deploy redirect to Cloudflare Pages (supremeai-admin)
+        if: steps.changed.outputs.deploy == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         shell: bash
-        working-directory: admin
-        run: npx wrangler pages deploy dist --project-name=supremeai-admin --branch=main --commit-dirty=true
+        run: npx --yes wrangler@4 pages deploy deploy/admin-redirect --project-name=supremeai-admin --branch=main --commit-dirty=true
 
   pr-landing-decision:
     name: 'PR Landing Decision (Auto-Merge vs HITL)'

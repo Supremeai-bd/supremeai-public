@@ -108,41 +108,7 @@ updates:
         update-types: ['patch']
 
   # ---------------------------------------------------------------------------
-  # 3. Admin dashboard (নিজের lockfile)
-  # ---------------------------------------------------------------------------
-  - package-ecosystem: 'npm'
-    directory: '/admin'
-    schedule:
-      interval: 'weekly'
-      day: 'monday'
-      time: '04:30'
-      timezone: 'Asia/Dhaka'
-    open-pull-requests-limit: 4
-    labels:
-      - 'dependencies'
-      - 'admin'
-    cooldown:
-      semver-major-days: 30
-      semver-minor-days: 14
-      semver-patch-days: 7
-    groups:
-      admin-react:
-        patterns:
-          - 'react'
-          - 'react-dom'
-          - '@types/react*'
-        update-types: ['minor', 'patch']
-      # বাংলা: next একটি minor-এই breaking হতে পারে ("next" ecosystem-এ 15→16
-      # landing-এ বড় পরিবর্তন ছিল) — তাই отдельно, minor-এও গেটেড।
-      admin-next:
-        patterns: ['next', 'eslint-config-next']
-        update-types: ['minor', 'patch']
-      admin-safe-patch:
-        patterns: ['*']
-        update-types: ['patch']
-
-  # ---------------------------------------------------------------------------
-  # 4. Shared contracts
+  # 3. Shared contracts
   # ---------------------------------------------------------------------------
   - package-ecosystem: 'npm'
     directory: '/packages/contracts'
@@ -161,7 +127,7 @@ updates:
       semver-patch-days: 7
 
   # ---------------------------------------------------------------------------
-  # 5. Rust / Tauri
+  # 4. Rust / Tauri
   # ---------------------------------------------------------------------------
   - package-ecosystem: 'cargo'
     directory: '/src-tauri'
@@ -191,7 +157,7 @@ updates:
         update-types: ['patch']
 
   # ---------------------------------------------------------------------------
-  # 6. GitHub Actions — বাংলা: এখানে major bump প্রায়শই নিরাপদ ও কাম্য
+  # 5. GitHub Actions — বাংলা: এখানে major bump প্রায়শই নিরাপদ ও কাম্য
   #    (Node 20 deprecation-এর মতো জিনিস এভাবেই ঠিক হয়), তাই দ্রুত।
   # ---------------------------------------------------------------------------
   - package-ecosystem: 'github-actions'

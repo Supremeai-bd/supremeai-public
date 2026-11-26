@@ -15,7 +15,7 @@ name: 'Dependabot — Intelligent Apply Gate'
 #   ১. required checks (unified-pipeline + CodeQL)
 #   ২. lockfile consistency (npm ci --dry-run)
 #   ৩. Node-runtime ↔ @types/node parity  ← #14-এর মতো skew ঠেকায়
-#   ৪. cross-tree version consistency (root/admin/ext)
+#   ৪. cross-tree version consistency (root/ext)
 #   ৫. canonical publish-age = soak (version কত দিন পুরোনো)
 # =============================================================================
 
@@ -78,7 +78,7 @@ jobs:
           runtime=$(node -p "process.versions.node.split('.')[0]")
           echo "runtime_node_major=$runtime"
           bad=0
-          for manifest in package.json admin/package.json packages/vscode-extension/package.json packages/contracts/package.json; do
+          for manifest in package.json packages/vscode-extension/package.json packages/contracts/package.json; do
             [ -f "$manifest" ] || continue
             range=$(node -e "
               const j=require('./$manifest');
@@ -117,7 +117,6 @@ jobs:
           const fs = require('fs');
           const trees = {
             root: './package.json',
-            admin: './admin/package.json',
             'vscode-ext': './packages/vscode-extension/package.json',
           };
           const majors = {};
@@ -373,7 +372,7 @@ jobs:
 
           #### review করার সময় যা দেখুন
           1. এই প্যাকেজের major/minor bump-এ **migration guide** আছে কি?
-          2. অ্যাফেক্টেড প্যাকেজ ট্রি (\`root\` / \`admin\` / \`vscode-ext\`) — সব একসাথে বদলাচ্ছে কি?
+          2. অ্যাফেক্টেড প্যাকেজ ট্রি (\`root\` / \`vscode-ext\`) — সব একসাথে বদলাচ্ছে কি?
           3. \`@types/node\` বদলালে runtime node (\`24\`) এর সাথে মিলছে কি?
           4. lockfile-এ transitive major bump লুকিয়ে আছে কি?
 

@@ -33,6 +33,7 @@ import {
   type GmailMessageDetail,
 } from '../../services/gmailOAuthService';
 import { getInboxAdapter } from '../../adapters/inbox/registry';
+import { useI18n } from '../../utils/i18n';
 import type { InboxItem } from '../../../packages/contracts/inbox-adapter';
 
 export type ChannelType = 'gmail' | 'telegram' | 'whatsapp' | 'messenger' | 'instagram';
@@ -81,6 +82,8 @@ function getGatewayBase(): string {
 }
 
 export const UniversalInboxPanel: React.FC = () => {
+  // বাংলা মন্তব্য: পুরনো GmailInboxPanel-এর বাংলা/ইংরেজি স্ট্রিং (wsGmail*) এখানে পুনর্ব্যবহার।
+  const { t } = useI18n();
   const desktopMode = isDesktopTauri();
   const [gmailToken, setGmailToken] = useState<string | null>(() => getGmailCachedToken());
   const [gmailEmail, setGmailEmail] = useState<string | null>(() => getGmailCachedEmail());
@@ -147,6 +150,16 @@ export const UniversalInboxPanel: React.FC = () => {
       void loadGmailMessages(gmailToken);
     }
   }, [gmailToken, loadGmailMessages]);
+
+  // বাংলা মন্তব্য: Browser ট্যাবে Gmail URL-এ রিফ্রেশ চাপলে workspace store
+  // `supremeai-gmail-refresh` ইভেন্ট পাঠায় (আগে পুরনো GmailInboxPanel শুনত)।
+  useEffect(() => {
+    const handleBrowserRefresh = () => {
+      if (gmailToken) void loadGmailMessages(gmailToken, searchQuery);
+    };
+    window.addEventListener('supremeai-gmail-refresh', handleBrowserRefresh);
+    return () => window.removeEventListener('supremeai-gmail-refresh', handleBrowserRefresh);
+  }, [gmailToken, searchQuery, loadGmailMessages]);
 
   useEffect(() => {
     if (!selectedId || !gmailToken) {
@@ -336,7 +349,10 @@ export const UniversalInboxPanel: React.FC = () => {
         <div className="flex items-center gap-2">
           {gmailToken ? (
             <>
-              <span className="text-xs text-slate-600 dark:text-slate-300 hidden sm:inline">
+              <span
+                className="text-xs text-slate-600 dark:text-slate-300 hidden sm:inline"
+                title={`${t.wsGmailConnectedAs} ${gmailEmail ?? ''}`}
+              >
                 {gmailEmail}
               </span>
               <button
@@ -346,13 +362,13 @@ export const UniversalInboxPanel: React.FC = () => {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                <span>Sync</span>
+                <span>{t.wsGmailRefreshBtn}</span>
               </button>
               <button
                 type="button"
                 onClick={() => void handleDisconnectGmail()}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-500 hover:text-rose-500 cursor-pointer"
-                title="Disconnect Gmail"
+                title={t.wsGmailDisconnectBtn}
               >
                 <LogOut className="w-3.5 h-3.5" />
               </button>
@@ -365,7 +381,7 @@ export const UniversalInboxPanel: React.FC = () => {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl theme-btn-primary text-xs font-semibold cursor-pointer disabled:opacity-50"
             >
               <Mail className="w-3.5 h-3.5" />
-              <span>{isConnectingGmail ? 'Connecting…' : 'Connect Gmail (OAuth)'}</span>
+              <span>{isConnectingGmail ? t.wsGmailSigningIn : t.wsGmailSignInBtn}</span>
             </button>
           )}
         </div>
@@ -400,7 +416,7 @@ export const UniversalInboxPanel: React.FC = () => {
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search connected inbox..."
+                placeholder={t.wsGmailSearchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100"
@@ -442,10 +458,7 @@ export const UniversalInboxPanel: React.FC = () => {
               </div>
             ) : !gmailToken && filteredItems.length === 0 ? (
               <div className="p-6 text-center space-y-3">
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  No accounts connected yet. Connect Gmail with official read-only OAuth to view real
-                  messages and draft AI replies.
-                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{t.wsGmailConnectTitle}</p>
                 <button
                   type="button"
                   onClick={() => void handleConnectGmail()}
@@ -453,12 +466,12 @@ export const UniversalInboxPanel: React.FC = () => {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl theme-btn-primary text-xs font-semibold cursor-pointer"
                 >
                   <Mail className="w-3.5 h-3.5" />
-                  <span>Connect Gmail</span>
+                  <span>{t.wsGmailSignInBtn}</span>
                 </button>
               </div>
             ) : filteredItems.length === 0 ? (
               <div className="p-6 text-center text-xs text-slate-400">
-                {isLoading ? 'Loading real inbox messages…' : 'No messages matched.'}
+                {isLoading ? t.wsGmailLoadingInbox : t.wsGmailEmptyInbox}
               </div>
             ) : (
               filteredItems.map((msg) => {

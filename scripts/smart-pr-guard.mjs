@@ -80,7 +80,6 @@ function checkRuntimeParity(repoRoot) {
   const pkgPaths = [
     join(repoRoot, 'package.json'),
     join(repoRoot, 'packages/vscode-extension/package.json'),
-    join(repoRoot, 'admin/package.json'),
   ];
 
   for (const p of pkgPaths) {
