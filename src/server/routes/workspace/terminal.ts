@@ -186,7 +186,10 @@ export function registerWorkspaceTerminalRoutes(app: Express, ctx: WorkspaceTerm
       return;
     }
 
-    if (/[;&|`$<>\\r\\n]/.test(rawCommand)) {
+    // বাংলা মন্তব্য: আগের \\r\\n ডাবল-এস্কেপের কারণে ক্যারেক্টার ক্লাসে আক্ষরিক ব্যাকস্ল্যাশ, 'r' ও 'n'
+    // অক্ষর ম্যাচ করছিল — ফলে node -v / npm -v / git branch-এর মতো বৈধ কমান্ড ভুলভাবে ব্লক হচ্ছিল,
+    // আবার সত্যিকারের CR/LF ইনজেকশন প্রবেশ করতে পারছিল। এখন প্রকৃত ক্যারেজ-রিটার্ন/নিউলাইন ব্লক হয়।
+    if (/[;&|`$<>\r\n]/.test(rawCommand)) {
       res.json({
         exitCode: 126,
         stderr: `Command "${rawCommand}" is blocked by workspace sandbox policy. Type "help" to view permitted commands.`,
@@ -239,7 +242,7 @@ export function registerWorkspaceTerminalRoutes(app: Express, ctx: WorkspaceTerm
       };
     } else if (rawCommand === 'git branch') {
       execSpec = { bin: 'git', binArgs: ['branch'] };
-    } else if (rawCommand === 'git log' || /^git log -n [1-9]\\d{0,1}$/.test(rawCommand)) {
+    } else if (rawCommand === 'git log' || /^git log -n [1-9]\d{0,1}$/.test(rawCommand)) {
       const n = rawCommand === 'git log' ? '10' : rawCommand.split(' ').pop() || '10';
       execSpec = { bin: 'git', binArgs: ['log', '--oneline', '-n', n] };
     } else if (rawCommand === 'git diff --stat') {
