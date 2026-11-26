@@ -3,8 +3,11 @@
  *
  * বাংলা মন্তব্য: কোনো ভুয়া/হার্ডকোডেড মেসেজ নেই (Zero Mock Theater)।
  * ১. অফিশিয়াল Google OAuth (`gmailOAuthService.ts`) দিয়ে আসল Gmail ইনবক্স লোড ও সার্চ করে।
- * ২. লোকাল Tauri Desktop স্যান্ডবক্স চালু থাকলে লোকাল সোশ্যাল ব্রিজ থেকে নোটিফিকেশন নেয়;
- *    সাধারণ ব্রাউজারে থাকলে সৎভাবে "Why unavailable + Local Desktop Sandbox" কারণ ব্যাখ্যা করে।
+ * ২. চ্যানেল ফিল্টার বাটন শুধু সেই চ্যানেলের জন্য দেখানো হয় যার adapter
+ *    `adapters/inbox/registry.ts`-এ সত্যিই নিবন্ধিত। আগে Telegram/WhatsApp/Messenger/
+ *    Instagram বাটন ছিল অথচ কোনো adapter ছিল না (web বা desktop কোথাও) — ক্লিক করলে
+ *    খালি লিস্ট বা "Desktop Sandbox Required" দেখাত। নতুন adapter নিবন্ধন করলেই বাটন
+ *    নিজে থেকে ফিরে আসবে।
  * ৩. "AI Draft Reply" আসল `/v1/chat/completions` কল করে উত্তর ড্রাফট করে — ইউজার নিজে না পাঠানো পর্যন্ত কিছুই অটো-সেন্ড হয় না।
  */
 
@@ -13,7 +16,6 @@ import {
   Check,
   Copy,
   ExternalLink,
-  Lock,
   LogOut,
   Mail,
   MessageSquare,
@@ -22,7 +24,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from 'lucide-react';
-import { DEFAULT_GATEWAY_URL, isDesktopTauri } from '../../bridge/desktopBridge';
+import { DEFAULT_GATEWAY_URL } from '../../bridge/desktopBridge';
 import {
   clearExpiredGmailSession,
   connectGmailWithGooglePopup,
@@ -32,7 +34,7 @@ import {
   subscribeGmailAuthState,
   type GmailMessageDetail,
 } from '../../services/gmailOAuthService';
-import { getInboxAdapter } from '../../adapters/inbox/registry';
+import { getInboxAdapter, listRegisteredChannels } from '../../adapters/inbox/registry';
 import { useI18n } from '../../utils/i18n';
 import type { InboxItem } from '../../../packages/contracts/inbox-adapter';
 
@@ -41,33 +43,25 @@ export type ChannelType = 'gmail' | 'telegram' | 'whatsapp' | 'messenger' | 'ins
 /** Contract-backed item shape (packages/contracts/inbox-adapter.ts). */
 export type UnifiedInboxItem = InboxItem;
 
-const CHANNEL_META: Record<
-  ChannelType,
-  { label: string; mode: 'oauth' | 'local-webview'; badgeClass: string }
-> = {
+const CHANNEL_META: Record<ChannelType, { label: string; badgeClass: string }> = {
   gmail: {
     label: 'Gmail',
-    mode: 'oauth',
     badgeClass: 'bg-red-500/10 text-red-500 border-red-500/20',
   },
   telegram: {
     label: 'Telegram',
-    mode: 'oauth',
     badgeClass: 'bg-sky-500/10 text-sky-500 border-sky-500/20',
   },
   whatsapp: {
     label: 'WhatsApp',
-    mode: 'local-webview',
     badgeClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
   },
   messenger: {
     label: 'Messenger',
-    mode: 'local-webview',
     badgeClass: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
   },
   instagram: {
     label: 'Instagram',
-    mode: 'local-webview',
     badgeClass: 'bg-pink-500/10 text-pink-500 border-pink-500/20',
   },
 };
@@ -84,7 +78,8 @@ function getGatewayBase(): string {
 export const UniversalInboxPanel: React.FC = () => {
   // বাংলা মন্তব্য: পুরনো GmailInboxPanel-এর বাংলা/ইংরেজি স্ট্রিং (wsGmail*) এখানে পুনর্ব্যবহার।
   const { t } = useI18n();
-  const desktopMode = isDesktopTauri();
+  // বাংলা মন্তব্য: শুধু নিবন্ধিত adapter-এর চ্যানেল — কোনো ভুয়া ফিল্টার বাটন নয়।
+  const availableChannels = listRegisteredChannels();
   const [gmailToken, setGmailToken] = useState<string | null>(() => getGmailCachedToken());
   const [gmailEmail, setGmailEmail] = useState<string | null>(() => getGmailCachedEmail());
   const [isConnectingGmail, setIsConnectingGmail] = useState(false);
@@ -275,7 +270,10 @@ export const UniversalInboxPanel: React.FC = () => {
         });
         if (memRes.ok) {
           const memData = (await memRes.json()) as { results?: Array<{ content?: string }> };
-          const snippets = (memData.results || []).map((r) => r.content).filter(Boolean).slice(0, 3);
+          const snippets = (memData.results || [])
+            .map((r) => r.content)
+            .filter(Boolean)
+            .slice(0, 3);
           if (snippets.length > 0) {
             memoryContext = `\n\nRelevant Memories:\n${snippets.map((s, i) => `[${i + 1}] ${s}`).join('\n')}`;
           }
@@ -345,9 +343,6 @@ export const UniversalInboxPanel: React.FC = () => {
     setTimeout(() => setCopiedReply(false), 1800);
   };
 
-  const isLocalOnlyChannel =
-    activeFilter !== 'all' && CHANNEL_META[activeFilter].mode === 'local-webview';
-
   return (
     <div
       data-testid="universal-inbox-panel"
@@ -364,9 +359,7 @@ export const UniversalInboxPanel: React.FC = () => {
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-            <span>
-              Zero-Cloud-Scraping: Official Google OAuth + Local Sandboxed Sessions only.
-            </span>
+            <span>Zero-Cloud-Scraping: Official Google OAuth only — no social session scraping.</span>
           </p>
         </div>
 
@@ -447,9 +440,9 @@ export const UniversalInboxPanel: React.FC = () => {
               />
             </form>
 
-            <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
-              {(['all', 'gmail', 'telegram', 'whatsapp', 'messenger', 'instagram'] as const).map(
-                (filter) => (
+            {availableChannels.length > 1 && (
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+                {(['all', ...availableChannels] as const).map((filter) => (
                   <button
                     key={filter}
                     type="button"
@@ -462,27 +455,17 @@ export const UniversalInboxPanel: React.FC = () => {
                   >
                     {filter === 'all' ? 'All' : CHANNEL_META[filter].label}
                   </button>
-                )
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/50">
-            {isLocalOnlyChannel && !desktopMode ? (
-              <div className="p-6 space-y-2 text-xs text-slate-500 dark:text-slate-400">
-                <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Local Desktop/APK Sandbox Required</span>
-                </div>
-                <p className="leading-relaxed">
-                  To protect your {CHANNEL_META[activeFilter].label} account from cloud IP bans,
-                  SupremeAI never scrapes social sessions from cloud servers. Open the SupremeAI
-                  Desktop (Tauri) or Android app to attach your local session safely.
-                </p>
-              </div>
-            ) : !gmailToken && filteredItems.length === 0 ? (
+            {!gmailToken && filteredItems.length === 0 ? (
               <div className="p-6 text-center space-y-3">
-                <p className="text-xs text-slate-500 dark:text-slate-400">{t.wsGmailConnectTitle}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t.wsGmailConnectTitle}
+                </p>
                 <button
                   type="button"
                   onClick={() => void handleConnectGmail()}
@@ -588,7 +571,11 @@ export const UniversalInboxPanel: React.FC = () => {
                     onClick={() => void handleCopyDraft()}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer disabled:opacity-40"
                   >
-                    {copiedReply ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedReply ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
                     <span>{copiedReply ? 'Copied' : 'Copy Draft'}</span>
                   </button>
                   <button
