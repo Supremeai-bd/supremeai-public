@@ -127,7 +127,8 @@ const TARGET = 'server.ts';
 // 2559 → 2527 after the week-2 cleanup and the first Hono step: GET /api/releases/latest
 //         and POST /api/telemetry/client-error now live in src/api/routes (shared with
 //         Cloudflare Pages), mounted via mountApiOnExpress (docs/HONO_MIGRATION.md).
-const BUDGET = 2527;
+// বাংলা মন্তব্য: models Hono-তে; Node catalog cache helper extraction-এ bootstrap ছোট হয়েছে।
+const BUDGET = 2508;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
