@@ -179,8 +179,6 @@ export interface UserAccountSettings {
   plan: 'Pro' | 'Free' | 'Enterprise';
   monthlyTokensUsed: number;
   monthlyTokensLimit: number;
-  emailNotifications: boolean;
-  autoCodeReview: boolean;
   streamResponses: boolean;
   defaultModel: string;
   language?: AppLanguage;

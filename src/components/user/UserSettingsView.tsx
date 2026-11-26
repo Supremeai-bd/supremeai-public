@@ -174,8 +174,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
 
   const [name, setName] = useState(settings.name);
   const [email, setEmail] = useState(settings.email);
-  const [emailNotifications, setEmailNotifications] = useState(settings.emailNotifications);
-  const [autoCodeReview, setAutoCodeReview] = useState(settings.autoCodeReview);
   const [showWorkspaceTips, setShowWorkspaceTips] = useState(settings.showWorkspaceTips !== false);
   const [defaultModel, setDefaultModel] = useState(settings.defaultModel);
   const [autoModelRouting, setAutoModelRouting] = useState(settings.autoModelRouting !== false);
@@ -215,8 +213,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   useEffect(() => {
     setName(settings.name);
     setEmail(settings.email);
-    setEmailNotifications(settings.emailNotifications);
-    setAutoCodeReview(settings.autoCodeReview);
     setShowWorkspaceTips(settings.showWorkspaceTips !== false);
     setDefaultModel(settings.defaultModel);
     setAutoModelRouting(settings.autoModelRouting !== false);
@@ -301,8 +297,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
     onUpdateSettings({
       name,
       email,
-      emailNotifications,
-      autoCodeReview,
       streamResponses: settings.streamResponses ?? true,
       enableKnowledgeGrounding: settings.enableKnowledgeGrounding ?? true,
       showWorkspaceTips,
@@ -885,24 +879,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
 
             {/* Streamlined Preferences (Streaming SSE & Smart RAG are always active automatically) */}
             <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-              {devModeActive && (
-                <label className="flex items-center justify-between cursor-pointer">
-                  <div>
-                    <span className="text-xs font-medium text-slate-900 dark:text-slate-100 block">
-                      {t.autoPrReviewLabel}
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                      {t.autoPrReviewDesc}
-                    </span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={autoCodeReview}
-                    onChange={(e) => setAutoCodeReview(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                </label>
-              )}
 
               {onOpenKnowledgeBase && (
                 <div className="flex items-center justify-between gap-4">
@@ -947,22 +923,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                 />
               </label>
 
-              <label className="flex items-center justify-between cursor-pointer">
-                <div>
-                  <span className="text-xs font-medium text-slate-900 dark:text-slate-100 block">
-                    {t.emailDigestSettingLabel}
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
-                    {t.emailDigestSettingDesc}
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={emailNotifications}
-                  onChange={(e) => setEmailNotifications(e.target.checked)}
-                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                />
-              </label>
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
@@ -1899,7 +1859,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                 )}
               </div>
 
-              {/* Voice Persona & Language */}
+              {/* Voice Persona */}
               <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 space-y-4 shadow-xs">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -1912,23 +1872,9 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                     </p>
                   </div>
 
-                  <div className="flex items-center p-0.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/70">
-                    {APP_LANGUAGE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        data-testid={`voice-lang-option-${opt.id}`}
-                        onClick={() => handleSelectLanguage(opt.id)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                          language === opt.id
-                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                        }`}
-                      >
-                        {opt.nativeLabel}
-                      </button>
-                    ))}
-                  </div>
+                  {/* বাংলা মন্তব্য: এখানে আগে General ট্যাবের ভাষা-পিকারের হুবহু কপি
+                      (একই handleSelectLanguage) ছিল। ভাষা এখন শুধু General-এ বদলায়;
+                      নিচের Global TTS বার বর্তমান ভাষা/লোকেল দেখায়। */}
                 </div>
 
                 {/* Synchronized Global TTS Engine Bar */}

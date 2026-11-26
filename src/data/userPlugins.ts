@@ -107,8 +107,6 @@ export const DEFAULT_USER_SETTINGS: UserAccountSettings = {
   plan: 'Free',
   monthlyTokensUsed: 0,
   monthlyTokensLimit: PLAN_CATALOG.Free.monthlyTokensLimit,
-  emailNotifications: true,
-  autoCodeReview: true,
   streamResponses: true,
   defaultModel: 'supreme-core',
   language: 'en',
