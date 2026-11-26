@@ -781,12 +781,18 @@ async function startServer() {
       const rows = await supabaseRestRequest('platform_settings?id=eq.global&select=value', 'GET');
       const value = Array.isArray(rows) ? rows[0]?.value : rows?.value;
       if (value && typeof value === 'object') {
-        if (Array.isArray(value.blockedIps)) blockedIps = value.blockedIps;
+        // বাংলা মন্তব্য: রেফারেন্স-ভাঙা রেস কন্ডিশন ফিক্স — blockedIps/runtimeFeatureFlags/platformConfig
+        // রুট মডিউল ও WebSocket ব্রিজে রেজিস্ট্রেশনের সময় রেফারেন্স হিসেবে পাস করা হয়;
+        // এখানে নতুন অ্যারে/অবজেক্ট অ্যাসাইন করলে পুরনো রেফারেন্স স্টেল হয়ে যায়।
+        // তাই ইন-প্লেস মিউটেশন: অ্যারেতে splice, অবজেক্টে Object.assign।
+        if (Array.isArray(value.blockedIps)) {
+          blockedIps.splice(0, blockedIps.length, ...value.blockedIps);
+        }
         if (value.runtimeFeatureFlags && typeof value.runtimeFeatureFlags === 'object') {
-          runtimeFeatureFlags = { ...runtimeFeatureFlags, ...value.runtimeFeatureFlags };
+          Object.assign(runtimeFeatureFlags, value.runtimeFeatureFlags);
         }
         if (value.platformConfig && typeof value.platformConfig === 'object') {
-          platformConfig = { ...platformConfig, ...value.platformConfig };
+          Object.assign(platformConfig, value.platformConfig);
         }
       }
       const logs = await supabaseRestRequest(
@@ -814,7 +820,8 @@ async function startServer() {
       /* offline: keep seed/local state */
     }
   };
-  void loadPlatformState();
+  // বাংলা মন্তব্য: রুট রেজিস্ট্রেশনের আগেই দুর্যোগ-প্রতিরোধী প্ল্যাটফর্ম স্টেট লোড শেষ নিশ্চিত করা হচ্ছে — ফায়ার-অ্যান্ড-ফরগেট হলে প্রথম অনুরোধগুলো সিড/স্টেল স্টেট দেখে চলতে পারে।
+  await loadPlatformState();
 
   // Startup schema probe. The durable audit + platform-state writers swallow
   // errors so they can never break a request, which previously hid the fact
