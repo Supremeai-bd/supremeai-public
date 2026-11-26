@@ -55,7 +55,8 @@ src/api/node.ts           → Node: Express-এ mount (@hono/node-server)
 | `GET /api/models` | ২৯ → ২ | `routes/telemetry.ts`-এ শুধু Node catalog cache | ✅ Hono; Node-এর shared cache helper injected (billing-ও ব্যবহার করে); Edge-এ স্থানীয় canonical catalog |
 | `GET /api/platform/config` | ৪০ | `routes/admin/platform.ts` | ⏳ (Express-এ admin store থেকে পড়ে, Edge-এ static) |
 | `/api/llm-gateway/latency` | ১১০ | `routes/llmLatency.ts` | ⚠️ দুই কপির ডেটা আলাদা: Express-এ স্থির সংখ্যা, Edge-এ সত্যিকারের probe। আগে product সিদ্ধান্ত লাগবে |
-| `/api/share/*`, `/api/research/*` | ১২৭ + ২৫৪ | — (শুধু Edge-এ) | ⏳ সরাসরি Hono-তে নেওয়া যায় |
+| `/api/share/generate`, `/api/share/artifact`, `/api/share/:id` | ১৪১ → ৪ | আগে শুধু Edge-এ | ✅ Hono; Node-এও চলে; no-store, 1 MiB actual-byte limit, malformed input 400/404, HEAD ও 405 |
+| `/api/research/*` | ২৫৪ | — (শুধু Edge-এ) | ⏳ আলাদা ধাপ |
 | `/api/tts`, `/api/tts/edge` | ৪৫৮ | `routes/tts.ts` | ⏳ |
 | `/api/chat`, `/api/chat/title`, `/api/intent/analyze`, `/api/transcribe` | ৫৮৪ | `routes/media.ts`, `routes/stream.ts` | ⏳ (SSE: `streamSSE`) |
 | `/api/api-keys/*`, `/api/user/team/*` | ২৬৩ | `routes/apiKeys.ts`, `routes/team.ts` | ⏳ |
@@ -71,3 +72,14 @@ src/api/node.ts           → Node: Express-এ mount (@hono/node-server)
 সব রুট সরানো শেষ হলে:
 - `functions/api/**`-এর এক লাইনের ফাইলগুলোর বদলে একটাই `functions/api/[[path]].ts` থাকবে, যেটা Hono-কে কল করবে। যে রুট Hono-তে মিলবে না, সেটা gateway-তে proxy হবে।
 - Node-এ Express বাদ দিয়ে `@hono/node-server`-এর `serve()` আর Vite middleware ব্যবহার করা হবে।
+
+## Share contract ও সীমা
+
+- Conversation/artifact link stateless base64url: encrypted, signed, expiring বা revocable নয়। URL যার কাছে যাবে সে payload পড়তে/বদলাতে পারে; secret/token শেয়ার করা যাবে না। এই migration কোনো private-sharing প্রতিশ্রুতি দেয় না।
+- Generated URL, Unicode payload, mode ও defaults রাখা হয়েছে। Node-এ একই endpoint নতুনভাবে পাওয়া যায়।
+- ইচ্ছাকৃত hardening: malformed JSON/ভুল field type-এ 400; POST body actual UTF-8 bytes-এ 1 MiB অতিক্রমে 413 (Content-Length মিথ্যা হলেও); malformed token-এ 404; অন্য method-এ 405; GET থেকে HEAD-এ body বাদ। Artifact-এর আগের সব method-এ 200 আচরণ রাখা হয়নি।
+- Edge CORS এখন adapter-এ env.ALLOWED_ORIGINS-সহ চলে। Conversation ও code response no-store; token payload-এর id/status server-এর response metadata override করে না।
+
+### Stored conversation sharing: চিহ্নিত অবশিষ্ট gap
+
+`core/api/routes/share.py`-এর authenticated DB-backed sharing (`conversation_id`, expiry/revoke) এই stateless contract নয়। Studio shareService একই id request পাঠালেও Edge আগে blank conversation তৈরি করত এবং client failure-এ fake `/share/id` বানাত। এখন unsupported stored-id request-এ 400 ও invalid/missing backend response-এ error caller-এ যায়; mock mode-এর explicit demo আচরণ অপরিবর্তিত। Stored-share proxy/UI viewer wiring এবং auth/expiry/revoke E2E আলাদা কাজ; এই PR-কে পূর্ণ share UI fix বলা যাবে না।
