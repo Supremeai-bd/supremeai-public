@@ -41,7 +41,7 @@ import {
   shouldPromptSaveSubmittedPassword,
 } from '../../services/browserVaultService';
 import { isGoogleStrictAuthUrl, setDomainLiveCookies } from '../../services/browserSessionJar';
-import { GmailInboxPanel } from './GmailInboxPanel';
+import { UniversalInboxPanel } from '../inbox/UniversalInboxPanel';
 import { MobileDeviceFrame } from './MobileDeviceFrame';
 import { useI18n } from '../../utils/i18n';
 
@@ -1247,7 +1247,8 @@ export const WorkspaceBrowserTab: React.FC = () => {
         )}
 
         {isGoogleStrictAuth ? (
-          <GmailInboxPanel />
+          // বাংলা মন্তব্য: একটাই ইনবক্স — Gmail URL খুললে Universal Inbox (InboxAdapter-ভিত্তিক) দেখায়।
+          <UniversalInboxPanel />
         ) : browserStatus === 'error' ? (
           <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-3">
             <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400">

@@ -157,7 +157,7 @@ classDef isolated fill:#7f4f24,stroke:#a68a64,stroke-width:2px,color:#ede0d4;
 | **Core Shell & IPC**      | Tauri v2 (Rust)                                                                                            |
 | **Frontend UI**           | React 19, TypeScript, Vite                                                                                 |
 | **3D Rendering**          | Three.js                                                                                                   |
-| **Markdown & Formatting** | ReactMarkdown, remark-gfm                                                                                  |
+| **Markdown & Formatting** | marked                                                                                                     |
 | **Installer Formats**     | Windows NSIS (`.exe`), WiX (`.msi`), macOS (`.dmg`) and Linux (`.AppImage`) when built for those platforms |
 
 ---

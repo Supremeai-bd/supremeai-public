@@ -60,16 +60,12 @@
 
 ## 🟡 P1 — দ্রুত
 
-### 4. দুই Admin এক করা (P1)
+### 4. দুই Admin এক করা (P1) — ✅ সম্পন্ন (২০২৬-১১-২৬)
 
-**সমস্যা:** `src/components/admin/` (৩৬ ভিউ) বনাম `admin/` (আলাদা Next.js অ্যাপ)।
-**অ্যাকশন:**
-
-- `admin/` অ্যাপটি `src/components/admin/`-এর সাথে ম تاج (বা বিপরীত) করা।
-- `admin/src/lib/mcp-client.ts` (১৮৯ লাইন) → `src/server/mcpRouter.ts` বা `src/shared/`-এ ম تاج।
-- `admin/src/lib/admin-security.ts` (৫৮ লাইন) → `src/shared/serverSecurity.ts`-এর সাথে ম تاج।
-- `admin/src/app/page.tsx` → `src/components/admin/AdminOverviewView.tsx`-এর সাথে ম تاج।
-- `admin/` ফোল্ডারের অলিগলি বা ডুপ্লিকেট কোড ডিলিট করে `src/components/admin/`-কে ক্যানোনিকাল ঘোষণা করা।
+`admin/` (আলাদা Next.js অ্যাপ) মুছে ফেলা হয়েছে; `src/components/admin/` এখন একমাত্র (ক্যানোনিকাল) অ্যাডমিন।
+লাইভ `supremeai-admin.pages.dev`-এর `/api/admin/*` কল আগেই 404 দিচ্ছিল (API রুট `api-backup/`-এ সরানো ছিল),
+তাই কোনো কার্যকর ফিচার হারায়নি। ওই ডোমেইন এখন `deploy/admin-redirect/` দিয়ে মূল স্টুডিওর
+`?tab=admin-overview`-এ 301 redirect করে। সেশন সাইনিং `src/shared/serverSecurity.ts`-এ আগে থেকেই আছে।
 
 ### 5. টেস্ট ক ነገ (P1)
 

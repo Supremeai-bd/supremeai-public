@@ -947,7 +947,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
     const targetTabId = get().activeBrowserTabId;
 
-    // Google/Gmail strict-auth URLs are served by our native OAuth bridge (<GmailInboxPanel />)
+    // Google/Gmail strict-auth URLs are served by our native OAuth bridge (<UniversalInboxPanel />)
     // rather than scraping accounts.google.com through the HTML proxy.
     if (isGoogleStrictAuthUrl(formattedUrl)) {
       const isAccountUrl = /accounts\.google\.com/i.test(formattedUrl);
