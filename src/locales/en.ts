@@ -1197,6 +1197,13 @@ export const EN_DICT = {
     'Just type or speak — SupremeAI picks the right model and tools for you. Try a live demo:',
   onboardingVoiceCta: 'Talk to the 3D Voice Assistant',
   onboardingCodeCta: 'Generate full-stack code',
+  navHistory: 'History',
+  chatBreadcrumbLabel: 'Conversation path',
+  recentPathHint: 'Recent session paths',
+  switchSessionHint: 'Switch recent thread',
+  untitledThread: 'New conversation',
+  generatingTitleLabel: 'Naming thread...',
+  messagesShortSuffix: 'msgs',
 };
 
 export type TranslationKeys = keyof typeof EN_DICT;

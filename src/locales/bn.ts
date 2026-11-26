@@ -1177,4 +1177,11 @@ export const BN_DICT: Record<TranslationKeys, string> = {
     'শুধু টাইপ করুন বা বলুন — সঠিক মডেল ও টুল সুপ্রিম এআই নিজেই বেছে নেবে। লাইভ ডেমো দেখুন:',
   onboardingVoiceCta: '৩D ভয়েস অ্যাসিস্ট্যান্টে কথা বলুন',
   onboardingCodeCta: 'ফুল-স্ট্যাক কোড জেনারেট করুন',
+  navHistory: 'ইতিহাস',
+  chatBreadcrumbLabel: 'কথোপকথনের পথ',
+  recentPathHint: 'সাম্প্রতিক সেশন তালিকা',
+  switchSessionHint: 'সাম্প্রতিক চ্যাটে যান',
+  untitledThread: 'নতুন কথোপকথন',
+  generatingTitleLabel: 'শিরোনাম তৈরি হচ্ছে...',
+  messagesShortSuffix: 'টি বার্তা',
 };
