@@ -83,3 +83,9 @@ src/api/node.ts           → Node: Express-এ mount (@hono/node-server)
 ### Stored conversation sharing: চিহ্নিত অবশিষ্ট gap
 
 `core/api/routes/share.py`-এর authenticated DB-backed sharing (`conversation_id`, expiry/revoke) এই stateless contract নয়। Studio shareService একই id request পাঠালেও Edge আগে blank conversation তৈরি করত এবং client failure-এ fake `/share/id` বানাত। এখন unsupported stored-id request-এ 400 ও invalid/missing backend response-এ error caller-এ যায়; mock mode-এর explicit demo আচরণ অপরিবর্তিত। Stored-share proxy/UI viewer wiring এবং auth/expiry/revoke E2E আলাদা কাজ; এই PR-কে পূর্ণ share UI fix বলা যাবে না।
+
+### Stored-share access hardening — target review pending
+
+`.patches/private/stored-share-access.patch` মূল repo `75bda24`-এর `core/api/routes/share.py` এবং নতুন regression test-এর Rule 10 review payload। Cache-hit-এর আগে প্রতিবার live share row/public/expiry যাচাই হয়; অন্য worker-এ revoke/private হলে পরের read-এ cached content আর ফেরে না। Message cache-এর ৩০ মিনিট TTL রাখা, কিন্তু LRU সর্বোচ্চ ৫০০ entry; TTL hit-এ অসীমভাবে বাড়ে না। Public read-এ no-store, cache conversation identity বদলালে miss, DB failure-এ fail-closed। Production JWT/DB integration বা full-app boot প্রমাণ নয়।
+
+মূল repo-তে payload apply/CI/merge/deploy প্রমাণ না আসা পর্যন্ত এই নিরাপত্তা fix landed বা stored-share UI enabled ধরে নেওয়া যাবে না। Reverse-sync apply step এখনও skipped দেখা গেছে; credential/config workflow operator review বাকি। Sandbox full-app `import main` missing uvicorn-এ blocked; focused real FastAPI router boot ও lifecycle tests সফল। নতুন UI/proxy চালু করা হয়নি, কোনো live DB write/delete চালানো হয়নি।
