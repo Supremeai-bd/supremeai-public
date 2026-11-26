@@ -3,6 +3,8 @@ import { env } from '../../config/env';
 import { useI18n } from '../../utils/i18n';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useDataSource } from '../../hooks/useDataSource';
+import { VisualQueueConveyor } from './VisualQueueConveyor';
+import { ProviderRadar } from './ProviderRadar';
 import {
   Server,
   FolderGit2,
@@ -1293,6 +1295,11 @@ export const AdminArchitectureTopologyView: React.FC = () => {
           7 Render Services + Supabase, Upstash, Kaggle, Infisical, AI Squad, Telegram & GitHub
         </span>
       </div>
+
+      {/* বাংলা মন্তব্য: আগে visual-cockpit ট্যাবে থাকা VisualQueueConveyor ও ProviderRadar
+          এখন এখানে মেরামত করা হয়েছে — আলাদা ট্যাবের দরকার নেই */}
+      <VisualQueueConveyor />
+      <ProviderRadar />
     </div>
   );
 };

@@ -12,6 +12,7 @@ interface ModelMatrixProps {
   activeModel: ModelDetail;
   onSelectModel: (model: ModelDetail) => void;
   onNavigateToChat: () => void;
+  hideHeader?: boolean;
 }
 
 const TIER_RANK: Record<PlanTier, number> = {
@@ -24,6 +25,7 @@ export const ModelMatrix: React.FC<ModelMatrixProps> = ({
   activeModel,
   onSelectModel,
   onNavigateToChat,
+  hideHeader,
 }) => {
   const { t } = useI18n();
   const [latencyResults, setLatencyResults] = useState<
@@ -88,14 +90,16 @@ export const ModelMatrix: React.FC<ModelMatrixProps> = ({
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-8 max-w-6xl mx-auto space-y-8 text-slate-800 dark:text-slate-200">
-      <div className="space-y-1.5 border-b border-slate-200 dark:border-slate-800 pb-5">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-          {t.modelMatrixTitle}
-        </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
-          {t.modelMatrixSubtitle}
-        </p>
-      </div>
+      {!hideHeader && (
+        <div className="space-y-1.5 border-b border-slate-200 dark:border-slate-800 pb-5">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            {t.modelMatrixTitle}
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
+            {t.modelMatrixSubtitle}
+          </p>
+        </div>
+      )}
 
       {/* Model Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

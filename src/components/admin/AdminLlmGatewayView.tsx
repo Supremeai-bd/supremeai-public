@@ -1,22 +1,53 @@
 import React, { useEffect, useState } from 'react';
 import { Route, ToggleLeft, ToggleRight, Cpu } from 'lucide-react';
-import { LlmGatewayRoute, GatewayProviderLatency } from '../../types';
+import { LlmGatewayRoute, GatewayProviderLatency, ModelDetail } from '../../types';
 import { apiKeyService } from '../../services/apiKeyService';
 import { useI18n } from '../../utils/i18n';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
+import { ModelMatrix } from '../ModelMatrix';
 
 interface AdminLlmGatewayViewProps {
   routes: LlmGatewayRoute[];
   onToggleFailover: (routeId: string) => void;
   onUpdatePrice: (routeId: string, newPrice: number) => void;
+  activeModel: ModelDetail;
+  onSelectModel: (model: ModelDetail) => void;
+  onNavigateToChat: () => void;
 }
 
 export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
   routes,
   onToggleFailover,
+  onUpdatePrice,
+  activeModel,
+  onSelectModel,
+  onNavigateToChat,
 }) => {
   const { t } = useI18n();
+  // বাংলা মন্তব্য: আগে আলাদা models ট্যাবে থাকা ModelMatrix এখন এই গেটওয়ে ভিউর
+  // একটি সাব-ট্যাব হিসেবে মেরামত করা হয়েছে — Routes ও Model Matrix এর মধ্যে স্বচ্ছ স্বিচ্ছায় চলা যায়।
+  const [subview, setSubview] = useState<'routes' | 'matrix'>('routes');
+  // বাংলা মন্তব্য: আগে onUpdatePrice প্রপ পাওয়া গেছে কিন্তু UI-তে ব্যবহার হয়নি।
+  // এখন রিটেইল প্রাইস ভেতরে সরাসরি edit করার সুবিধা যুক্ত করা হচ্ছে —
+  // বাটন ক্লিক করলেই PATCH /api/admin/llm-gateway/:id/price endpoint-তে পাঠানো হবে।
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [priceDraft, setPriceDraft] = useState<string>('');
+
+  const startPriceEdit = (routeId: string, currentPrice: number) => {
+    setEditingPriceId(routeId);
+    setPriceDraft(String(currentPrice));
+  };
+
+  const savePrice = (routeId: string) => {
+    const parsed = Number(priceDraft);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setEditingPriceId(null);
+      return;
+    }
+    onUpdatePrice(routeId, parsed);
+    setEditingPriceId(null);
+  };
 
   // বাংলা মন্তব্য: গেটওয়ে রাউট লাইভ সার্ভার থেকে এসেছে কি না — ব্যাজ সত্য বলে।
   const dataSource = useAdminCollectionSource(
@@ -107,6 +138,34 @@ export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
         </div>
       </div>
 
+      {/* Sub-tab switcher: Routes & Pricing | Model Matrix & Ping Benchmark */}
+      <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+        <button
+          type="button"
+          onClick={() => setSubview('routes')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+            subview === 'routes'
+              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+          }`}
+        >
+          {t.llmGatewayTabRoutes}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubview('matrix')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+            subview === 'matrix'
+              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+          }`}
+        >
+          {t.llmGatewayTabMatrix}
+        </button>
+      </div>
+
+      {subview === 'routes' && (
+      <>
       {/* Gateway Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-white/70 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 shadow-xs">
@@ -235,9 +294,42 @@ export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
                     </div>
                     <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/40">
                       <div className="text-[10px] text-slate-400">{t.retailRateLabel}</div>
-                      <div className="font-mono font-bold text-blue-600 dark:text-blue-400 mt-0.5">
-                        ${retailPrice.toFixed(2)}/1M
-                      </div>
+                      {editingPriceId === route.id ? (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={priceDraft}
+                            onChange={(e) => setPriceDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') savePrice(route.id);
+                              if (e.key === 'Escape') setEditingPriceId(null);
+                            }}
+                            className="w-16 px-1.5 py-1 rounded text-xs font-mono text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 border border-blue-400 outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => savePrice(route.id)}
+                            className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                          >
+                            {t.gatewaySavePrice}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                            ${retailPrice.toFixed(2)}/1M
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => startPriceEdit(route.id, retailPrice)}
+                            className="text-[10px] font-semibold text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+                          >
+                            {t.gatewayEditPrice}
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/40">
                       <div className="text-[10px] text-slate-400">{t.grossMarginLabel}</div>
@@ -252,6 +344,17 @@ export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
           </div>
         )}
       </div>
+      </>
+      )}
+
+      {subview === 'matrix' && (
+        <ModelMatrix
+          activeModel={activeModel}
+          onSelectModel={onSelectModel}
+          onNavigateToChat={onNavigateToChat}
+          hideHeader
+        />
+      )}
     </div>
   );
 };

@@ -5,6 +5,7 @@ import {
   DollarSign,
   Cpu,
   Radio,
+  Zap,
   Bot,
   AlertTriangle,
   RotateCcw,
@@ -24,6 +25,7 @@ import {
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { CustomerRecord, McpTowerService, SwarmWorker, TaskQueueJob, PlanTier } from '../../types';
 import { SUPREMEAI_MODELS } from '../../data/models';
+import { INITIAL_FEATURE_FLAGS } from '../../data/adminExpansionData';
 import { usePlatformStore } from '../../stores/usePlatformStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useControlCenterStore } from '../../stores/useControlCenterStore';
@@ -61,7 +63,10 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
     'overview',
     'কন্ট্রোল-প্লেন ওভারভিউ এখনো লাইভ সিঙ্ক হয়নি; মডেল কার্ডগুলো স্ট্যাটিক ক্যাটালগ (src/data/models)।'
   );
-  const { config, isLoaded, isSaving, updateConfig, updateModelPolicy } = usePlatformStore();
+  const { config, isLoaded, isSaving, updateConfig, updateModelPolicy, toggleFeatureFlag } =
+    usePlatformStore();
+  // বাংলা মন্তব্য: feature-flags আলাদা ট্যাব বাদ দিয়ে কার্যকর ফ্ল্যাগগুলো এখানে
+  // Platform Governance কার্ডের ভেতর সরাসরি টগল করার সুবিধা যুক্ত করা হয়েছে।
   const authUser = useAuthStore((s) => s.authUser);
   const {
     latestGithubCommit,
@@ -304,7 +309,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
         />
 
         {/* Multi-Account Provider Pools, Quota Runway & 1-Click Failover Watch */}
-        <AdminProviderPoolsOverviewCard onNavigateTab={onNavigateTab} />
+        <AdminProviderPoolsOverviewCard />
 
         {/* Live 5-Layer Deep Diagnose TruthMatrix & ReleaseGate Strip */}
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
@@ -763,6 +768,53 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
               >
                 {config.allowNewSignups ? 'Open' : 'Paused'}
               </button>
+            </div>
+
+            {/* Feature Flags — বাংলা মন্তব্য: আগে আলাদা feature-flags ট্যাব ছিল।
+                এখন কার্যকর (সার্ভারসাইড এনফোর্স) ফ্ল্যাগগুলো এখানেই টগল করা হয়। */}
+            <div className="space-y-2.5 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60">
+              <div className="text-[11px] font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-purple-500" />
+                <span>{t.ovFeatureFlags}</span>
+              </div>
+              {INITIAL_FEATURE_FLAGS.map((flag) => {
+                const enabled =
+                  typeof config.featureFlags[flag.key] === 'boolean'
+                    ? config.featureFlags[flag.key]
+                    : flag.enabled;
+                return (
+                  <div
+                    key={flag.key}
+                    className="flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                        {flag.name}
+                      </div>
+                      <div className="font-mono text-[10px] text-slate-400 truncate">
+                        {flag.key}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={enabled}
+                      onClick={() => toggleFeatureFlag(flag.key, !enabled)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
+                        enabled
+                          ? 'bg-cyan-500 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
+                          : 'bg-slate-300 dark:bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ${
+                          enabled ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

@@ -1,8 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   Cpu,
-  FolderGit2,
-  Sliders,
   ShieldCheck,
   Users,
   Activity,
@@ -11,7 +9,6 @@ import {
   Database,
   FileCheck2,
   Bot,
-  LayoutDashboard,
   Rocket,
   GitBranch,
   Brain,
@@ -22,14 +19,9 @@ import {
   ChevronRight,
   Pin,
   Search,
-  Layers,
 } from 'lucide-react';
 import { useI18n } from '../../utils/i18n';
 import { logger } from '../../utils/logger';
-import {
-  calculateAccountRunway,
-  useProviderAccountsStore,
-} from '../../stores/useProviderAccountsStore';
 
 interface AdminConsoleNavProps {
   activeTab: string;
@@ -58,12 +50,6 @@ export const AdminConsoleNav: React.FC<AdminConsoleNavProps> = ({
   healthAlertCount = 0,
 }) => {
   const { t } = useI18n();
-  const providerAccounts = useProviderAccountsStore((s) => s.accounts);
-  const atRiskProviderAccounts = useMemo(
-    () =>
-      providerAccounts.filter((acc) => calculateAccountRunway(acc).severity !== 'nominal').length,
-    [providerAccounts]
-  );
   const [showAdvancedAdmin, setShowAdvancedAdmin] = useState(false);
   const [toolFilter, setToolFilter] = useState('');
   const [pinnedAdminToolIds, setPinnedAdminToolIds] = useState<string[]>(() => {
@@ -127,13 +113,6 @@ export const AdminConsoleNav: React.FC<AdminConsoleNavProps> = ({
       title: 'AI & Compute',
       items: [
         {
-          id: 'provider-accounts',
-          label: 'Multi-Account Hub',
-          icon: <Layers className="w-4 h-4 shrink-0" />,
-          badge: atRiskProviderAccounts > 0 ? `${atRiskProviderAccounts}` : undefined,
-          badgeAlert: atRiskProviderAccounts > 0,
-        },
-        {
           id: 'llm-gateway',
           label: 'LLM Gateway',
           icon: <Cpu className="w-4 h-4 shrink-0" />,
@@ -195,11 +174,6 @@ export const AdminConsoleNav: React.FC<AdminConsoleNavProps> = ({
 
   const advancedAdminItems: AdminNavItem[] = [
     {
-      id: 'visual-cockpit',
-      label: 'Visual Cockpit',
-      icon: <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />,
-    },
-    {
       id: 'architecture-map',
       label: 'Architecture Map',
       icon: <Activity className="w-3.5 h-3.5 shrink-0" />,
@@ -225,34 +199,9 @@ export const AdminConsoleNav: React.FC<AdminConsoleNavProps> = ({
       icon: <Wallet className="w-3.5 h-3.5 shrink-0" />,
     },
     {
-      id: 'feature-flags',
-      label: 'Feature Flags',
-      icon: <Sliders className="w-3.5 h-3.5 shrink-0" />,
-    },
-    {
-      id: 'repos',
-      label: 'Ecosystem Repos',
-      icon: <FolderGit2 className="w-3.5 h-3.5 shrink-0" />,
-    },
-    {
       id: 'external-agents',
       label: 'External Agents',
       icon: <GitBranch className="w-3.5 h-3.5 shrink-0" />,
-    },
-    {
-      id: 'models',
-      label: 'Model Matrix',
-      icon: <Cpu className="w-3.5 h-3.5 shrink-0" />,
-    },
-    {
-      id: 'roles',
-      label: 'Roles & Gems Lab',
-      icon: <Sliders className="w-3.5 h-3.5 shrink-0" />,
-    },
-    {
-      id: 'usage',
-      label: 'Usage Analytics',
-      icon: <Activity className="w-3.5 h-3.5 shrink-0" />,
     },
   ];
 
