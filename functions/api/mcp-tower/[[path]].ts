@@ -91,6 +91,100 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     );
   }
 
+  if (sub === 'deployments') {
+    const cfToken = typeof env.CLOUDFLARE_API_TOKEN === 'string' ? env.CLOUDFLARE_API_TOKEN.trim() : '';
+    const cfAccountId = typeof env.CLOUDFLARE_ACCOUNT_ID === 'string' ? env.CLOUDFLARE_ACCOUNT_ID.trim() : '';
+    const ghHeaders: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'SupremeAI-Admin-Dashboard',
+    };
+    const ghToken = typeof env.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN.trim() : '';
+    if (ghToken) ghHeaders.Authorization = `Bearer ${ghToken}`;
+
+    const [cfRes, ghPubRes, ghCoreRes, towerRelRes, gwRes] = await Promise.allSettled([
+      cfToken && cfAccountId
+        ? fetchWithTimeout(
+            `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/pages/projects/supremeai-studio/deployments?per_page=1`,
+            { headers: { Authorization: `Bearer ${cfToken}` } },
+            4500
+          ).then((r) => (r.ok ? r.json() : null))
+        : Promise.resolve(null),
+      fetchWithTimeout(
+        'https://api.github.com/repos/Supremeai-bd/supremeai-public/actions/runs?branch=main&per_page=1',
+        { headers: ghHeaders },
+        4500
+      ).then((r) => (r.ok ? r.json() : null)),
+      fetchWithTimeout(
+        'https://api.github.com/repos/Supremeai-bd/supremeai/actions/runs?branch=main&per_page=1',
+        { headers: ghHeaders },
+        4500
+      ).then((r) => (r.ok ? r.json() : null)),
+      fetchWithTimeout(`${mcpOrigin}/release`, { headers: { Accept: 'application/json' } }, 4500).then((r) =>
+        r.ok ? r.json() : null
+      ),
+      fetchWithTimeout(`${upstreamOrigin}/api/health`, { headers: { Accept: 'application/json' } }, 4500).then((r) =>
+        r.ok ? r.json() : null
+      ),
+    ]);
+
+    const cfData = cfRes.status === 'fulfilled' ? (cfRes.value as { result?: Array<{ created_on?: string; latest_stage?: { status?: string }; deployment_trigger?: { metadata?: { commit_hash?: string } } }> } | null) : null;
+    const cfLatest = cfData?.result?.[0];
+    const ghPub = ghPubRes.status === 'fulfilled' ? (ghPubRes.value as { workflow_runs?: Array<{ updated_at?: string; conclusion?: string; head_sha?: string }> } | null)?.workflow_runs?.[0] : null;
+    const ghCore = ghCoreRes.status === 'fulfilled' ? (ghCoreRes.value as { workflow_runs?: Array<{ updated_at?: string; conclusion?: string; head_sha?: string }> } | null)?.workflow_runs?.[0] : null;
+    const towerRel = towerRelRes.status === 'fulfilled' ? (towerRelRes.value as { deployedAt?: string; buildTime?: string; commit?: string } | null) : null;
+    const gwData = gwRes.status === 'fulfilled' ? (gwRes.value as { deployedAt?: string; timestamp?: string; version?: string } | null) : null;
+
+    return jsonEdgeResponse(
+      {
+        checkedAt: new Date().toISOString(),
+        deployments: [
+          {
+            id: 'cloudflare-studio',
+            provider: 'Cloudflare Pages',
+            service: 'supremeai-studio',
+            deployedAt: cfLatest?.created_on || null,
+            status: cfLatest?.latest_stage?.status || (cfToken ? 'unknown' : 'unconfigured'),
+            commit: cfLatest?.deployment_trigger?.metadata?.commit_hash?.slice(0, 7) || null,
+          },
+          {
+            id: 'github-public',
+            provider: 'GitHub Actions',
+            service: 'supremeai-public (main)',
+            deployedAt: ghPub?.updated_at || null,
+            status: ghPub?.conclusion || 'unknown',
+            commit: ghPub?.head_sha?.slice(0, 7) || null,
+          },
+          {
+            id: 'github-core',
+            provider: 'GitHub Actions',
+            service: 'supremeai (main)',
+            deployedAt: ghCore?.updated_at || null,
+            status: ghCore?.conclusion || 'unknown',
+            commit: ghCore?.head_sha?.slice(0, 7) || null,
+          },
+          {
+            id: 'render-tower',
+            provider: 'Render',
+            service: 'supremeai-mcp-tower-live',
+            deployedAt: towerRel?.deployedAt || towerRel?.buildTime || null,
+            status: towerRel ? 'live' : 'unreachable',
+            commit: towerRel?.commit?.slice(0, 7) || null,
+          },
+          {
+            id: 'render-gateway',
+            provider: 'Render',
+            service: 'supremeai-api (Gateway)',
+            deployedAt: gwData?.deployedAt || gwData?.timestamp || null,
+            status: gwData ? 'live' : 'unreachable',
+            commit: gwData?.version || null,
+          },
+        ],
+      },
+      200,
+      request
+    );
+  }
+
   if (sub === 'services' || sub === 'probe' || sub === 'reboot-all') {
     const [gatewaySvc, towerSvc, studioSvc, mcpToolsResult] = await Promise.all([
       probeTargetHealth(

@@ -96,11 +96,29 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
   const [bannerLevel, setBannerLevel] = useState<'info' | 'warning' | 'critical'>(
     config.announcementBanner.level
   );
+  const [liveDeployments, setLiveDeployments] = useState<
+    Array<{
+      id: string;
+      provider: string;
+      service: string;
+      deployedAt: string | null;
+      status: string;
+      commit: string | null;
+    }>
+  >([]);
 
   useEffect(() => {
     loadOverview();
     loadServiceHealth(false);
     loadEcosystemDiagnostics();
+    fetch('/api/mcp-tower/deployments')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.deployments)) {
+          setLiveDeployments(data.deployments);
+        }
+      })
+      .catch(() => {});
   }, [loadOverview, loadServiceHealth, loadEcosystemDiagnostics]);
 
   useEffect(() => {
@@ -202,6 +220,28 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
                   <span>Inspect Health Monitor</span>
                 </button>
               </div>
+              {liveDeployments.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 pt-2">
+                  {liveDeployments.map((dep) => (
+                    <div
+                      key={dep.id}
+                      className="rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-[11px]"
+                    >
+                      <div className="flex items-center justify-between gap-1 text-[#cbd5e1] font-semibold">
+                        <span className="truncate">{dep.provider}</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-white/90">
+                          {dep.status}
+                        </span>
+                      </div>
+                      <div className="text-white/90 font-medium truncate mt-0.5">{dep.service}</div>
+                      <div className="text-[#94a3b8] font-mono text-[10px] mt-0.5 truncate">
+                        {dep.deployedAt ? new Date(dep.deployedAt).toLocaleString() : 'N/A'}
+                        {dep.commit ? ` · ${dep.commit}` : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs font-mono text-[#a7b8d4]">
                 <span>
                   Status:{' '}
