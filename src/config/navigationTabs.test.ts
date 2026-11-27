@@ -50,6 +50,7 @@ describe('ROUTABLE_TABS — App.tsx-এর রেন্ডার শাখার
       'visual-cockpit',
       'provider-accounts',
       'user-knowledge',
+      'chat-history',
       'feature-flags',
       '',
       'constructor',

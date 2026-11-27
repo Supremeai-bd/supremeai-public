@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   FolderGit2,
@@ -13,7 +13,7 @@ import {
   LogOut,
   PanelLeft,
   Pin,
-  History,
+  Search,
   Lock,
   LogIn,
   MessageSquare,
@@ -33,6 +33,10 @@ import { useI18n } from '../utils/i18n';
 import { useAuthStore } from '../stores/useAuthStore';
 import { isAuthorizedAdminEmail } from '../services/authService';
 import { clearUserMemory, loadUserMemory } from '../services/intentOrchestrator';
+import { FOCUS_CHAT_SEARCH_EVENT, searchChatSessions } from '../utils/chatSearch';
+
+// বাংলা মন্তব্য: সাইডবারে প্রথমে এতগুলো সাম্প্রতিক চ্যাট; বাকিগুলো "Show all" চাপলে (আলাদা ট্যাব নেই)
+const RECENT_CHATS_INITIAL = 25;
 
 interface SidebarProps {
   sessions: ChatSession[];
@@ -88,6 +92,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [memoryTopicsCount, setMemoryTopicsCount] = useState(
     () => loadUserMemory().recentTopics.length
   );
+  // বাংলা মন্তব্য: "All Conversations" ট্যাবের বদলে সাইডবারেই চ্যাট সার্চ (শিরোনাম + মেসেজ)
+  const [chatQuery, setChatQuery] = useState('');
+  const [showAllRecent, setShowAllRecent] = useState(false);
+  const chatSearchRef = useRef<HTMLInputElement | null>(null);
   const authLogin = useAuthStore((s) => s.login);
   const authLoading = useAuthStore((s) => s.isLoading);
 
@@ -113,10 +121,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { t } = useI18n();
 
   const pinnedSessions = sessions.filter((s) => s.isPinned);
-  const recentSessions = [...sessions]
+  const allRecentSessions = [...sessions]
     .filter((s) => !s.isPinned)
-    .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt))
-    .slice(0, 18);
+    .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+  const recentSessions = showAllRecent
+    ? allRecentSessions
+    : allRecentSessions.slice(0, RECENT_CHATS_INITIAL);
+  const searchResults = useMemo(
+    () => searchChatSessions(sessions, chatQuery),
+    [sessions, chatQuery]
+  );
+  const isSearching = chatQuery.trim().length > 0;
+
+  // ভয়েস/চ্যাটে "পুরনো চ্যাট খোঁজো" বললে App এই ইভেন্ট পাঠায় — সার্চ বক্সে ফোকাস
+  useEffect(() => {
+    const focus = () => window.setTimeout(() => chatSearchRef.current?.focus(), 0);
+    window.addEventListener(FOCUS_CHAT_SEARCH_EVENT, focus);
+    return () => window.removeEventListener(FOCUS_CHAT_SEARCH_EVENT, focus);
+  }, []);
 
   const usagePercent = Math.min(100, Math.round((tokensUsed / Math.max(1, tokensLimit)) * 100));
 
@@ -136,7 +158,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   if (!isOpen) return null;
 
-  const renderSessionRow = (session: ChatSession) => {
+  const renderSessionRow = (session: ChatSession, snippet?: string | null) => {
     const isActive = session.id === activeSessionId && activeTab === 'chat';
 
     return (
@@ -183,8 +205,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </form>
           ) : (
             <div className="flex items-center gap-1.5 min-w-0 flex-1">
-              <span title={session.title} className="truncate text-xs">
-                {session.title}
+              <span className="min-w-0 flex-1">
+                <span title={session.title} className="block truncate text-xs">
+                  {session.title}
+                </span>
+                {snippet && (
+                  <span
+                    data-testid="sidebar-search-snippet"
+                    className="block truncate text-[10px] font-normal text-slate-400"
+                  >
+                    {snippet}
+                  </span>
+                )}
               </span>
               {generatingTitleIds.includes(session.id) && (
                 <Sparkles
@@ -321,27 +353,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Streamlined Navigation: 3 Core Items + Collapsible More Workspace */}
         <div className="px-2 space-y-0.5 text-xs text-slate-600 dark:text-slate-400 overflow-y-auto max-h-[44vh]">
-          <button
-            type="button"
-            onClick={() => onSelectTab('chat-history')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer ${
-              activeTab === 'chat-history'
-                ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-900 dark:text-white font-medium'
-                : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <History className="w-4 h-4 text-slate-500" />
-              <span>{t.allConversations}</span>
-            </div>
-            {isGuest ? (
-              <Lock className="w-3 h-3 text-slate-400" />
-            ) : (
-              <span className="text-[11px] font-mono tabular-nums text-slate-400">
-                {sessions.length}
-              </span>
+          {/* বাংলা মন্তব্য: চ্যাট সার্চ — আগের "All Conversations" ট্যাবের কাজ এখানেই */}
+          <div className="relative px-1 pb-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 -mt-0.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <input
+              ref={chatSearchRef}
+              type="search"
+              data-testid="sidebar-chat-search"
+              value={chatQuery}
+              onChange={(e) => setChatQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setChatQuery('');
+              }}
+              placeholder={t.sidebarSearchChats}
+              aria-label={t.sidebarSearchChats}
+              className="w-full pl-8 pr-7 py-2 text-xs rounded-lg bg-slate-100/80 dark:bg-slate-800/60 border border-transparent focus:border-[var(--theme-accent)] text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none transition-colors"
+            />
+            {isSearching && (
+              <button
+                type="button"
+                onClick={() => {
+                  setChatQuery('');
+                  chatSearchRef.current?.focus();
+                }}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 -mt-0.5 p-0.5 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
             )}
-          </button>
+          </div>
 
           <button
             type="button"
@@ -534,38 +575,71 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Divider */}
         <div className="my-2 mx-3 border-t border-slate-200/70 dark:border-slate-800/70" />
 
-        {/* Pinned & Recent Chats Lists */}
+        {/* Pinned & Recent Chats Lists (or search results) */}
         <div className="flex-1 min-h-0 overflow-y-auto px-2 space-y-3 pb-2">
-          {pinnedSessions.length > 0 && (
-            <div className="space-y-0.5">
+          {isSearching ? (
+            <div className="space-y-0.5" data-testid="sidebar-search-results">
               <div className="px-2 py-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
                 <span className="inline-flex items-center gap-1.5">
-                  <Pin className="w-3 h-3 text-amber-500" />
-                  <span>{t.pinnedChats}</span>
+                  <Search className="w-3 h-3 text-cyan-500" />
+                  <span>{t.sidebarSearchResults}</span>
                 </span>
-                <span className="font-mono tabular-nums">{pinnedSessions.length}</span>
+                <span className="font-mono tabular-nums">{searchResults.length}</span>
               </div>
-              {pinnedSessions.map(renderSessionRow)}
+              {searchResults.length === 0 ? (
+                <div className="mx-1 px-3 py-2.5 text-[11px] text-slate-500 dark:text-slate-400">
+                  {t.sidebarSearchNoResults}
+                </div>
+              ) : (
+                searchResults.map((r) => renderSessionRow(r.session, r.snippet))
+              )}
             </div>
+          ) : (
+            <>
+              {pinnedSessions.length > 0 && (
+                <div className="space-y-0.5">
+                  <div className="px-2 py-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Pin className="w-3 h-3 text-amber-500" />
+                      <span>{t.pinnedChats}</span>
+                    </span>
+                    <span className="font-mono tabular-nums">{pinnedSessions.length}</span>
+                  </div>
+                  {pinnedSessions.map((s) => renderSessionRow(s))}
+                </div>
+              )}
+
+              <div className="space-y-0.5">
+                <div className="px-2 py-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  <span className="inline-flex items-center gap-1.5">
+                    <MessageSquare className="w-3 h-3 text-cyan-500" />
+                    <span>{t.recentChats}</span>
+                  </span>
+                  <span className="font-mono tabular-nums">{allRecentSessions.length}</span>
+                </div>
+
+                {allRecentSessions.length === 0 ? (
+                  <div className="mx-1 px-3 py-2.5 rounded-xl border border-dashed border-slate-200/90 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 text-[11px] text-slate-500 dark:text-slate-400">
+                    <p className="leading-relaxed">{t.emptySidebarHint}</p>
+                  </div>
+                ) : (
+                  recentSessions.map((s) => renderSessionRow(s))
+                )}
+                {allRecentSessions.length > RECENT_CHATS_INITIAL && (
+                  <button
+                    type="button"
+                    data-testid="sidebar-show-all-chats"
+                    onClick={() => setShowAllRecent((v) => !v)}
+                    className="w-full px-3 py-1.5 text-left text-[11px] text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {showAllRecent
+                      ? t.sidebarShowFewerChats
+                      : `${t.sidebarShowAllChats} (${allRecentSessions.length})`}
+                  </button>
+                )}
+              </div>
+            </>
           )}
-
-          <div className="space-y-0.5">
-            <div className="px-2 py-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-              <span className="inline-flex items-center gap-1.5">
-                <MessageSquare className="w-3 h-3 text-cyan-500" />
-                <span>{t.recentChats}</span>
-              </span>
-              <span className="font-mono tabular-nums">{recentSessions.length}</span>
-            </div>
-
-            {recentSessions.length === 0 ? (
-              <div className="mx-1 px-3 py-2.5 rounded-xl border border-dashed border-slate-200/90 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 text-[11px] text-slate-500 dark:text-slate-400">
-                <p className="leading-relaxed">{t.emptySidebarHint}</p>
-              </div>
-            ) : (
-              recentSessions.map(renderSessionRow)
-            )}
-          </div>
         </div>
 
         {/* Streamlined Profile, Theme & Ops Console Footer */}
