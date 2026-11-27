@@ -72,8 +72,10 @@ function readStoredSettingsLanguage(): AppLanguage {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as { language?: unknown };
-      if (parsed && parsed.language === 'bn') return 'bn';
-      if (parsed && parsed.language === 'en') return 'en';
+      // বাংলা মন্তব্য: আঞ্চলিক বাংলা (bn-ctg …) সেভ থাকলে TTS-এ সেটাও বাংলা।
+      if (parsed && typeof parsed.language === 'string' && parsed.language) {
+        return normalizeAppLanguage(parsed.language);
+      }
     }
   } catch {
     // Ignore storage issues gracefully

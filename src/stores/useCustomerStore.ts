@@ -8,6 +8,7 @@ import {
   UserProject,
   PluginItem,
   UserAccountSettings,
+  type AppLanguage,
 } from '../types';
 import {
   INITIAL_API_KEYS,
@@ -30,6 +31,7 @@ import { env } from '../config/env';
 import { PLAN_CATALOG } from '../config/plans';
 import { schedulePreferencesPatch } from '../services/userPreferencesSyncBus';
 import { logger } from '../utils/logger';
+import { htmlLangFor, normalizeSupportedLanguage } from '../utils/appLanguage';
 
 const API_KEYS_KEY = 'supremeai_studio_api_keys';
 const WEBHOOKS_KEY = 'supremeai_studio_webhooks';
@@ -152,7 +154,7 @@ export const useCustomerStore = create<CustomerState>((set, get) => {
     SETTINGS_KEY,
     DEFAULT_USER_SETTINGS
   );
-  const initialLanguage = rawInitialSettings.language === 'bn' ? 'bn' : 'en';
+  const initialLanguage = normalizeSupportedLanguage(rawInitialSettings.language);
   const initialSettings: UserAccountSettings = {
     ...DEFAULT_USER_SETTINGS,
     ...rawInitialSettings,
@@ -669,17 +671,14 @@ export const useCustomerStore = create<CustomerState>((set, get) => {
     },
 
     updateSettings: (newSettings, silent = false) => {
-      let resolvedLanguage: 'en' | 'bn' | null = null;
+      let resolvedLanguage: AppLanguage | null = null;
       let latestUpdated: UserAccountSettings | null = null;
       set((state) => {
+        const currentLang = normalizeSupportedLanguage(state.userSettings.language);
         const normalizedLang =
           newSettings.language !== undefined
-            ? newSettings.language === 'bn'
-              ? 'bn'
-              : 'en'
-            : state.userSettings.language === 'bn'
-              ? 'bn'
-              : 'en';
+            ? normalizeSupportedLanguage(newSettings.language, currentLang)
+            : currentLang;
         const updated: UserAccountSettings = {
           ...state.userSettings,
           ...newSettings,
@@ -692,7 +691,7 @@ export const useCustomerStore = create<CustomerState>((set, get) => {
           if (updated.contentLayout) {
             document.documentElement.dataset.workspaceLayout = updated.contentLayout;
           }
-          document.documentElement.lang = normalizedLang;
+          document.documentElement.lang = htmlLangFor(normalizedLang);
         }
         return { userSettings: updated };
       });
@@ -713,16 +712,12 @@ export const useCustomerStore = create<CustomerState>((set, get) => {
 
     applyRemoteSettings: (remoteSettings) => {
       if (!remoteSettings || typeof remoteSettings !== 'object') return;
-      let resolvedLanguage: 'en' | 'bn' = 'en';
+      let resolvedLanguage: AppLanguage = 'en';
       set((state) => {
-        const normalizedLang =
-          remoteSettings.language === 'bn'
-            ? 'bn'
-            : remoteSettings.language === 'en'
-              ? 'en'
-              : state.userSettings.language === 'bn'
-                ? 'bn'
-                : 'en';
+        const normalizedLang = normalizeSupportedLanguage(
+          remoteSettings.language,
+          normalizeSupportedLanguage(state.userSettings.language)
+        );
         const merged: UserAccountSettings = {
           ...state.userSettings,
           ...remoteSettings,
@@ -738,7 +733,7 @@ export const useCustomerStore = create<CustomerState>((set, get) => {
           if (merged.contentLayout) {
             document.documentElement.dataset.workspaceLayout = merged.contentLayout;
           }
-          document.documentElement.lang = normalizedLang;
+          document.documentElement.lang = htmlLangFor(normalizedLang);
         }
         return { userSettings: merged };
       });
