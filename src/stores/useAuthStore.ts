@@ -42,13 +42,14 @@ interface AuthState {
 
   // Actions
   clearAuthError: () => void;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string, captchaToken?: string | null) => Promise<boolean>;
   signup: (
     name: string,
     email: string,
     password: string,
     plan?: string,
-    isDeveloperEligible?: boolean
+    isDeveloperEligible?: boolean,
+    captchaToken?: string | null
   ) => Promise<boolean>;
   logout: (silentToast?: boolean) => void;
   restoreSession: () => Promise<void>;
@@ -262,10 +263,10 @@ export const useAuthStore = create<AuthState>((set, get) => {
       }
     },
 
-    login: async (email: string, password: string) => {
+    login: async (email: string, password: string, captchaToken?: string | null) => {
       set({ isLoading: true, authError: null });
       try {
-        const res = await authService.login(email, password);
+        const res = await authService.login(email, password, captchaToken);
         localStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
         const isAllowedAdmin = hasAdminAccess(res.user);
         const roleToSet = isAllowedAdmin ? 'admin' : 'user';
@@ -317,11 +318,19 @@ export const useAuthStore = create<AuthState>((set, get) => {
       email: string,
       password: string,
       plan: string = 'Free',
-      isDeveloperEligible: boolean = false
+      isDeveloperEligible: boolean = false,
+      captchaToken?: string | null
     ) => {
       set({ isLoading: true, authError: null });
       try {
-        const res = await authService.signup(name, email, password, plan, isDeveloperEligible);
+        const res = await authService.signup(
+          name,
+          email,
+          password,
+          plan,
+          isDeveloperEligible,
+          captchaToken
+        );
         localStorage.setItem(AUTH_USER_KEY, JSON.stringify(res.user));
         const isAllowedAdmin = hasAdminAccess(res.user);
         const roleToSet: UserRole = isAllowedAdmin && res.user.role === 'admin' ? 'admin' : 'user';

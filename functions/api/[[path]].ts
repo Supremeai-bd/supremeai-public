@@ -12,6 +12,7 @@ import {
   FALLBACK_UPSTREAM_ORIGIN,
   resolveUpstreamOrigin,
 } from '../_lib/edgeHelpers';
+import { enforceAuthCaptcha } from '../_lib/turnstile';
 
 interface PagesContext {
   request: Request;
@@ -39,6 +40,18 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   const targetUrl = `${upstreamOrigin}${incomingUrl.pathname}${incomingUrl.search}`;
 
   const forwardedHeaders = buildUpstreamForwardHeaders(request, incomingUrl);
+
+  // Turnstile gate for login/register (no-op until TURNSTILE_SECRET_KEY is set).
+  const captchaRejection = await enforceAuthCaptcha(
+    request,
+    incomingUrl.pathname,
+    env,
+    forwardedHeaders
+  );
+  if (captchaRejection) {
+    applyCorsHeaders(captchaRejection.headers, requestOrigin, incomingUrl.origin, env);
+    return captchaRejection;
+  }
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
   const cookieHeader = forwardedHeaders.get('cookie') || '';
