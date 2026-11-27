@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from 'express';
+import { routeRateLimit } from '../routeRateLimit';
 import { getPlanSpec, PLAN_CATALOG, TOPUP_PACKAGES } from '../../config/plans';
 import type { PlanTier } from '../../types';
 
@@ -56,6 +57,9 @@ export interface BillingContext {
 }
 
 export function registerBillingRoutes(app: Express, ctx: BillingContext): void {
+  // Per-route throttle (CodeQL js/missing-rate-limiting): 120/min per IP per route.
+  const billingRateLimit = routeRateLimit(120);
+
   const userWalletMap = new Map<string, UserWalletRecord>();
   const ensureUserWallet = (email: string): UserWalletRecord => {
     const existing = userWalletMap.get(email);
@@ -102,7 +106,7 @@ export function registerBillingRoutes(app: Express, ctx: BillingContext): void {
   >();
 
   // Dynamic Billing & Usage endpoints
-  app.get('/api/billing/plans', async (_req: Request, res: Response) => {
+  app.get('/api/billing/plans', billingRateLimit, async (_req: Request, res: Response) => {
     const remote = await ctx.fetchGatewayJson('/api/v1/billing/plans');
     const remotePlans = remote?.plans;
     const useRemote = remotePlans && typeof remotePlans === 'object' && !Array.isArray(remotePlans);
@@ -120,7 +124,7 @@ export function registerBillingRoutes(app: Express, ctx: BillingContext): void {
     res.json({ plans: PLAN_CATALOG, topupPackages: TOPUP_PACKAGES, source: 'local' });
   });
 
-  app.get('/api/billing/wallet', (req: Request, res: Response) => {
+  app.get('/api/billing/wallet', billingRateLimit, (req: Request, res: Response) => {
     const email = ctx.getRequestUserEmail(req);
     const wallet = ensureUserWallet(email);
     res.json({
@@ -131,7 +135,7 @@ export function registerBillingRoutes(app: Express, ctx: BillingContext): void {
     });
   });
 
-  app.get(['/api/billing/summary', '/api/billing/analytics'], (req: Request, res: Response) => {
+  app.get(['/api/billing/summary', '/api/billing/analytics'], billingRateLimit, (req: Request, res: Response) => {
     const email = ctx.getRequestUserEmail(req);
     const wallet = ensureUserWallet(email);
     res.json({
@@ -141,7 +145,7 @@ export function registerBillingRoutes(app: Express, ctx: BillingContext): void {
     });
   });
 
-  app.get('/api/billing/history', async (req: Request, res: Response) => {
+  app.get('/api/billing/history', billingRateLimit, async (req: Request, res: Response) => {
     const owner = await ctx.resolveAuthenticatedEmail(req);
     if (!owner) {
       res.status(401).json({ error: 'Authentication is required.' });
@@ -156,7 +160,7 @@ export function registerBillingRoutes(app: Express, ctx: BillingContext): void {
     res.json({ invoices: list, history: list });
   });
 
-  app.post('/api/billing/add-funds', async (req: Request, res: Response) => {
+  app.post('/api/billing/add-funds', billingRateLimit, async (req: Request, res: Response) => {
     const authHeader = String(req.headers.authorization || '').trim();
     const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
     const identity = bearerToken ? await ctx.verifyBearerIdentity(bearerToken) : null;
@@ -226,7 +230,7 @@ export function registerBillingRoutes(app: Express, ctx: BillingContext): void {
     res.json({ success: true, invoice, balance_usd: wallet.balanceUsd });
   });
 
-  app.get('/metrics/usage', async (req: Request, res: Response) => {
+  app.get('/metrics/usage', billingRateLimit, async (req: Request, res: Response) => {
     const auth = await ctx.verifyAdminAuthorization(req);
     if (!auth.ok) {
       res.status(auth.status || 401).json({ error: auth.error || 'Admin authorization required.' });

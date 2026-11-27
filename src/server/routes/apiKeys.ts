@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from 'express';
+import { routeRateLimit } from '../routeRateLimit';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import crypto from 'crypto';
 
@@ -33,6 +34,9 @@ export interface ApiKeysContext {
 }
 
 export function registerApiKeysRoutes(app: Express, ctx: ApiKeysContext): void {
+  // Per-route throttle (CodeQL js/missing-rate-limiting): 60/min per IP per route.
+  const apiKeysRateLimit = routeRateLimit(60);
+
   const userApiKeyOwner = new Map<string, string>();
   let userApiKeysStore: Array<{
     id: string;
@@ -49,17 +53,24 @@ export function registerApiKeysRoutes(app: Express, ctx: ApiKeysContext): void {
     permissions: string[];
   }> = [];
 
-  app.get(['/api/api-keys', '/api/v1/api-keys'], async (req: Request, res: Response) => {
-    const owner = await ctx.resolveAuthenticatedEmail(req);
-    if (!owner) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
+  app.get(
+    ['/api/api-keys', '/api/v1/api-keys'],
+    apiKeysRateLimit,
+    async (req: Request, res: Response) => {
+      const owner = await ctx.resolveAuthenticatedEmail(req);
+      if (!owner) {
+        res.status(401).json({ error: 'Authentication is required.' });
+        return;
+      }
+      res.json({
+        keys: userApiKeysStore.filter((k) => (userApiKeyOwner.get(k.id) || '') === owner),
+      });
     }
-    res.json({ keys: userApiKeysStore.filter((k) => (userApiKeyOwner.get(k.id) || '') === owner) });
-  });
+  );
 
   app.post(
     ['/api/api-keys/create', '/api/v1/api-keys/create'],
+    apiKeysRateLimit,
     async (req: Request, res: Response) => {
       const owner = await ctx.resolveAuthenticatedEmail(req);
       if (!owner) {
@@ -114,42 +125,47 @@ export function registerApiKeysRoutes(app: Express, ctx: ApiKeysContext): void {
     }
   );
 
-  app.patch(['/api/api-keys/:id', '/api/v1/api-keys/:id'], async (req: Request, res: Response) => {
-    const owner = await ctx.resolveAuthenticatedEmail(req);
-    if (!owner) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
-    }
-    const { id } = req.params;
-    const target = userApiKeysStore.find((k) => k.id === id);
-    if (!target || (userApiKeyOwner.get(id) || '') !== owner) {
-      res.status(404).json({ error: 'API key not found.' });
-      return;
-    }
+  app.patch(
+    ['/api/api-keys/:id', '/api/v1/api-keys/:id'],
+    apiKeysRateLimit,
+    async (req: Request, res: Response) => {
+      const owner = await ctx.resolveAuthenticatedEmail(req);
+      if (!owner) {
+        res.status(401).json({ error: 'Authentication is required.' });
+        return;
+      }
+      const { id } = req.params;
+      const target = userApiKeysStore.find((k) => k.id === id);
+      if (!target || (userApiKeyOwner.get(id) || '') !== owner) {
+        res.status(404).json({ error: 'API key not found.' });
+        return;
+      }
 
-    const { name, provider, rateLimitRpm, permissions, secret, status } = req.body || {};
-    if (typeof name === 'string' && name.trim()) target.name = name.trim();
-    if (typeof provider === 'string' && provider.trim()) target.provider = provider.trim();
-    if (typeof rateLimitRpm === 'number' && !Number.isNaN(rateLimitRpm))
-      target.rateLimitRpm = rateLimitRpm;
-    if (Array.isArray(permissions) && permissions.length > 0) target.permissions = permissions;
-    if (status === 'active' || status === 'revoked') target.status = status;
-    if (typeof secret === 'string' && secret.trim()) {
-      const clean = secret.trim();
-      target.keyPrefix = clean.slice(0, Math.min(14, clean.length));
-      target.secretMasked =
-        clean.length > 10
-          ? `${clean.slice(0, 10)}••••••••••••••••${clean.slice(-4)}`
-          : '••••••••••••';
-      target.healthStatus = 'healthy';
-      target.lastChecked = 'Rotated just now';
-    }
+      const { name, provider, rateLimitRpm, permissions, secret, status } = req.body || {};
+      if (typeof name === 'string' && name.trim()) target.name = name.trim();
+      if (typeof provider === 'string' && provider.trim()) target.provider = provider.trim();
+      if (typeof rateLimitRpm === 'number' && !Number.isNaN(rateLimitRpm))
+        target.rateLimitRpm = rateLimitRpm;
+      if (Array.isArray(permissions) && permissions.length > 0) target.permissions = permissions;
+      if (status === 'active' || status === 'revoked') target.status = status;
+      if (typeof secret === 'string' && secret.trim()) {
+        const clean = secret.trim();
+        target.keyPrefix = clean.slice(0, Math.min(14, clean.length));
+        target.secretMasked =
+          clean.length > 10
+            ? `${clean.slice(0, 10)}••••••••••••••••${clean.slice(-4)}`
+            : '••••••••••••';
+        target.healthStatus = 'healthy';
+        target.lastChecked = 'Rotated just now';
+      }
 
-    res.json({ success: true, key: target });
-  });
+      res.json({ success: true, key: target });
+    }
+  );
 
   app.post(
     ['/api/api-keys/:id/revoke', '/api/v1/api-keys/:id/revoke'],
+    apiKeysRateLimit,
     async (req: Request, res: Response) => {
       const owner = await ctx.resolveAuthenticatedEmail(req);
       if (!owner) {
@@ -168,6 +184,7 @@ export function registerApiKeysRoutes(app: Express, ctx: ApiKeysContext): void {
 
   app.post(
     ['/api/api-keys/:id/probe', '/api/v1/api-keys/:id/probe'],
+    apiKeysRateLimit,
     async (req: Request, res: Response) => {
       const owner = await ctx.resolveAuthenticatedEmail(req);
       if (!owner) {
@@ -234,22 +251,26 @@ export function registerApiKeysRoutes(app: Express, ctx: ApiKeysContext): void {
     }
   );
 
-  app.delete(['/api/api-keys/:id', '/api/v1/api-keys/:id'], async (req: Request, res: Response) => {
-    const owner = await ctx.resolveAuthenticatedEmail(req);
-    if (!owner) {
-      res.status(401).json({ error: 'Authentication is required.' });
-      return;
+  app.delete(
+    ['/api/api-keys/:id', '/api/v1/api-keys/:id'],
+    apiKeysRateLimit,
+    async (req: Request, res: Response) => {
+      const owner = await ctx.resolveAuthenticatedEmail(req);
+      if (!owner) {
+        res.status(401).json({ error: 'Authentication is required.' });
+        return;
+      }
+      const target = userApiKeysStore.find((k) => k.id === req.params.id);
+      if (!target || (userApiKeyOwner.get(req.params.id) || '') !== owner) {
+        res.status(404).json({ error: 'API key not found.' });
+        return;
+      }
+      userApiKeyOwner.delete(req.params.id);
+      userApiKeysStore = userApiKeysStore.filter((k) => k.id !== req.params.id);
+      res.json({
+        success: true,
+        keys: userApiKeysStore.filter((k) => (userApiKeyOwner.get(k.id) || '') === owner),
+      });
     }
-    const target = userApiKeysStore.find((k) => k.id === req.params.id);
-    if (!target || (userApiKeyOwner.get(req.params.id) || '') !== owner) {
-      res.status(404).json({ error: 'API key not found.' });
-      return;
-    }
-    userApiKeyOwner.delete(req.params.id);
-    userApiKeysStore = userApiKeysStore.filter((k) => k.id !== req.params.id);
-    res.json({
-      success: true,
-      keys: userApiKeysStore.filter((k) => (userApiKeyOwner.get(k.id) || '') === owner),
-    });
-  });
+  );
 }

@@ -58,7 +58,7 @@ import {
   executeFreeVisionCascade,
 } from './src/server/geminiVision';
 import { buildDurableAuditRow } from './src/server/auditPayload';
-import { createRateLimiter, isHttpsRequest, safeFetchWithRedirectCheck } from './src/server/httpGuards';
+import { createRateLimiter, isHttpsRequest, routeRateLimit, safeFetchWithRedirectCheck } from './src/server/httpGuards';
 import { createMcpClusterServices } from './src/server/mcpClusterServices';
 import {
   buildInfisicalVaultKeys as buildProviderVaultKeys,
@@ -670,8 +670,8 @@ async function startServer() {
     next();
   };
 
-  app.use('/api/admin', requireAdminMiddleware);
-  app.use('/api/schema-parity', requireAdminMiddleware);
+  app.use('/api/admin', routeRateLimit(600, { scope: 'area' }), requireAdminMiddleware);
+  app.use('/api/schema-parity', routeRateLimit(60, { scope: 'area' }), requireAdminMiddleware);
 
   registerAdminPlatformRoutes(app, {
     get platformConfig() {
@@ -940,7 +940,7 @@ async function startServer() {
     next();
   };
 
-  app.use('/api/workspace', requireAuthMiddleware);
+  app.use('/api/workspace', routeRateLimit(600, { scope: 'area' }), requireAuthMiddleware);
   registerWorkspaceTerminalRoutes(app, {
     get mcpClusterServices() { return mcpClusterServices; },
     get PORT() { return PORT; },
