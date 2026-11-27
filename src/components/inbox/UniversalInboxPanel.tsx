@@ -470,10 +470,10 @@ export const UniversalInboxPanel: React.FC = () => {
                   type="button"
                   onClick={() => void handleConnectGmail()}
                   disabled={isConnectingGmail}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl theme-btn-primary text-xs font-semibold cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl theme-btn-primary text-xs font-semibold cursor-pointer disabled:opacity-50"
                 >
                   <Mail className="w-3.5 h-3.5" />
-                  <span>{t.wsGmailSignInBtn}</span>
+                  <span>{isConnectingGmail ? t.wsGmailSigningIn : t.wsGmailSignInBtn}</span>
                 </button>
               </div>
             ) : filteredItems.length === 0 ? (

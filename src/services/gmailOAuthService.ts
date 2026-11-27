@@ -170,6 +170,43 @@ async function clearGmailSessionFromServer(): Promise<void> {
 }
 
 // বাংলা মন্তব্য: Firebase API Key অনুপস্থিত থাকলেও কনফিগার করা oAuthClientId দিয়ে সরাসরি Google Identity Services (GIS) OAuth টোকেন ক্লায়েন্ট চালানো হয়।
+const GIS_SRC = 'https://accounts.google.com/gsi/client';
+const GIS_LOAD_TIMEOUT_MS = 15_000;
+
+/**
+ * বাংলা মন্তব্য: GIS স্ক্রিপট লোড। আগে একবার ব্যর্থ হলে পরের ক্লিকে পুরনো (ব্যর্থ) <script>
+ * পেয়ে তার 'load' ইভেন্টের জন্য চিরকাল অপেক্ষা করত — বাটন "Signing in..."-এ আটকে যেত।
+ * এখন ব্যর্থ ট্যাগ সরিয়ে নতুন করে লোড হয়, আর ১৫ সেকেন্ডের টাইমআউট আছে।
+ */
+export function loadGoogleIdentityScript(timeoutMs: number = GIS_LOAD_TIMEOUT_MS): Promise<void> {
+  if ((window as any).google?.accounts?.oauth2) return Promise.resolve();
+  document.querySelectorAll(`script[src="${GIS_SRC}"]`).forEach((el) => el.remove());
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    const timer = window.setTimeout(() => {
+      script.remove();
+      reject(new Error('Google sign-in took too long to load. Please try again.'));
+    }, timeoutMs);
+    script.src = GIS_SRC;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      window.clearTimeout(timer);
+      resolve();
+    };
+    script.onerror = () => {
+      window.clearTimeout(timer);
+      script.remove();
+      reject(
+        new Error(
+          'Google sign-in could not load (blocked by the browser, an extension, or the network). Please try again.'
+        )
+      );
+    };
+    document.head.appendChild(script);
+  });
+}
+
 async function connectWithGoogleIdentityServices(clientId: string): Promise<{
   user: User;
   accessToken: string;
@@ -178,34 +215,7 @@ async function connectWithGoogleIdentityServices(clientId: string): Promise<{
     throw new Error('Google OAuth is only available in browser environments.');
   }
 
-  await new Promise<void>((resolve, reject) => {
-    if ((window as any).google?.accounts?.oauth2) {
-      resolve();
-      return;
-    }
-    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-    if (existing) {
-      existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener(
-        'error',
-        () => reject(new Error('Failed to load Google Identity Services SDK.')),
-        { once: true }
-      );
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () =>
-      reject(
-        new Error(
-          'Failed to load Google Identity Services SDK. Check your internet connection.'
-        )
-      );
-    document.head.appendChild(script);
-  });
+  await loadGoogleIdentityScript();
 
   const googleOauth = (window as any).google?.accounts?.oauth2;
   if (!googleOauth?.initTokenClient) {
