@@ -1353,6 +1353,17 @@ export const EN_DICT = {
   ssRevokeError: 'Could not sign out.',
   ssLoadError: 'Could not read sessions.',
   ssFootnote: 'Studio signs users in through the server, so device and IP are not known for those sessions.',
+  memTitle: 'AI Memory',
+  memEmpty: 'Nothing remembered yet — it learns as you chat.',
+  memLanguage: 'Language',
+  memStyle: 'Answer style',
+  memStyleConcise: 'Short',
+  memStyleDetailed: 'Detailed',
+  memStyleAuto: 'Automatic',
+  memTopics: 'Recent topics',
+  memForget: 'Forget',
+  memReset: 'Forget everything',
+  memLocalNote: 'Stored only on this device.',
 };
 
 export type TranslationKeys = keyof typeof EN_DICT;

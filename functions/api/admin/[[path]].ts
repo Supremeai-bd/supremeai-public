@@ -17,6 +17,7 @@ import { handleAdminModelRouterRoute } from '../../_lib/adminModelRouter';
 import { handleAdminBackupsRoute } from '../../_lib/adminBackups';
 import { handleAdminFinOpsRoute } from '../../_lib/adminFinOps';
 import { handleAdminSessionsRoute } from '../../_lib/adminSessions';
+import { runPullAction } from '../../_lib/githubPullActions';
 import {
   handleAdminAuditLogRoute,
   withAdminAudit,
@@ -447,6 +448,22 @@ async function handleAdminRequest(
           env
         );
       }
+    }
+
+    const pullAction = /^\/api\/admin\/github\/pulls\/(\d{1,7})\/(approve|merge)$/.exec(path);
+    if (pullAction && request.method === 'POST') {
+      const body = (await request
+        .clone()
+        .json()
+        .catch(() => ({}))) as { repo?: unknown };
+      const targetRepo =
+        typeof body.repo === 'string' && isSafeGitHubRepoSlug(body.repo.trim())
+          ? body.repo.trim()
+          : repo;
+      const action = pullAction[2] as 'approve' | 'merge';
+      const result = await runPullAction(env, targetRepo, Number(pullAction[1]), action);
+      audit.details = `PR #${pullAction[1]} ${action} on ${targetRepo} → ${result.body.success ? 'ok' : result.body.code || result.status}`;
+      return jsonEdgeResponse(result.body, result.status, request, undefined, env);
     }
 
     if (path === '/api/admin/github/pulls' && request.method === 'GET') {

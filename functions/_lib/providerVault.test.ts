@@ -8,6 +8,7 @@ import {
   matchProviderBySecretName,
   missingInfisicalEnv,
   probeProviderKey,
+  readInfisicalSecrets,
   resetProviderVaultCache,
   PROVIDER_DEFINITIONS,
   type VaultSecret,
@@ -171,5 +172,31 @@ describe('probe + buildProviderKeys', () => {
     const vault = await collectVault({ GROQ_API_KEY: GROQ_VALUE });
     const keys = await buildProviderKeys(vault, { probe: 'none' });
     expect(keys[0].status).toBe('untested');
+  });
+});
+
+describe('readInfisicalSecrets errors', () => {
+  it('explains a 404 with Infisical’s reason and what to check, and strips a trailing /api', async () => {
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return Response.json(
+        { message: "Folder with path '/' in environment with slug 'prod' not found" },
+        { status: 404 }
+      );
+    }) as unknown as typeof fetch;
+    await expect(
+      readInfisicalSecrets(
+        {
+          INFISICAL_TOKEN: 'tok',
+          INFISICAL_PROJECT_ID: 'proj',
+          INFISICAL_API_URL: 'https://app.infisical.com/api/',
+        },
+        fetchImpl
+      )
+    ).rejects.toThrow(
+      /HTTP 404\): Folder with path '\/' in environment with slug 'prod' not found — check INFISICAL_PROJECT_ID/
+    );
+    expect(urls[0].startsWith('https://app.infisical.com/api/v3/secrets/raw?')).toBe(true);
   });
 });
