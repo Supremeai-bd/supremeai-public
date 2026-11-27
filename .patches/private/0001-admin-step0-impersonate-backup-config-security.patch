@@ -1,0 +1,352 @@
+diff --git a/core/api/routes/admin_dashboard/endpoints_backups.py b/core/api/routes/admin_dashboard/endpoints_backups.py
+index 6515ab9..f65adfb 100644
+--- a/core/api/routes/admin_dashboard/endpoints_backups.py
++++ b/core/api/routes/admin_dashboard/endpoints_backups.py
+@@ -12,14 +12,19 @@ from api.routes.admin_dashboard import router
+ from core.monitoring.logging_config import logger
+ from core.utils.time_utils import utc_now
+ 
++# বাংলা মন্তব্য (Step 0, fail-honest): আগে কিছু না করেই "success" বলত। আসল
++# deploy pipeline wired না হওয়া পর্যন্ত সৎভাবে 501 ফেরত দেয়।
++NOT_WIRED_DETAIL = "not wired: {what} is not implemented on this backend yet"
++
+ 
+ @router.post("/emergency-deploy")
+ def emergency_deploy():
+-    logger.warning("Emergency deployment triggered via Admin Dashboard")
+-    return {
+-        "status": "success",
+-        "message": "Emergency deployment pipeline triggered. All services will restart shortly.",
+-    }
++    logger.warning("Emergency deployment requested via Admin Dashboard (not wired)")
++    raise HTTPException(status_code=501, detail=NOT_WIRED_DETAIL.format(what="emergency deploy"))
++
++
++# Only non-secret data files. Secrets live in Infisical / the host env, never on disk backups.
++BACKUP_SOURCE_FILES: tuple[str, ...] = ("data/constitutional_rules.db", "data/users.json")
+ 
+ 
+ @router.post("/backup")
+@@ -27,7 +32,8 @@ def trigger_backup():
+     timestamp = utc_now().strftime("%Y%m%d_%H%M%S")
+     backup_dir = f"backups/backup_{timestamp}"
+     os.makedirs(backup_dir, exist_ok=True)
+-    for fname in [".env", "data/constitutional_rules.db", "data/users.json"]:
++    # বাংলা মন্তব্য (security): `.env` (সিক্রেট) আর কখনো ব্যাকআপ ফোল্ডারে কপি হয় না।
++    for fname in BACKUP_SOURCE_FILES:
+         if os.path.exists(fname):
+             try:
+                 shutil.copy2(fname, os.path.join(backup_dir, os.path.basename(fname)))
+@@ -81,27 +87,25 @@ def get_backups():
+ # backup. Added POST alias.
+ @router.post("/backups")
+ def create_backup():
+-    """Create a manual backup (calls the same logic as the deploy trigger)."""
+-    import datetime
+-
+-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+-    backup_dir = f"backups/backup_{timestamp}"
++    """Create a manual backup — same real copy as POST /backup (no secrets)."""
+     try:
+-        os.makedirs(backup_dir, exist_ok=True)
+-        # Write a manifest
+-        with open(os.path.join(backup_dir, "manifest.json"), "w") as f:
+-            json.dump({"timestamp": timestamp, "type": "manual"}, f)
+-        return {"status": "success", "backup_name": f"backup_{timestamp}"}
++        result = trigger_backup()
+     except Exception as e:
+         raise HTTPException(status_code=500, detail=str(e))
++    backup_dir = result["backup_path"]
++    with open(os.path.join(backup_dir, "manifest.json"), "w") as f:
++        json.dump({"timestamp": os.path.basename(backup_dir), "type": "manual"}, f)
++    return {"status": "success", "backup_name": os.path.basename(backup_dir)}
+ 
+ 
+ # CI FIX: frontend hooks.ts:453 calls POST /admin-api/backups/{id}/restore
+ # to trigger a restore. Added POST alias.
+ @router.post("/backups/{backup_id}/restore")
+ def restore_backup(backup_id: str):
+-    """Trigger a restore from a backup."""
++    """Restore is not implemented — fail honest instead of a fake "queued"."""
++    if "/" in backup_id or "\\" in backup_id or backup_id.startswith("."):
++        raise HTTPException(status_code=400, detail="Invalid backup id")
+     backup_dir = f"backups/{backup_id}"
+     if not os.path.exists(backup_dir):
+         raise HTTPException(status_code=404, detail=f"Backup '{backup_id}' not found")
+-    return {"status": "success", "message": f"Restore from '{backup_id}' queued"}
++    raise HTTPException(status_code=501, detail=NOT_WIRED_DETAIL.format(what="backup restore"))
+diff --git a/core/api/routes/admin_dashboard/endpoints_config.py b/core/api/routes/admin_dashboard/endpoints_config.py
+index 853db55..a323178 100644
+--- a/core/api/routes/admin_dashboard/endpoints_config.py
++++ b/core/api/routes/admin_dashboard/endpoints_config.py
+@@ -86,10 +86,28 @@ def get_config():
+     for key in ["ENV", "DEBUG", "LOG_LEVEL", "REDIS_URL", "DATABASE_URL"]:
+         val = os.environ.get(key, "")
+         if val:
+-            config[key] = val
++            # বাংলা মন্তব্য (security, Step 0): URL-এর ভেতরের পাসওয়ার্ড আর ব্রাউজারে যায় না।
++            config[key] = redact_url_credentials(val) if key.endswith("_URL") else val
+     return config
+ 
+ 
++def redact_url_credentials(value: str) -> str:
++    """Mask the password part of `scheme://user:password@host` connection strings."""
++    from urllib.parse import urlsplit, urlunsplit
++
++    try:
++        parts = urlsplit(value)
++    except ValueError:
++        return "***"
++    if parts.password is None:
++        return value
++    user = parts.username or ""
++    host = parts.hostname or ""
++    if parts.port:
++        host = f"{host}:{parts.port}"
++    return urlunsplit(parts._replace(netloc=f"{user}:***@{host}"))
++
++
+ @router.post("/config")
+ def update_config(payload: dict):
+     """Update environment configuration (writes to settings.json)."""
+diff --git a/core/api/routes/admin_dashboard/endpoints_impersonate.py b/core/api/routes/admin_dashboard/endpoints_impersonate.py
+index 16c9cb1..d45a9fe 100644
+--- a/core/api/routes/admin_dashboard/endpoints_impersonate.py
++++ b/core/api/routes/admin_dashboard/endpoints_impersonate.py
+@@ -1,5 +1,20 @@
+ """Impersonation endpoints
+-(POST /admin-api/users/impersonate/{username}, POST /admin-api/impersonate)."""
++(POST /admin-api/users/impersonate/{username}, POST /admin-api/impersonate).
++
++বাংলা মন্তব্য (security, Step 0): আগে এই টোকেনে কোনো `exp` ছিল না (চিরস্থায়ী),
++`jti` ছিল না (রিভোক অসম্ভব), অস্তিত্বহীন ইউজারের নামেও টোকেন বানাত, আর অ্যাডমিন
++ইউজারকে impersonate করলে চিরস্থায়ী অ্যাডমিন টোকেন তৈরি হত। এখন:
++  * শুধু বিদ্যমান ইউজার (না থাকলে 404)
++  * অ্যাডমিন রোলের ইউজারকে impersonate নিষেধ (403) — privilege laundering বন্ধ
++  * টোকেন ১৫ মিনিটে শেষ (`exp`), `iat` + রিভোকযোগ্য `jti` সহ
++  * প্রতিটি impersonation WARNING লেভেলে অডিট-লগ হয়
++"""
++
++from __future__ import annotations
++
++import time
++import uuid
++from typing import Any
+ 
+ import jwt
+ from fastapi import Depends, HTTPException
+@@ -8,28 +23,62 @@ from api.routes.admin_auth import require_admin_token
+ from api.routes.admin_dashboard import load_users, router
+ from api.routes.admin_dashboard._models import ImpersonateRequest
+ from core.config import settings
++from core.monitoring.logging_config import logger
+ 
++IMPERSONATION_TTL_SECONDS = 15 * 60
++_PRIVILEGED_ROLES = frozenset({"admin", "god", "owner", "superadmin"})
+ 
+-@router.post("/users/impersonate/{username}")
+-async def impersonate_user(username: str, current_admin: dict = Depends(require_admin_token)):
++
++def _find_user(identifier: str) -> dict[str, Any] | None:
+     users = load_users()
+-    target = next((u for u in users if u["username"] == username), None)
++    return next(
++        (u for u in users if u.get("username") == identifier or str(u.get("id", "")) == identifier),
++        None,
++    )
++
++
++def build_impersonation_claims(
++    target: dict[str, Any], impersonator: str, now: int | None = None
++) -> dict[str, Any]:
++    """Short-lived, revocable claims for a non-privileged target user."""
++    issued_at = int(now if now is not None else time.time())
++    return {
++        "uid": target["username"],
++        "role": target.get("role") or "user",
++        "impersonator": impersonator,
++        "impersonation": True,
++        "iat": issued_at,
++        "exp": issued_at + IMPERSONATION_TTL_SECONDS,
++        "jti": f"imp_{uuid.uuid4().hex}",
++    }
++
++
++def _issue_impersonation_token(identifier: str, current_admin: dict) -> dict[str, Any]:
++    target = _find_user(identifier)
+     if not target:
+         raise HTTPException(status_code=404, detail="User not found")
+-    impersonation_token = jwt.encode(
+-        {
+-            "uid": target["username"],
+-            "role": target["role"],
+-            "impersonator": current_admin.get("uid", "admin"),
+-            "impersonation": True,
+-        },
+-        settings.jwt_secret,
+-        algorithm="HS256",
++    if str(target.get("role", "")).lower() in _PRIVILEGED_ROLES:
++        raise HTTPException(status_code=403, detail="Admin accounts cannot be impersonated")
++
++    impersonator = str(current_admin.get("uid") or current_admin.get("sub") or "admin")
++    claims = build_impersonation_claims(target, impersonator)
++    token = jwt.encode(claims, settings.jwt_secret, algorithm="HS256")
++    logger.warning(
++        f"AUDIT admin.impersonate impersonator={impersonator} "
++        f"target={target['username']} jti={claims['jti']} "
++        f"expires_in={IMPERSONATION_TTL_SECONDS}s"
+     )
++    return {"token": token, "user": target, "expires_in": IMPERSONATION_TTL_SECONDS}
++
++
++@router.post("/users/impersonate/{username}")
++async def impersonate_user(username: str, current_admin: dict = Depends(require_admin_token)):
++    issued = _issue_impersonation_token(username, current_admin)
+     return {
+         "status": "success",
+-        "impersonation_token": impersonation_token,
+-        "user": target,
++        "impersonation_token": issued["token"],
++        "user": issued["user"],
++        "expires_in": issued["expires_in"],
+     }
+ 
+ 
+@@ -38,25 +87,4 @@ async def impersonate_by_payload(
+     payload: ImpersonateRequest, current_admin: dict = Depends(require_admin_token)
+ ):
+     """Impersonate user via JSON payload for CommandCenter."""
+-    users = load_users()
+-    target = next(
+-        (
+-            u
+-            for u in users
+-            if u["username"] == payload.user_id or str(u.get("id")) == payload.user_id
+-        ),
+-        None,
+-    )
+-    target_username = target["username"] if target else payload.user_id
+-    target_role = target.get("role", "user") if target else "user"
+-    token = jwt.encode(
+-        {
+-            "uid": target_username,
+-            "role": target_role,
+-            "impersonator": current_admin.get("uid", "admin"),
+-            "impersonation": True,
+-        },
+-        settings.jwt_secret,
+-        algorithm="HS256",
+-    )
+-    return {"token": token, "user": target}
++    return _issue_impersonation_token(payload.user_id, current_admin)
+diff --git a/core/tests/core/test_admin_step0_security.py b/core/tests/core/test_admin_step0_security.py
+new file mode 100644
+index 0000000..328b150
+--- /dev/null
++++ b/core/tests/core/test_admin_step0_security.py
+@@ -0,0 +1,105 @@
++"""Step 0 admin security regressions (impersonation, backups, config leak).
++
++বাংলা মন্তব্য: impersonation টোকেন ১৫ মিনিটে শেষ, অ্যাডমিনকে impersonate নিষেধ,
++অস্তিত্বহীন ইউজার 404; ব্যাকআপে `.env` কপি হয় না; restore/emergency-deploy সৎভাবে
++501; /config-এ URL পাসওয়ার্ড মাস্ক।
++"""
++
++import asyncio
++import json
++import os
++
++import jwt
++import pytest
++from fastapi import HTTPException
++
++import api.routes.admin_dashboard as dash
++from api.routes.admin_dashboard import endpoints_backups as backups
++from api.routes.admin_dashboard import endpoints_config as cfg
++from api.routes.admin_dashboard import endpoints_impersonate as imp
++from api.routes.admin_dashboard._models import ImpersonateRequest
++from core.config import settings
++
++
++@pytest.fixture
++def users_file(tmp_path, monkeypatch):
++    path = tmp_path / "users.json"
++    path.write_text(
++        json.dumps(
++            [
++                {"username": "alice", "role": "user", "permissions": ["read"]},
++                {"username": "root", "role": "admin", "permissions": ["all"]},
++            ]
++        )
++    )
++    monkeypatch.setattr(dash, "USERS_FILE", str(path))
++    return path
++
++
++def _run(coro):
++    return asyncio.get_event_loop_policy().new_event_loop().run_until_complete(coro)
++
++
++def test_impersonation_token_expires_in_15_minutes(users_file):
++    res = _run(imp.impersonate_user("alice", current_admin={"uid": "owner"}))
++    claims = jwt.decode(res["impersonation_token"], settings.jwt_secret, algorithms=["HS256"])
++    assert claims["uid"] == "alice"
++    assert claims["impersonation"] is True
++    assert claims["impersonator"] == "owner"
++    assert claims["exp"] - claims["iat"] == 15 * 60
++    assert claims["jti"].startswith("imp_")
++    assert res["expires_in"] == 15 * 60
++
++
++def test_impersonation_rejects_unknown_user(users_file):
++    with pytest.raises(HTTPException) as exc:
++        _run(imp.impersonate_by_payload(ImpersonateRequest(user_id="ghost"), current_admin={}))
++    assert exc.value.status_code == 404
++
++
++def test_impersonation_refuses_admin_accounts(users_file):
++    with pytest.raises(HTTPException) as exc:
++        _run(imp.impersonate_user("root", current_admin={"uid": "owner"}))
++    assert exc.value.status_code == 403
++
++
++def test_expired_impersonation_token_is_rejected():
++    claims = imp.build_impersonation_claims({"username": "alice"}, "owner", now=1_000)
++    token = jwt.encode(claims, settings.jwt_secret, algorithm="HS256")
++    with pytest.raises(jwt.ExpiredSignatureError):
++        jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
++
++
++def test_backup_never_copies_env(tmp_path, monkeypatch):
++    monkeypatch.chdir(tmp_path)
++    (tmp_path / ".env").write_text("SECRET=1")
++    (tmp_path / "data").mkdir()
++    (tmp_path / "data" / "users.json").write_text("[]")
++    assert ".env" not in backups.BACKUP_SOURCE_FILES
++    res = backups.trigger_backup()
++    copied = os.listdir(res["backup_path"])
++    assert "users.json" in copied
++    assert ".env" not in copied
++
++
++def test_restore_and_emergency_deploy_fail_honest(tmp_path, monkeypatch):
++    monkeypatch.chdir(tmp_path)
++    (tmp_path / "backups" / "backup_x").mkdir(parents=True)
++    with pytest.raises(HTTPException) as exc:
++        backups.restore_backup("backup_x")
++    assert exc.value.status_code == 501
++    with pytest.raises(HTTPException) as exc:
++        backups.restore_backup("../etc")
++    assert exc.value.status_code == 400
++    with pytest.raises(HTTPException) as exc:
++        backups.emergency_deploy()
++    assert exc.value.status_code == 501
++
++
++def test_config_masks_url_passwords(monkeypatch):
++    monkeypatch.setenv("DATABASE_URL", "postgresql://app:s3cret@db.example.com:5432/main")
++    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
++    out = cfg.get_config()
++    assert "s3cret" not in out["DATABASE_URL"]
++    assert out["DATABASE_URL"] == "postgresql://app:***@db.example.com:5432/main"
++    assert out["REDIS_URL"] == "redis://localhost:6379"
