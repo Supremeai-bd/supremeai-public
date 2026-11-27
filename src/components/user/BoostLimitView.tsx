@@ -15,6 +15,10 @@ import {
   Sparkles,
   ChevronDown,
   ChevronRight,
+  Gift,
+  Lightbulb,
+  Crown,
+  ShoppingCart,
 } from 'lucide-react';
 import {
   POOL_PROVIDER_MANIFESTS,
@@ -29,6 +33,13 @@ import {
   maskPoolKey,
   poolService,
 } from '../../services/poolService';
+import { PROVIDER_KEY_GUIDES, providerKeyPageUrl } from '../../constants/providerKeyGuides';
+import {
+  type CreditPackage,
+  creditPackageService,
+  formatCredits,
+  formatPrice,
+} from '../../services/creditPackageService';
 import { toast } from '../../stores/useToastStore';
 import { useI18n } from '../../utils/i18n';
 
@@ -41,6 +52,11 @@ interface BoostLimitViewProps {
   advanced?: React.ReactNode;
   /** Open the advanced section on first render (old `user-api-keys` deep links). */
   advancedOpen?: boolean;
+  /**
+   * Part 2 (paid): buy a plan or credit package that the admin configured in the DB.
+   * Not passed → the paid cards are still shown, the button opens nothing.
+   */
+  onBuyPackage?: (pkg: CreditPackage) => Promise<void> | void;
 }
 
 const formatTokens = (n: number): string =>
@@ -59,6 +75,7 @@ export const BoostLimitView: React.FC<BoostLimitViewProps> = ({
   isGuest = false,
   advanced,
   advancedOpen = false,
+  onBuyPackage,
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(advancedOpen);
   const { lang } = useI18n();
@@ -76,6 +93,22 @@ export const BoostLimitView: React.FC<BoostLimitViewProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [tipsProviderId, setTipsProviderId] = useState<string | null>(null);
+
+  // বাংলা মন্তব্য: Part 2 — প্যাকেজ DB থেকে (অ্যাডমিন যোগ/এডিট/মুছে ফেলেন), কোডে কিছু হার্ডকোড নেই।
+  const [packages, setPackages] = useState<CreditPackage[] | null>(null);
+  const [packagesFailed, setPackagesFailed] = useState(false);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [buyingId, setBuyingId] = useState<string | null>(null);
+
+  const loadPackages = useCallback(async () => {
+    try {
+      setPackages(await creditPackageService.listActive());
+      setPackagesFailed(false);
+    } catch {
+      setPackagesFailed(true);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -91,8 +124,38 @@ export const BoostLimitView: React.FC<BoostLimitViewProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!isGuest) void loadData();
-  }, [isGuest, loadData]);
+    if (!isGuest) {
+      void loadData();
+      void loadPackages();
+    }
+  }, [isGuest, loadData, loadPackages]);
+
+  // বাংলা মন্তব্য: "কিনুন" চাপলে ৫ সেকেন্ডের জন্য "নিশ্চিত করুন" হয় — ভুল ক্লিকে চার্জ হয় না।
+  useEffect(() => {
+    if (!confirmingId) return;
+    const timer = window.setTimeout(() => setConfirmingId(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [confirmingId]);
+
+  const handleBuy = async (pkg: CreditPackage) => {
+    if (!onBuyPackage) return;
+    if (confirmingId !== pkg.id) {
+      setConfirmingId(pkg.id);
+      return;
+    }
+    setConfirmingId(null);
+    setBuyingId(pkg.id);
+    try {
+      await onBuyPackage(pkg);
+    } catch (err: unknown) {
+      toast.error(
+        L('কেনা যায়নি', 'Purchase failed'),
+        err instanceof Error ? err.message : undefined
+      );
+    } finally {
+      setBuyingId(null);
+    }
+  };
 
   const detected = useMemo(() => detectPoolProvider(rawKey, manifests), [rawKey, manifests]);
   const manualProvider = manifests.find((m) => m.id === manualProviderId) || null;
@@ -109,6 +172,30 @@ export const BoostLimitView: React.FC<BoostLimitViewProps> = ({
     quota?.valid_keys_count ?? (myKeys || []).filter((k) => k.status === 'valid').length;
   const dailyBonus = quota?.daily_bonus_tokens ?? 0;
   const progressPct = Math.min(100, Math.round((activeCount / MAX_ACTIVE_POOL_KEYS) * 100));
+  const tipsProvider =
+    manifests.find((m) => m.id === tipsProviderId) ||
+    manifests.find((m) => !contributedProviders.has(m.id) && PROVIDER_KEY_GUIDES[m.id]) ||
+    manifests[0] ||
+    null;
+  const tipsGuide = tipsProvider ? PROVIDER_KEY_GUIDES[tipsProvider.id] : undefined;
+  const tipsUrl = tipsProvider
+    ? providerKeyPageUrl(tipsProvider.id, tipsProvider.gmailAuthUrl)
+    : '';
+  const firstBonus = manifests[0]?.bonusTokensPerDay ?? 0;
+  const plans = (packages || []).filter((p) => p.kind === 'plan');
+  const topups = (packages || []).filter((p) => p.kind === 'topup');
+  const periodLabel = (p: CreditPackage) =>
+    p.billingPeriod === 'monthly'
+      ? L('/মাস', '/mo')
+      : p.billingPeriod === 'yearly'
+        ? L('/বছর', '/yr')
+        : '';
+  const badgeLabel = (badge: string | null) =>
+    badge === 'popular'
+      ? L('জনপ্রিয়', 'Popular')
+      : badge === 'bestValue'
+        ? L('সেরা দাম', 'Best value')
+        : badge;
 
   const handlePaste = async () => {
     try {
@@ -228,6 +315,31 @@ export const BoostLimitView: React.FC<BoostLimitViewProps> = ({
               style={{ width: `${progressPct}%` }}
             />
           </div>
+        </div>
+      </section>
+
+      {/* Part 1 (Free / BYOK): পেইড প্ল্যানের আগে — নিজের ফ্রি কী দিয়ে লিমিট বাড়ানোর উৎসাহ */}
+      <section
+        data-testid="boost-part-free"
+        className="rounded-2xl border border-emerald-200 dark:border-emerald-500/25 bg-emerald-50/70 dark:bg-emerald-500/10 p-4 flex items-start gap-3"
+      >
+        <Gift className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+        <div className="space-y-0.5">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+            {L('ধাপ ১ · একদম ফ্রি', 'Step 1 · Totally free')}
+          </div>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+            {L(
+              `টাকা ছাড়াই লিমিট বাড়ান — ২ মিনিটে একটা কী, প্রতিদিন +${formatTokens(firstBonus)} টোকেন`,
+              `Boost for free — one key in 2 minutes, +${formatTokens(firstBonus)} tokens every day`
+            )}
+          </h3>
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            {L(
+              'কার্ড লাগে না। নিজের Gmail দিয়ে নিচের যেকোনো প্রোভাইডারের ফ্রি কী নিন — যত বেশি কী, তত বেশি লিমিট।',
+              'No card needed. Grab a free key from any provider below with your Gmail — more keys, bigger limit.'
+            )}
+          </p>
         </div>
       </section>
 
@@ -395,16 +507,33 @@ export const BoostLimitView: React.FC<BoostLimitViewProps> = ({
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-auto">
-                  {m.gmailAuthUrl && (
+                  {providerKeyPageUrl(m.id, m.gmailAuthUrl) && (
                     <a
-                      href={m.gmailAuthUrl}
+                      href={providerKeyPageUrl(m.id, m.gmailAuthUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() => setTipsProviderId(m.id)}
+                      data-testid={`boost-get-key-${m.id}`}
                       className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90"
                     >
                       {L('কী নিন', 'Get key')}
                       <ExternalLink className="w-3 h-3" />
                     </a>
+                  )}
+                  {PROVIDER_KEY_GUIDES[m.id] && (
+                    <button
+                      type="button"
+                      onClick={() => setTipsProviderId(m.id)}
+                      aria-pressed={tipsProvider?.id === m.id}
+                      className={`inline-flex items-center gap-1 text-[11px] px-1.5 py-1 rounded-lg cursor-pointer ${
+                        tipsProvider?.id === m.id
+                          ? 'text-amber-700 dark:text-amber-300 bg-amber-500/15'
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Lightbulb className="w-3 h-3" />
+                      {L('কীভাবে?', 'How?')}
+                    </button>
                   )}
                   {!detected && trimmed.length > 0 && (
                     <button
@@ -420,6 +549,44 @@ export const BoostLimitView: React.FC<BoostLimitViewProps> = ({
             );
           })}
         </div>
+
+        {/* Tips Card: বাছাই করা প্রোভাইডারের পেজে গিয়ে ঠিক কী কী করতে হবে */}
+        {tipsProvider && tipsGuide && (
+          <div
+            data-testid="boost-tips-card"
+            className="rounded-xl border border-amber-200 dark:border-amber-500/25 bg-amber-50/70 dark:bg-amber-500/10 p-3.5 space-y-2"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <Lightbulb className="w-4 h-4 text-amber-500" />
+                {L(`টিপস: ${tipsProvider.name}-এর কী`, `Tips: getting a ${tipsProvider.name} key`)}
+              </div>
+              {tipsUrl && (
+                <a
+                  href={tipsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="boost-tips-link"
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 hover:underline"
+                >
+                  {L('কী-এর পেজ খুলুন', 'Open the key page')}
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+            <ol className="list-decimal pl-5 space-y-0.5 text-xs text-slate-700 dark:text-slate-200">
+              {tipsGuide.steps.map((step, i) => (
+                <li key={i}>{bn ? step.bn : step.en}</li>
+              ))}
+            </ol>
+            {tipsGuide.keyPrefix && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {L('সঠিক কী শুরু হয়: ', 'A correct key starts with: ')}
+                <code className="font-mono">{tipsGuide.keyPrefix}</code>
+              </p>
+            )}
+          </div>
+        )}
       </section>
 
       {/* ৪. আমার যোগ করা কী */}
@@ -488,6 +655,104 @@ export const BoostLimitView: React.FC<BoostLimitViewProps> = ({
               );
             })}
           </ul>
+        )}
+      </section>
+
+      {/* Part 2 (Paid): প্ল্যান ও ক্রেডিট প্যাকেজ — নাম/ক্রেডিট/দাম অ্যাডমিন ড্যাশবোর্ড থেকে (DB) */}
+      <section data-testid="boost-part-paid" className="space-y-3">
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-300">
+            {L('ধাপ ২ · আরও দরকার?', 'Step 2 · Need more?')}
+          </div>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+            <Crown className="w-4 h-4 text-violet-500" />
+            {L('পেইড প্ল্যান ও ক্রেডিট প্যাকেজ', 'Paid plans & credit packages')}
+          </h3>
+        </div>
+        {packages === null && !packagesFailed ? (
+          <div className="text-xs text-slate-500 flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            {L('লোড হচ্ছে…', 'Loading…')}
+          </div>
+        ) : packagesFailed && packages === null ? (
+          <div data-testid="boost-packages-unavailable" className="text-xs text-slate-500">
+            {L(
+              'প্যাকেজ এখন আনা যায়নি — একটু পরে আবার দেখুন।',
+              'Could not load packages right now — please check back shortly.'
+            )}
+          </div>
+        ) : plans.length + topups.length === 0 ? (
+          <div data-testid="boost-packages-empty" className="text-xs text-slate-500">
+            {L('এই মুহূর্তে কোনো পেইড প্যাকেজ নেই।', 'No paid packages are available right now.')}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {[...plans, ...topups].map((pkg) => (
+              <div
+                key={pkg.id}
+                data-testid={`boost-package-${pkg.id}`}
+                className={`rounded-xl border p-3.5 flex flex-col gap-2 ${
+                  pkg.badge
+                    ? 'border-violet-300 dark:border-violet-500/40 bg-violet-50/60 dark:bg-violet-500/10'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                      {pkg.name}
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                      {pkg.kind === 'plan' ? L('প্ল্যান', 'Plan') : L('ক্রেডিট প্যাক', 'Credit pack')}
+                    </div>
+                  </div>
+                  {pkg.badge && (
+                    <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/15 text-violet-700 dark:text-violet-300">
+                      {badgeLabel(pkg.badge)}
+                    </span>
+                  )}
+                </div>
+                <div className="text-lg font-bold tabular-nums text-slate-900 dark:text-white">
+                  {formatPrice(pkg.priceUsd)}
+                  <span className="text-xs font-medium text-slate-500">{periodLabel(pkg)}</span>
+                </div>
+                <div className="text-xs text-slate-600 dark:text-slate-300 tabular-nums">
+                  {formatCredits(pkg.credits)} {L('ক্রেডিট', 'credits')}
+                  {pkg.billingPeriod === 'monthly' ? L(' প্রতি মাসে', ' per month') : ''}
+                </div>
+                {pkg.description && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {pkg.description}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  disabled={!onBuyPackage || buyingId !== null}
+                  onClick={() => void handleBuy(pkg)}
+                  data-testid={`boost-buy-${pkg.id}`}
+                  className={`mt-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${
+                    confirmingId === pkg.id
+                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      : 'bg-violet-600 text-white hover:bg-violet-700'
+                  }`}
+                >
+                  {buyingId === pkg.id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <ShoppingCart className="w-3.5 h-3.5" />
+                  )}
+                  {confirmingId === pkg.id
+                    ? L(
+                        `নিশ্চিত করুন · ${formatPrice(pkg.priceUsd)}`,
+                        `Confirm · ${formatPrice(pkg.priceUsd)}`
+                      )
+                    : pkg.kind === 'plan'
+                      ? L('এই প্ল্যান নিন', 'Choose plan')
+                      : L('কিনুন', 'Buy')}
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 

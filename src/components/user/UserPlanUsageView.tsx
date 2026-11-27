@@ -10,10 +10,16 @@ import {
   Wallet,
   TrendingUp,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { BillingInvoice, ChatSession, PlanTier } from '../../types';
 import { SUPREMEAI_MODELS } from '../../data/models';
-import { getPlanSpec, TOPUP_PACKAGES } from '../../config/plans';
+import { getPlanSpec } from '../../config/plans';
+import {
+  type CreditPackage,
+  creditPackageService,
+  formatPrice,
+} from '../../services/creditPackageService';
 import {
   usageService,
   WalletData,
@@ -55,11 +61,37 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
   const [sectionTab, setSectionTab] = useState<'overview' | 'activity' | 'invoices'>('overview');
   const [metricView, setMetricView] = useState<'stacked' | 'total'>('stacked');
   const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false);
-  const defaultTopUpPkg = TOPUP_PACKAGES[1] || TOPUP_PACKAGES[0];
-  const [selectedTopUpTier, setSelectedTopUpTier] = useState<{ tokens: number; cost: number }>({
-    tokens: defaultTopUpPkg.tokensBonus,
-    cost: defaultTopUpPkg.amountUsd,
-  });
+  // বাংলা মন্তব্য: টপ-আপ প্যাকেজ DB থেকে (Admin → Plans & Packages) — কোডে হার্ডকোড নয়।
+  const [topUpPackages, setTopUpPackages] = useState<CreditPackage[] | null>(null);
+  const [selectedTopUpTier, setSelectedTopUpTier] = useState<{
+    id: string;
+    tokens: number;
+    cost: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!isTopUpModalOpen || topUpPackages !== null) return;
+    let alive = true;
+    creditPackageService
+      .listActive()
+      .then((all) => {
+        if (!alive) return;
+        const topups = all.filter((p) => p.kind === 'topup');
+        setTopUpPackages(topups);
+        const preferred = topups.find((p) => p.badge === 'popular') || topups[0];
+        if (preferred) {
+          setSelectedTopUpTier({
+            id: preferred.id,
+            tokens: preferred.credits,
+            cost: preferred.priceUsd,
+          });
+        }
+      })
+      .catch(() => alive && setTopUpPackages([]));
+    return () => {
+      alive = false;
+    };
+  }, [isTopUpModalOpen, topUpPackages]);
   const [topUpSuccess, setTopUpSuccess] = useState(false);
 
   const [wallet, setWallet] = useState<WalletData | null>(null);
@@ -177,6 +209,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
       : undefined;
 
   const handleTopUpConfirm = () => {
+    if (!selectedTopUpTier) return;
     onTopUpTokens(selectedTopUpTier.tokens, selectedTopUpTier.cost);
     setTopUpSuccess(true);
     setTimeout(() => {
@@ -677,43 +710,58 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
                   {t.creditsAddedTitle}
                 </h4>
                 <p className="text-xs text-slate-500 font-mono">
-                  +{selectedTopUpTier.tokens.toLocaleString()} {t.tokensWord} {t.creditsAddedSub}
+                  +{(selectedTopUpTier?.tokens ?? 0).toLocaleString()} {t.tokensWord}{' '}
+                  {t.creditsAddedSub}
                 </p>
               </div>
             ) : (
               <div className="space-y-4">
                 <p className="text-xs text-slate-600 dark:text-slate-300">{t.topUpNeverExpire}</p>
 
-                <div className="space-y-2.5">
-                  {TOPUP_PACKAGES.map((pkg) => {
+                <div className="space-y-2.5" data-testid="topup-packages">
+                  {topUpPackages === null && (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-400 mx-auto" />
+                  )}
+                  {topUpPackages?.length === 0 && (
+                    <p className="text-xs text-slate-500 text-center py-2">
+                      {lang === 'bn'
+                        ? 'এই মুহূর্তে কোনো টপ-আপ প্যাকেজ নেই।'
+                        : 'No top-up packages are available right now.'}
+                    </p>
+                  )}
+                  {(topUpPackages || []).map((pkg) => {
                     const label =
-                      pkg.badgeKey === 'popular'
+                      pkg.badge === 'popular'
                         ? t.topupPkgPopular
-                        : pkg.badgeKey === 'bestValue'
+                        : pkg.badge === 'bestValue'
                           ? t.topupPkgBestValue
-                          : t.topupPkgStandard;
+                          : pkg.badge || pkg.name || t.topupPkgStandard;
                     return (
                       <div
                         key={pkg.id}
                         onClick={() =>
-                          setSelectedTopUpTier({ tokens: pkg.tokensBonus, cost: pkg.amountUsd })
+                          setSelectedTopUpTier({
+                            id: pkg.id,
+                            tokens: pkg.credits,
+                            cost: pkg.priceUsd,
+                          })
                         }
                         className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                          selectedTopUpTier.cost === pkg.amountUsd
+                          selectedTopUpTier?.id === pkg.id
                             ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/40 ring-1 ring-emerald-500/30'
                             : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                         }`}
                       >
                         <div>
                           <div className="text-xs font-bold text-slate-900 dark:text-white font-mono">
-                            {pkg.tokensBonus.toLocaleString()} {t.tokensWord}
+                            {pkg.credits.toLocaleString()} {t.tokensWord}
                           </div>
                           <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                             {label}
                           </div>
                         </div>
                         <span className="text-sm font-bold font-mono tabular-nums text-slate-900 dark:text-white">
-                          ${pkg.amountUsd}.00
+                          {formatPrice(pkg.priceUsd)}
                         </span>
                       </div>
                     );
@@ -731,9 +779,11 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
                   <button
                     type="button"
                     onClick={handleTopUpConfirm}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer"
+                    disabled={!selectedTopUpTier}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {t.confirmChargeBtn} ${selectedTopUpTier.cost}.00
+                    {t.confirmChargeBtn}{' '}
+                    {selectedTopUpTier ? formatPrice(selectedTopUpTier.cost) : ''}
                   </button>
                 </div>
               </div>

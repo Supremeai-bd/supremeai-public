@@ -139,6 +139,9 @@ const AdminSessionsView = React.lazy(() =>
 const AdminAlertsView = React.lazy(() =>
   import('./components/admin/AdminAlertsView').then((m) => ({ default: m.AdminAlertsView }))
 );
+const AdminPackagesView = React.lazy(() =>
+  import('./components/admin/AdminPackagesView').then((m) => ({ default: m.AdminPackagesView }))
+);
 const AdminMcpTowerView = React.lazy(() =>
   import('./components/admin/AdminMcpTowerView').then((m) => ({ default: m.AdminMcpTowerView }))
 );
@@ -1750,6 +1753,7 @@ export default function App() {
                         <BoostLimitView
                           isGuest={isGuest}
                           advancedOpen={activeTab === 'user-api-keys'}
+                          onBuyPackage={(pkg) => topUpTokens(pkg.credits, pkg.priceUsd)}
                           advanced={
                             <UserApiKeysView
                               apiKeys={apiKeys}
@@ -1908,6 +1912,7 @@ export default function App() {
                           {activeTab === 'usage-limits' && <AdminFinOpsView />}
                           {activeTab === 'sessions' && <AdminSessionsView />}
                           {activeTab === 'alerts' && <AdminAlertsView />}
+                          {activeTab === 'packages' && <AdminPackagesView />}
 
                           {activeTab === 'health-monitor' && <ControlCenterHealthMonitorView />}
 
