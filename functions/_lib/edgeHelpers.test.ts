@@ -134,7 +134,7 @@ describe('authorizeAdminRequest (shared by admin, control-plane, mcp-tower)', ()
       { ADMIN_PASSKEY: 'pass-1' },
       'https://upstream.test'
     );
-    expect(ok).toEqual({ hasToken: true, isAdmin: true });
+    expect(ok).toEqual({ hasToken: true, isAdmin: true, actor: 'admin-key' });
     const none = await authorizeAdminRequest(new Request('https://x.test/'), {}, 'https://upstream.test');
     expect(none).toEqual({ hasToken: false, isAdmin: false });
   });

@@ -441,13 +441,10 @@ export const adminService = {
     if (env.isMockEnabled) {
       return INITIAL_AUDIT_RECORDS;
     }
-    try {
-      const res = await apiClient.get<{ auditRecords: SystemAuditRecord[] }>('/api/admin/audit');
-      return res.auditRecords || [];
-    } catch (err) {
-      logger.warn('adminService: /api/admin/audit unreachable, returning cached audit records', { err });
-      return INITIAL_AUDIT_RECORDS;
-    }
+    // বাংলা মন্তব্য (fail-honest): আগে ব্যর্থ হলে বানানো ডেমো রেকর্ড দেখাত। এখন error ছুঁড়ে দেয় —
+    // store আগের ক্যাশ রাখে আর ব্যাজে "লাইভ নয়" দেখায়।
+    const res = await apiClient.get<{ auditRecords: SystemAuditRecord[] }>('/api/admin/audit');
+    return Array.isArray(res.auditRecords) ? res.auditRecords : [];
   },
 
   async flushDlq(): Promise<void> {

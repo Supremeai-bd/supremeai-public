@@ -8,6 +8,7 @@ import {
   callMcpTowerRpc,
   authorizeAdminRequest,
 } from '../../_lib/edgeHelpers';
+import { withAdminAudit, type AdminAuditContext } from '../../_lib/adminAudit';
 
 /**
  * বাংলা মন্তব্য: শুধু-পড়ার (GET) এই সাব-পাথগুলো সবার জন্য খোলা — Express ডেভ সার্ভারের মতোই।
@@ -78,16 +79,27 @@ async function probeTargetHealth(
 }
 
 export async function onRequest(context: PagesContext): Promise<Response> {
+  if (context.request.method === 'OPTIONS') return handleCorsPreflight(context.request);
+  // বাংলা মন্তব্য (Admin Step 1): অ্যাডমিন-only টাওয়ার write অডিট হয়; পাবলিক রিড নয়।
+  return withAdminAudit(context, (audit) => handleTowerRequest(context, audit));
+}
+
+async function handleTowerRequest(
+  context: PagesContext,
+  audit: AdminAuditContext
+): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
 
   const incomingUrl = new URL(request.url);
   const sub = incomingUrl.pathname.replace(/^\/api\/mcp-tower\/?/, '').trim();
   const upstreamOrigin = resolveUpstreamOrigin(env);
   const mcpOrigin = resolveMcpTowerOrigin(env);
 
-  if (!isPublicTowerRequest(request.method, sub)) {
+  if (isPublicTowerRequest(request.method, sub)) {
+    audit.skip = true;
+  } else {
     const auth = await authorizeAdminRequest(request, env, upstreamOrigin);
+    if (auth.actor) audit.actor = auth.actor;
     if (!auth.isAdmin) {
       return jsonEdgeResponse(
         {

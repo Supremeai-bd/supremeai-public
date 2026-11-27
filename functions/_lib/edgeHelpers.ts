@@ -7,6 +7,8 @@ export interface PagesContext {
   request: Request;
   env?: Record<string, string | undefined>;
   params?: Record<string, string | string[] | undefined>;
+  /** Cloudflare Pages: keep background work (e.g. audit writes) alive after the response. */
+  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export const DEFAULT_UPSTREAM_ORIGIN = DEFAULT_BACKEND_ORIGIN;
@@ -1038,6 +1040,8 @@ export interface AdminAuthorization {
   hasToken: boolean;
   /** অ্যাডমিন হিসেবে যাচাই হয়েছে কিনা */
   isAdmin: boolean;
+  /** Audit actor: verified session email, `admin-key`, or undefined when unknown. */
+  actor?: string;
 }
 
 /**
@@ -1069,7 +1073,7 @@ export async function authorizeAdminRequest(
     .map((k) => String(k).trim())
     .filter(Boolean);
   if (configuredKeys.some((configured) => timingSafeEqualStrings(effectiveToken, configured))) {
-    return { hasToken: true, isAdmin: true };
+    return { hasToken: true, isAdmin: true, actor: 'admin-key' };
   }
 
   const authorizedAdmins = [
@@ -1088,5 +1092,6 @@ export async function authorizeAdminRequest(
         session.role === 'admin' ||
         (Array.isArray(session.permissions) && session.permissions.includes('admin')))
   );
-  return { hasToken: true, isAdmin };
+  const actor = session.valid ? session.email || session.user_id || undefined : undefined;
+  return { hasToken: true, isAdmin, actor };
 }
