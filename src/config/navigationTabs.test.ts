@@ -49,7 +49,7 @@ describe('ROUTABLE_TABS — App.tsx-এর রেন্ডার শাখার
       'user-plugins',
       'visual-cockpit',
       'provider-accounts',
-      'boost-limit',
+      'user-knowledge',
       'feature-flags',
       '',
       'constructor',

@@ -84,9 +84,9 @@ const UserSettingsView = React.lazy(() =>
 const UserApiKeysView = React.lazy(() =>
   import('./components/user/UserApiKeysView').then((m) => ({ default: m.UserApiKeysView }))
 );
-const UserKnowledgeBaseView = React.lazy(() =>
-  import('./components/user/UserKnowledgeBaseView').then((m) => ({
-    default: m.UserKnowledgeBaseView,
+const BoostLimitView = React.lazy(() =>
+  import('./components/user/BoostLimitView').then((m) => ({
+    default: m.BoostLimitView,
   }))
 );
 const UserTeamView = React.lazy(() =>
@@ -354,9 +354,6 @@ export default function App() {
     addWebhook,
     deleteWebhook,
     testWebhook,
-    addKnowledgeDoc,
-    toggleKnowledgeGrounding,
-    deleteKnowledgeDoc,
     inviteTeamMember,
     updateTeamRole,
     removeTeamMember,
@@ -483,7 +480,6 @@ export default function App() {
   );
   const effectiveRole = isAuthorizedAdmin && currentRole === 'admin' ? 'admin' : 'user';
   const isProjectAdmin = isAuthorizedAdmin && effectiveRole === 'admin';
-  const enableKnowledgeGrounding = !isGuest;
 
   const openAuthModal = (reason?: string) => {
     setAuthModal({ open: true, reason });
@@ -631,7 +627,6 @@ export default function App() {
     isSharedArtifactView,
     hasGeneratedWorkspace,
     effectiveRole,
-    enableKnowledgeGrounding,
     isDockOpen,
     setDockOpen,
     activeTab,
@@ -841,9 +836,6 @@ export default function App() {
         return true;
       case 'open_settings':
         handleSelectTab('user-settings');
-        return true;
-      case 'open_knowledge':
-        handleSelectTab('user-knowledge');
         return true;
       case 'open_history':
         handleSelectTab('chat-history');
@@ -1210,7 +1202,6 @@ export default function App() {
             projectsCount={userProjects.length}
             authUser={authUser}
             onSignOut={handleSignOut}
-            enableKnowledgeGrounding={enableKnowledgeGrounding}
             tokensUsed={userSettings.monthlyTokensUsed}
             tokensLimit={userSettings.monthlyTokensLimit}
             isGuest={isGuest}
@@ -1767,14 +1758,7 @@ export default function App() {
                         />
                       )}
 
-                      {activeTab === 'user-knowledge' && (
-                        <UserKnowledgeBaseView
-                          documents={knowledgeDocs}
-                          onAddDocument={addKnowledgeDoc}
-                          onToggleGrounding={toggleKnowledgeGrounding}
-                          onDeleteDocument={deleteKnowledgeDoc}
-                        />
-                      )}
+                      {activeTab === 'boost-limit' && <BoostLimitView isGuest={isGuest} />}
 
                       {activeTab === 'user-team' && (
                         <UserTeamView
@@ -1810,7 +1794,6 @@ export default function App() {
                           onRevokeTrustedBrowser={revokeTrustedBrowser}
                           onSignOut={logout}
                           onOpenFeedbackSurvey={() => setIsSurveyForceOpen(true)}
-                          onOpenKnowledgeBase={() => setActiveTab('user-knowledge')}
                           onOpenLiveVoice={() => {
                             setActiveTab('chat');
                             handleToggleJarvis(true);

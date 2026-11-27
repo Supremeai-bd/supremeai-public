@@ -32,6 +32,33 @@ interface LiveVoiceAvatarCanvasProps {
   resetViewCounter?: number;
 }
 
+/**
+ * বাংলা মন্তব্য: ক্যানভাস সবসময় স্বচ্ছ — পেছনে চ্যাটের একই থিম-ব্যাকগ্রাউন্ড দেখা যায়।
+ * শুধু আলো/গ্লো থিম অনুযায়ী বদলায় যাতে লাইট মোডে অবতার ধোঁয়াটে বা "কালো বাক্স" না লাগে।
+ */
+const DARK_STAGE_THEME = {
+  hemiSky: 0xdbeafe,
+  hemiGround: 0x1e293b,
+  hemiIntensity: 0.85,
+  fill: 0x7dd3fc,
+  envIntensity: 0.72,
+  exposure: 1.06,
+  ringSecondary: 0x8b5cf6,
+} as const;
+
+const LIGHT_STAGE_THEME = {
+  hemiSky: 0xffffff,
+  hemiGround: 0xcbd5e1,
+  hemiIntensity: 1.05,
+  fill: 0xe0f2fe,
+  envIntensity: 0.9,
+  exposure: 1.0,
+  ringSecondary: 0x6d28d9,
+} as const;
+
+/** লাইট থিমে অ্যাকসেন্ট গ্লো একটু গাঢ় করি যাতে সাদা ব্যাকগ্রাউন্ডে দেখা যায়। */
+const LIGHT_THEME_ACCENT_SCALE = 0.72;
+
 const STATUS_ACCENT_COLORS: Record<LiveSessionStatus, number> = {
   idle: 0x38bdf8,
   connecting: 0xfbbf24,
@@ -640,6 +667,26 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
 
     const targetAccent = new THREE.Color(STATUS_ACCENT_COLORS.idle);
     const currentAccent = new THREE.Color(STATUS_ACCENT_COLORS.idle);
+    const displayAccent = new THREE.Color(STATUS_ACCENT_COLORS.idle);
+
+    let appliedDark: boolean | null = null;
+    const applyStageTheme = (dark: boolean) => {
+      const stage = dark ? DARK_STAGE_THEME : LIGHT_STAGE_THEME;
+      hemiLight.color.setHex(stage.hemiSky);
+      hemiLight.groundColor.setHex(stage.hemiGround);
+      hemiLight.intensity = stage.hemiIntensity;
+      fillLight.color.setHex(stage.fill);
+      scene.environmentIntensity = stage.envIntensity;
+      renderer.toneMappingExposure = stage.exposure;
+      const blending = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
+      for (const mat of ringMaterials) {
+        mat.blending = blending;
+        mat.uniforms.uColorB.value.setHex(stage.ringSecondary);
+        mat.needsUpdate = true;
+      }
+      particleMat.blending = blending;
+      particleMat.needsUpdate = true;
+    };
 
     // Pre-allocated pose object reused every frame (zero heap GC in tick)
     const poseFrame: AvatarPoseInput = {
@@ -702,6 +749,17 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
       }
       currentAccent.lerp(targetAccent, Math.min(1, dt * 5));
       rimLight.color.copy(currentAccent);
+
+      // বাংলা মন্তব্য: থিম বদলালে (লাইট/ডার্ক) স্টেজের আলো ও গ্লো ব্লেন্ডিং বদলাই — লাইট মোডে
+      // additive গ্লো সাদা ব্যাকগ্রাউন্ডে মিলিয়ে যায়/ধোঁয়াটে লাগে, তাই সেখানে normal blending
+      // ও গাঢ় অ্যাকসেন্ট; এতে অবতার চ্যাটের একই ব্যাকগ্রাউন্ডে মিশে থাকে, আলাদা বাক্স মনে হয় না।
+      const darkNow = isDarkRef.current;
+      if (darkNow !== appliedDark) {
+        appliedDark = darkNow;
+        applyStageTheme(darkNow);
+      }
+      if (!darkNow) displayAccent.copy(currentAccent).multiplyScalar(LIGHT_THEME_ACCENT_SCALE);
+      else displayAccent.copy(currentAccent);
 
       const streamingActive = isStreamingRef.current;
       const rawOutput = levelsRef.current.output || 0;
@@ -913,16 +971,16 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
       for (let i = 0; i < ringMaterials.length; i++) {
         ringMaterials[i].uniforms.uTime.value = elapsed;
         ringMaterials[i].uniforms.uEnergy.value = ringEnergy;
-        ringMaterials[i].uniforms.uColorA.value.copy(currentAccent);
+        ringMaterials[i].uniforms.uColorA.value.copy(displayAccent);
         const pulseScale = 1 + ringEnergy * (0.045 + i * 0.02) * Math.sin(elapsed * 4 + i);
         ringMeshes[i].scale.setScalar(pulseScale);
       }
 
-      baseEmitterMat.color.copy(currentAccent);
-      baseEmitterMat.opacity = 0.22 + ringEnergy * 0.32;
+      baseEmitterMat.color.copy(displayAccent);
+      baseEmitterMat.opacity = (appliedDark ? 0.22 : 0.16) + ringEnergy * 0.32;
 
-      particleMat.color.copy(currentAccent);
-      particleMat.opacity = 0.45 + ringEnergy * 0.38;
+      particleMat.color.copy(displayAccent);
+      particleMat.opacity = (appliedDark ? 0.45 : 0.32) + ringEnergy * 0.38;
       particleCloud.rotation.y += dt * (0.16 + ringEnergy * 0.42);
 
       const posAttr = particleGeo.getAttribute('position') as THREE.BufferAttribute;
