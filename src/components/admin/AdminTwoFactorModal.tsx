@@ -15,6 +15,8 @@ interface AdminTwoFactorModalProps {
   onClose: () => void;
   onSuccess: (trustedUntil: number | null) => void;
   userEmail: string;
+  /** Server-verified admin flag (login/`/me` role). Email allowlist is only a fallback. */
+  isAdminEligible?: boolean;
 }
 
 const getUtcTotpSecondsRemaining = () => 30 - (Math.floor(Date.now() / 1000) % 30);
@@ -24,6 +26,7 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
   onClose,
   onSuccess,
   userEmail,
+  isAdminEligible = false,
 }) => {
   const [totpDigits, setTotpDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [trustBrowser, setTrustBrowser] = useState(true);
@@ -45,7 +48,7 @@ export const AdminTwoFactorModal: React.FC<AdminTwoFactorModalProps> = ({
 
   // Fail-closed gate: if user is not the authorized admin, reject immediately
   if (!isOpen) return null;
-  if (!userEmail || !isAuthorizedAdminEmail(userEmail)) {
+  if (!userEmail || !(isAdminEligible || isAuthorizedAdminEmail(userEmail))) {
     return null;
   }
 
