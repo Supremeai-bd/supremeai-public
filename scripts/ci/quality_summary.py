@@ -182,8 +182,23 @@ def render_findings(title: str, findings: list[dict], extra: list[str] | None = 
     return "\n".join(lines) + "\n"
 
 
+def _round_robin_by_rule(findings: list[dict]) -> list[dict]:
+    """Interleave rules so one noisy rule cannot fill GitHub's 10-warnings-per-step cap."""
+    buckets: dict[str, list[dict]] = {}
+    for f in findings:
+        buckets.setdefault(f["rule"], []).append(f)
+    out: list[dict] = []
+    while any(buckets.values()):
+        for rule in list(buckets):
+            if buckets[rule]:
+                out.append(buckets[rule].pop(0))
+    return out
+
+
 def annotations(findings: list[dict], limit: int = MAX_ANNOTATIONS) -> list[str]:
-    ordered = sorted(findings, key=lambda f: f["severity"] != "error")
+    errors = [f for f in findings if f["severity"] == "error"]
+    others = [f for f in findings if f["severity"] != "error"]
+    ordered = _round_robin_by_rule(errors) + _round_robin_by_rule(others)
     return [
         f"::{f['severity']} file={f['file']},line={f['line']},title={_escape_annotation(f['rule'])}::{_escape_annotation(f['message'])}"
         for f in ordered[:limit]

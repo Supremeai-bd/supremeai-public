@@ -82,6 +82,14 @@ class QualitySummaryTest(unittest.TestCase):
                 self.assertEqual(qs.main(["sarif", d]), 0)
             self.assertIn("high/critical", summary.read_text())
 
+    def test_annotations_interleave_rules(self):
+        noisy = [{"file": "a.ts", "line": i, "rule": "r1", "severity": "warning", "message": "m"} for i in range(12)]
+        rare = [{"file": "b.ts", "line": 1, "rule": "r2", "severity": "warning", "message": "m"}]
+        err = [{"file": "c.ts", "line": 1, "rule": "r3", "severity": "error", "message": "m"}]
+        out = qs.annotations(noisy + rare + err)
+        self.assertTrue(out[0].startswith("::error file=c.ts"))
+        self.assertTrue(any("file=b.ts" in a for a in out[:3]))
+
     def test_sarif_links_resolve_to_locations(self):
         related = [
             {"id": 1, "physicalLocation": {"artifactLocation": {"uri": "src/a.ts"}, "region": {"startLine": 9}}},
