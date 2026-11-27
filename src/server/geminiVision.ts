@@ -1,7 +1,19 @@
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import {
+  GoogleGenAI,
+  ThinkingLevel,
+  type GenerateContentConfig,
+  type Part,
+  type ThinkingConfig,
+} from '@google/genai';
 import type { Response } from 'express';
 import { isTextReadableMimeOrFilename, decodeBase64AttachmentText } from '../utils/workbenchUtils';
-import { buildFreeVisionCandidates, classifyVisionHttpError, VisionCooldownRegistry, type ClassifiedVisionError } from '../shared/visionRouting';
+import {
+  buildFreeVisionCandidates,
+  classifyVisionHttpError,
+  VisionCooldownRegistry,
+  type ClassifiedVisionError,
+  type VisionCandidate,
+} from '../shared/visionRouting';
 import { normalizeModelSelection } from '../shared/platformCatalog';
 interface ChatRunConfigPayload {
   thinking_level?: 'LOW' | 'MEDIUM' | 'HIGH' | 'XHIGH';
@@ -17,6 +29,69 @@ export interface ChatAttachment {
   data: string;
   mimeType?: string;
   name?: string;
+}
+
+/** OpenAI-style content part (`{type:'text'}` / `{type:'image_url'}`) as sent by any client. */
+export interface ChatContentPart {
+  type?: string;
+  text?: string;
+  image_url?: { url?: string };
+}
+
+/** Gemini-style inline part some clients (desktop/extension) send verbatim. */
+export interface ChatInlinePart {
+  text?: string;
+  inlineData?: { mimeType?: string; data?: string };
+}
+
+type LooseAttachment = Partial<ChatAttachment> | null | undefined;
+
+/** A chat message as received from web, desktop, Android or the VS Code extension. */
+export interface IncomingChatMessage {
+  role?: string;
+  content?: string | ChatContentPart[] | null;
+  attachment?: LooseAttachment;
+  attachments?: LooseAttachment[];
+  parts?: ChatInlinePart[];
+}
+
+type MaybeMessage = IncomingChatMessage | null | undefined;
+
+export type OpenAiVisionContent =
+  | string
+  | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+
+export interface OpenAiVisionMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: OpenAiVisionContent;
+}
+
+export interface VisionTokenUsage {
+  promptTokens: number;
+  candidateTokens: number;
+  totalTokens: number;
+  thoughtTokens?: number;
+}
+
+/** Structural subset of `GenerateContentResponse` read for grounding + usage. */
+export interface GeminiStreamChunkLike {
+  text?: string;
+  candidates?: Array<{
+    groundingMetadata?: { groundingChunks?: Array<{ web?: { uri?: string; title?: string } }> };
+  }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+    thoughtsTokenCount?: number;
+  };
+}
+
+interface OpenAiCompatibleResponse {
+  choices?: Array<{ message?: { content?: unknown } }>;
+  result?: { response?: unknown };
+  response?: unknown;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 }
 
 export function resolveThinkingLevel(
@@ -68,17 +143,17 @@ export function resolveReasoningEffort(
   return undefined;
 }
 
-export function resolveServerAutoModel(reqModel: string, messages: any[]): string {
+export function resolveServerAutoModel(reqModel: string, messages: MaybeMessage[]): string {
   const clean = String(reqModel || '').trim();
   if (clean && clean !== 'auto' && clean !== 'default') {
     return normalizeModelSelection(clean, false);
   }
   const lastUserMsgObj = Array.isArray(messages)
-    ? [...messages].reverse().find((m: any) => m?.role === 'user')
+    ? [...messages].reverse().find((m) => m?.role === 'user')
     : null;
   const lastText = extractTextFromMessageContent(lastUserMsgObj?.content).trim();
   const hasVision =
-    Array.isArray(messages) && messages.some((m: any) => messageHasVisionOrAttachment(m));
+    Array.isArray(messages) && messages.some((m) => messageHasVisionOrAttachment(m));
   if (
     /\b(architect(?:ure)?|security\s*audit|vulnerabilit(?:y|ies)|proof|theorem|root\s*cause|distributed|race\s*condition|invariant|benchmark)\b|(আর্কিটেকচার|অডিট|নিরাপত্তা|রুট\s*কজ)/i.test(
       lastText
@@ -131,27 +206,27 @@ export function extractTextFromMessageContent(content: unknown): string {
   return '';
 }
 
-export function messageHasVisionOrAttachment(msg: any): boolean {
+export function messageHasVisionOrAttachment(msg: MaybeMessage): boolean {
   if (!msg) return false;
   if (msg.attachment && msg.attachment.data) return true;
-  if (Array.isArray(msg.attachments) && msg.attachments.some((a: any) => Boolean(a?.data))) {
+  if (Array.isArray(msg.attachments) && msg.attachments.some((a) => Boolean(a?.data))) {
     return true;
   }
   if (
     Array.isArray(msg.content) &&
-    msg.content.some((p: any) => p?.type === 'image_url' && typeof p?.image_url?.url === 'string')
+    msg.content.some((p) => p?.type === 'image_url' && typeof p?.image_url?.url === 'string')
   ) {
     return true;
   }
-  if (Array.isArray(msg.parts) && msg.parts.some((p: any) => Boolean(p?.inlineData?.data))) {
+  if (Array.isArray(msg.parts) && msg.parts.some((p) => Boolean(p?.inlineData?.data))) {
     return true;
   }
   return false;
 }
 
-export function messageHasActualImage(msg: any): boolean {
+export function messageHasActualImage(msg: MaybeMessage): boolean {
   if (!msg) return false;
-  const isImg = (att: any) =>
+  const isImg = (att: LooseAttachment) =>
     Boolean(
       att?.data &&
       (String(att.mimeType || '')
@@ -160,21 +235,21 @@ export function messageHasActualImage(msg: any): boolean {
         String(att.data || '').startsWith('data:image/'))
     );
   if (isImg(msg.attachment)) return true;
-  if (Array.isArray(msg.attachments) && msg.attachments.some((a: any) => isImg(a))) {
+  if (Array.isArray(msg.attachments) && msg.attachments.some((a) => isImg(a))) {
     return true;
   }
   if (
     Array.isArray(msg.content) &&
-    msg.content.some((p: any) => p?.type === 'image_url' && typeof p?.image_url?.url === 'string')
+    msg.content.some((p) => p?.type === 'image_url' && typeof p?.image_url?.url === 'string')
   ) {
     return true;
   }
   if (
     Array.isArray(msg.parts) &&
     msg.parts.some(
-      (p: any) =>
+      (p) =>
         Boolean(p?.inlineData?.data) &&
-        String(p.inlineData.mimeType || 'image/png')
+        String(p.inlineData?.mimeType || 'image/png')
           .toLowerCase()
           .startsWith('image/')
     )
@@ -184,8 +259,8 @@ export function messageHasActualImage(msg: any): boolean {
   return false;
 }
 
-export function buildGeminiPartsFromMessage(msg: any): any[] {
-  const parts: any[] = [];
+export function buildGeminiPartsFromMessage(msg: MaybeMessage): Part[] {
+  const parts: Part[] = [];
   const seenInlineData = new Set<string>();
   const pushInlineData = (mimeType: string, data: string) => {
     const rawData = data.includes(',') ? data.split(',')[1] : data;
@@ -218,7 +293,7 @@ export function buildGeminiPartsFromMessage(msg: any): any[] {
     parts.push({ text: msg.content });
   }
 
-  const rawAttachments: ChatAttachment[] = [];
+  const rawAttachments: LooseAttachment[] = [];
   if (Array.isArray(msg?.attachments)) {
     for (const a of msg.attachments) {
       if (a) rawAttachments.push(a);
@@ -276,13 +351,13 @@ export function buildGeminiGenerateConfig(
     thinking_budget?: number;
   },
   upstreamModel: string = 'gemini-4-hydrogen'
-): Record<string, any> {
+): GenerateContentConfig {
   const resolvedLevel = resolveThinkingLevel(runConfig?.thinking_level, reqModel, upstreamModel);
   const rawLevel = String(runConfig?.thinking_level || '').toUpperCase();
   const isGemini4 = upstreamModel.startsWith('gemini-4-');
   const isGemini3 = upstreamModel.startsWith('gemini-3');
   const isGemini25 = upstreamModel.startsWith('gemini-2.5-');
-  const thinkingConfig: Record<string, any> = {};
+  const thinkingConfig: ThinkingConfig = {};
 
   if (isGemini4 || isGemini3) {
     thinkingConfig.thinkingLevel = resolvedLevel;
@@ -311,7 +386,7 @@ export function buildGeminiGenerateConfig(
     }
   }
 
-  const config: Record<string, any> = {
+  const config: GenerateContentConfig = {
     systemInstruction,
     ...(Object.keys(thinkingConfig).length > 0 ? { thinkingConfig } : {}),
   };
@@ -350,7 +425,7 @@ export function buildGeminiGenerateConfig(
 }
 
 export function collectGroundingSourcesAndUsage(
-  chunk: any,
+  chunk: GeminiStreamChunkLike | null | undefined,
   sourcesMap: Map<string, { title: string; uri: string }>,
   latestUsage: {
     promptTokens: number;
@@ -389,7 +464,7 @@ export function collectGroundingSourcesAndUsage(
   return latestUsage;
 }
 
-export function countImagesInMessages(messages: any[]): number {
+export function countImagesInMessages(messages: MaybeMessage[]): number {
   if (!Array.isArray(messages)) return 0;
   let total = 0;
   for (const m of messages) {
@@ -401,7 +476,7 @@ export function countImagesInMessages(messages: any[]): number {
         total += 1;
       }
     };
-    const inspectAtt = (att: any) => {
+    const inspectAtt = (att: LooseAttachment) => {
       if (!att?.data) return;
       const mime = String(att.mimeType || '').toLowerCase();
       const dataStr = String(att.data || '');
@@ -439,10 +514,10 @@ export function countImagesInMessages(messages: any[]): number {
 }
 
 export function buildOpenAiVisionMessages(
-  messages: any[],
+  messages: MaybeMessage[],
   systemInstruction: string
-): Array<{ role: 'system' | 'user' | 'assistant'; content: any }> {
-  const result: Array<{ role: 'system' | 'user' | 'assistant'; content: any }> = [
+): OpenAiVisionMessage[] {
+  const result: OpenAiVisionMessage[] = [
     { role: 'system', content: systemInstruction },
   ];
 
@@ -474,7 +549,7 @@ export function buildOpenAiVisionMessages(
       textChunks.push(m.content);
     }
 
-    const rawAttachments: any[] = [];
+    const rawAttachments: LooseAttachment[] = [];
     if (Array.isArray(m.attachments)) rawAttachments.push(...m.attachments);
     if (m.attachment) rawAttachments.push(m.attachment);
     for (const att of rawAttachments) {
@@ -507,7 +582,7 @@ export function buildOpenAiVisionMessages(
 
     const mergedText = textChunks.join('\n').trim();
     if (role === 'user' && imageUrls.length > 0) {
-      const contentArr: any[] = [
+      const contentArr: OpenAiVisionContent = [
         {
           type: 'text',
           text:
@@ -515,7 +590,7 @@ export function buildOpenAiVisionMessages(
             'Please analyze the attached image(s) carefully, transcribing visible text accurately before explaining.',
         },
         ...imageUrls.map((url) => ({
-          type: 'image_url',
+          type: 'image_url' as const,
           image_url: { url },
         })),
       ];
@@ -533,22 +608,31 @@ export function extractSdkErrorMetadata(err: unknown): {
   retryAfterHeader?: string | null;
   message: string;
 } {
-  const anyErr = err as any;
+  const asRecord = (v: unknown): Record<string, unknown> | undefined =>
+    v && typeof v === 'object' ? (v as Record<string, unknown>) : undefined;
+  const headerViaGet = (headers: unknown): string | null => {
+    const get = asRecord(headers)?.get;
+    if (typeof get !== 'function') return null;
+    const value: unknown = get.call(headers, 'retry-after');
+    return typeof value === 'string' && value ? value : null;
+  };
+  const errObj = asRecord(err);
+  const response = asRecord(errObj?.response);
   const statusCandidate =
-    typeof anyErr?.status === 'number'
-      ? anyErr.status
-      : typeof anyErr?.statusCode === 'number'
-        ? anyErr.statusCode
-        : typeof anyErr?.response?.status === 'number'
-          ? anyErr.response.status
+    typeof errObj?.status === 'number'
+      ? errObj.status
+      : typeof errObj?.statusCode === 'number'
+        ? errObj.statusCode
+        : typeof response?.status === 'number'
+          ? response.status
           : undefined;
-  let retryAfterHeader: string | null = null;
+  let retryAfterHeader: string | null;
   try {
+    const indexed = asRecord(response?.headers)?.['retry-after'];
     retryAfterHeader =
-      anyErr?.response?.headers?.get?.('retry-after') ||
-      anyErr?.headers?.get?.('retry-after') ||
-      anyErr?.response?.headers?.['retry-after'] ||
-      null;
+      headerViaGet(response?.headers) ||
+      headerViaGet(errObj?.headers) ||
+      (typeof indexed === 'string' && indexed ? indexed : null);
   } catch {
     retryAfterHeader = null;
   }
@@ -576,12 +660,12 @@ export function writeVisionSseHeaders(
 export async function runOpenAiCompatibleVisionRequest(params: {
   endpoint: string;
   apiKey: string;
-  candidate: any;
-  openAiMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }>;
+  candidate: VisionCandidate;
+  openAiMessages: OpenAiVisionMessage[];
   maxTokens?: number;
   extraHeaders?: Record<string, string>;
 }): Promise<
-  { ok: true; text: string; usage?: any } | { ok: false; classified: ClassifiedVisionError }
+  { ok: true; text: string; usage?: VisionTokenUsage } | { ok: false; classified: ClassifiedVisionError }
 > {
   const { endpoint, apiKey, candidate, openAiMessages, maxTokens, extraHeaders } = params;
   try {
@@ -629,7 +713,7 @@ export async function runOpenAiCompatibleVisionRequest(params: {
       };
     }
 
-    const data = (await resp.json().catch(() => null)) as any;
+    const data = (await resp.json().catch(() => null)) as OpenAiCompatibleResponse | null;
     const text =
       data?.choices?.[0]?.message?.content ?? data?.result?.response ?? data?.response ?? '';
     if (typeof text !== 'string' || !text.trim()) {
@@ -669,7 +753,7 @@ export async function runOpenAiCompatibleVisionRequest(params: {
 }
 
 export async function executeFreeVisionCascade(params: {
-  messages: any[];
+  messages: IncomingChatMessage[];
   combinedSystem: string;
   resolvedModel: string;
   runConfig?: ChatRunConfigPayload;
@@ -717,8 +801,8 @@ export async function executeFreeVisionCascade(params: {
   let hadCoolingCandidate = false;
 
   const contents = messages
-    .filter((m: any) => m.role === 'user' || m.role === 'assistant')
-    .map((m: any) => ({
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: buildGeminiPartsFromMessage(m),
     }));
@@ -765,7 +849,7 @@ export async function executeFreeVisionCascade(params: {
 
         for await (const chunk of streamRes) {
           latestUsage = collectGroundingSourcesAndUsage(chunk, sourcesMap, latestUsage);
-          const textChunk = (chunk as any).text || '';
+          const textChunk = chunk.text || '';
           if (textChunk) {
             if (!emittedChunk) {
               emittedChunk = true;
@@ -850,7 +934,7 @@ export async function executeFreeVisionCascade(params: {
     }
 
     let openAiResult:
-      | { ok: true; text: string; usage?: any }
+      | { ok: true; text: string; usage?: VisionTokenUsage }
       | { ok: false; classified: ClassifiedVisionError }
       | null = null;
 
