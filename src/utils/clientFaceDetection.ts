@@ -1,4 +1,5 @@
 import type { FaceLandmarksDetector } from '@tensorflow-models/face-landmarks-detection';
+import { extractFeaturePointsFromMesh, type FaceFeaturePoints } from './faceAlignment';
 
 export interface NormalizedFaceBox {
   x: number;
@@ -15,6 +16,8 @@ export interface ClientFaceDetectionResult {
   faceCount: number;
   source: 'tfjs-face-landmarks' | 'browser-face-detector' | 'unavailable';
   reason?: string;
+  /** Eye & mouth points (normalized 0..1) when FaceMesh landmarks were resolved. */
+  features?: FaceFeaturePoints | null;
 }
 
 let detectorPromise: Promise<FaceLandmarksDetector> | null = null;
@@ -159,6 +162,7 @@ export async function detectClientFaceInCanvas(
       landmarksCount,
       faceCount: faces.length,
       source: 'tfjs-face-landmarks',
+      features: extractFeaturePointsFromMesh(primary.keypoints, width, height),
     };
   } catch {
     // Fall through to native Shape Detection API if offline / WebGL weights blocked

@@ -1,6 +1,13 @@
 import maleHologramImg from '../assets/images/avatar_hologram_male_1794610533388.jpg';
 import type { LiveVoiceName } from '../hooks/useLiveVoiceSession';
 import { detectClientFaceInCanvas, type NormalizedFaceBox } from './clientFaceDetection';
+import {
+  CANONICAL_FACE_LAYOUT,
+  computeCanonicalTransform,
+  isPlausibleCanonicalFace,
+  mapFeaturesToCanonical,
+  type CanonicalFaceLandmarks,
+} from './faceAlignment';
 import { schedulePreferencesPatch } from '../services/userPreferencesSyncBus';
 import { buildVoiceTtsSyncSnapshotFromStorage } from './speechUtils';
 
@@ -15,6 +22,11 @@ export interface CustomFaceTraits {
   hairStyle?: 'short' | 'medium' | 'long';
   hasGlasses?: boolean;
   faceFound?: boolean;
+  /**
+   * Eye & mouth boxes inside the canonical (aligned) photo. Present only when FaceMesh resolved
+   * real landmarks — drives blink, gaze and lip-sync exactly on the user's own eyes and mouth.
+   */
+  landmarks?: CanonicalFaceLandmarks;
 }
 
 export interface AvatarPreference {
@@ -170,6 +182,96 @@ function readImageFromFile(file: File): Promise<HTMLImageElement> {
   });
 }
 
+function averageBorderColor(canvas: HTMLCanvasElement): string {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '#1e293b';
+  const { width: w, height: h } = canvas;
+  const data = ctx.getImageData(0, 0, w, h).data;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let n = 0;
+  const step = Math.max(1, Math.floor(Math.min(w, h) / 40));
+  for (let x = 0; x < w; x += step) {
+    for (const y of [0, h - 1]) {
+      const i = (y * w + x) * 4;
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      n++;
+    }
+  }
+  for (let y = 0; y < h; y += step) {
+    for (const x of [0, w - 1]) {
+      const i = (y * w + x) * 4;
+      r += data[i];
+      g += data[i + 1];
+      b += data[i + 2];
+      n++;
+    }
+  }
+  const hex = (v: number) =>
+    Math.max(0, Math.min(255, Math.round(v / Math.max(1, n))))
+      .toString(16)
+      .padStart(2, '0');
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
+/** Draws the photo into the canonical 512² layout using FaceMesh eye/mouth points. */
+function renderCanonicalFace(
+  img: HTMLImageElement,
+  features: Parameters<typeof computeCanonicalTransform>[0] | null,
+  analysisCanvas: HTMLCanvasElement
+): { dataUrl: string; landmarks: CanonicalFaceLandmarks; skinHex?: string } | null {
+  if (!features) return null;
+  const sw = img.naturalWidth;
+  const sh = img.naturalHeight;
+  const size = CANONICAL_FACE_LAYOUT.size;
+  const transform = computeCanonicalTransform(features, sw, sh);
+  if (!transform) return null;
+  const landmarks = mapFeaturesToCanonical(features, transform, sw, sh, size);
+  if (!isPlausibleCanonicalFace(landmarks)) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  // Areas outside the original photo get its average edge colour instead of black bars
+  ctx.fillStyle = averageBorderColor(analysisCanvas);
+  ctx.fillRect(0, 0, size, size);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.setTransform(transform.a, transform.b, transform.c, transform.d, transform.e, transform.f);
+  ctx.drawImage(img, 0, 0);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // Sample cheek skin just below the left eye
+  let skinHex: string | undefined;
+  try {
+    const sx = Math.round(landmarks.leftEye.x * size);
+    const sy = Math.round((landmarks.leftEye.y + landmarks.leftEye.w * 0.9) * size);
+    const px = ctx.getImageData(Math.max(0, sx - 4), Math.max(0, sy - 4), 8, 8).data;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    for (let i = 0; i < px.length; i += 4) {
+      r += px[i];
+      g += px[i + 1];
+      b += px[i + 2];
+    }
+    const n = px.length / 4;
+    const hex = (v: number) =>
+      Math.round(v / n)
+        .toString(16)
+        .padStart(2, '0');
+    skinHex = `#${hex(r)}${hex(g)}${hex(b)}`;
+  } catch {
+    skinHex = undefined;
+  }
+
+  return { dataUrl: canvas.toDataURL('image/jpeg', 0.92), landmarks, skinHex };
+}
+
 /**
  * Validates that an uploaded image contains a clearly visible human face using
  * client-side TensorFlow.js Face Landmarks Detection first (rejecting non-face or
@@ -269,6 +371,20 @@ export async function processCustomFaceUpload(file: File): Promise<{
     throw new Error(
       'Unable to confirm a clear human face in this image. Please upload a well-lit portrait with a visible face.'
     );
+  }
+
+  // বাংলা মন্তব্য: FaceMesh ল্যান্ডমার্ক পেলে ছবিটা ক্যানোনিকাল ফরম্যাটে আনা হয় — চোখ সোজা,
+  // নির্দিষ্ট উচ্চতা ও দূরত্বে। তাতে অবতারের পলক/ঠোঁট নাড়া ঠিক আসল চোখ-ঠোঁটের জায়গায় হয়।
+  const aligned = clientCheck.detected
+    ? renderCanonicalFace(img, clientCheck.features ?? null, analysisCanvas)
+    : null;
+  if (aligned) {
+    if (!traits.skinHex) traits.skinHex = aligned.skinHex;
+    return {
+      dataUrl: aligned.dataUrl,
+      traits: { ...traits, faceFound: true, landmarks: aligned.landmarks },
+      faceDetected: true,
+    };
   }
 
   // Convert normalized face box -> tight padded square crop focused ONLY on the face
@@ -377,7 +493,7 @@ export function computePhotoPortraitMaps(
       const dx = (nx - 0.5) / 0.47;
       const dy = (ny - 0.48) / 0.5;
       const ovalR = Math.sqrt(dx * dx + dy * dy);
-      const alpha = 1 - smoothstep(0.8, 1.0, ovalR);
+      const alpha = 1 - smoothstep(0.68, 1.0, ovalR);
 
       // Natural colours with a very light cool hologram grade
       color[p] = Math.round(r * 0.95);
