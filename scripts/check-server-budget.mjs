@@ -131,7 +131,14 @@ const TARGET = 'server.ts';
 // 2508 → 2209 after moving the pure bootstrap helpers (isHttpsRequest, SSRF-safe fetch,
 //         per-IP rate limiter) into src/server/httpGuards.ts and the MCP Tower service
 //         data array into src/server/mcpClusterServices.ts (−299 lines).
-const BUDGET = 2209;
+// 2209 → 1061 after the final bootstrap split: provider registry (masking, env map,
+//         real probes, mesh/vault seeds) → src/server/providerRegistry.ts; governance
+//         seeds + durable loader + schema probe → src/server/platformState.ts; Supabase
+//         REST client → src/server/supabaseRest.ts; admin identity/user types/dev seeds →
+//         src/server/userDirectory.ts; federation catch-all → src/server/federationProxy.ts;
+//         Vite/static serving + error handler → src/server/frontendServing.ts; plus 41
+//         unused imports and 3 dead declarations removed (−1,148 lines).
+const BUDGET = 1061;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

@@ -1,12 +1,9 @@
 import express, { NextFunction, Request, Response } from 'express';
 import http from 'http';
-import { Readable } from 'stream';
 import crypto from 'crypto';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import os from 'os';
 import dotenv from 'dotenv';
 import { attachWebSocketBridges } from './src/server/wsBridge';
 import { PersistentSessionMap } from './src/server/redisStore';
@@ -40,24 +37,13 @@ import { registerStreamRoutes } from './src/server/routes/stream';
 import { registerGraphRoutes } from './src/server/routes/graph';
 import { registerTtsRoutes } from './src/server/routes/tts';
 import { registerPreferencesRoutes } from './src/server/routes/preferences';
-import {
-  CANONICAL_SERVER_MODELS,
-  DEFAULT_MODEL_ID,
-  DEFAULT_MODEL_POLICIES,
-} from './src/shared/platformCatalog';
+import { CANONICAL_SERVER_MODELS } from './src/shared/platformCatalog';
 import { registerKnowledgeRoutes } from './src/server/routes/knowledge';
 import { registerLlmLatencyRoutes } from './src/server/routes/llmLatency';
 import {
-  getLiveMcpTowerServices,
   getRealGatewayTrafficSummary,
   recordHttpRequestMetric,
 } from './src/server/mcpHealthCollector';
-import {
-  DEFAULT_BACKEND_ORIGIN,
-  DEFAULT_WEB_STUDIO_URL,
-  GITHUB_MONOREPO_SLUG,
-  GITHUB_PUBLIC_REPO_SLUG,
-} from './src/config/platformEndpoints';
 import {
   resolveReasoningEffort,
   resolveServerAutoModel,
@@ -70,56 +56,52 @@ import {
   collectGroundingSourcesAndUsage,
   countImagesInMessages,
   executeFreeVisionCascade,
-  visionCooldownRegistry,
 } from './src/server/geminiVision';
-import {
-  buildRollingAssetUrls,
-  DEFAULT_RELEASE_MANIFEST,
-  normalizeRemoteReleaseManifest,
-  type ReleaseAssetEntry,
-  type ReleaseManifest,
-} from './src/config/releaseDownloads';
-import QRCode from 'qrcode';
-import { buildOtpAuthUri, generateTotpSecret, verifyTotpToken } from './src/server/totp';
 import { buildDurableAuditRow } from './src/server/auditPayload';
 import { createRateLimiter, isHttpsRequest, safeFetchWithRedirectCheck } from './src/server/httpGuards';
 import { createMcpClusterServices } from './src/server/mcpClusterServices';
 import {
-  loginSchema,
-  signupSchema,
-  refreshSchema,
-  totpConfirmSchema,
-  verify2faSchema,
-  parseBody,
-} from './src/server/validation';
-import { PLAN_CATALOG, TOPUP_PACKAGES, getPlanSpec } from './src/config/plans';
+  buildInfisicalVaultKeys as buildProviderVaultKeys,
+  createInfisicalExtraVaultKeys,
+  createProviderMesh,
+  maskServerSecret,
+  PROVIDER_DISPLAY_NAMES,
+  PROVIDER_KEY_ENV,
+  probeProviderUpstream,
+} from './src/server/providerRegistry';
+import { registerFederationProxy } from './src/server/federationProxy';
+import {
+  createAuditSeed,
+  createBlockedIpsSeed,
+  createPlatformConfig,
+  createRuntimeFeatureFlags,
+  getClientIp,
+  loadDurablePlatformState,
+  TIER_RANK,
+  verifyGatewaySchema,
+  type BlockedIpEntry,
+  type PlanTier,
+  type ServerAuditRecord,
+} from './src/server/platformState';
+import { supabaseRestRequest } from './src/server/supabaseRest';
+import {
+  createAdminIdentityConfig,
+  createCustomerDirectorySeed,
+  getSessionSigningSecret,
+  loadDevUsersDb as loadDevUsersFile,
+  persistDevUsersDb as persistDevUsersFile,
+  type RbacRole,
+  type ServerCustomerRecord,
+  type ServerUser,
+} from './src/server/userDirectory';
+import { mountFrontend, registerErrorHandler } from './src/server/frontendServing';
 import {
   ADMIN_SESSION_TTL_MS,
-  hashPassword,
-  isRestrictedProxyTarget,
   parseCookieHeader,
   signSessionToken,
-  validateGitLabHost,
-  verifyPassword,
   verifySessionToken,
 } from './src/shared/serverSecurity';
-import {
-  decodeBase64AttachmentText,
-  isTextReadableMimeOrFilename,
-} from './src/utils/workbenchUtils';
-import {
-  buildFreeVisionCandidates,
-  classifyVisionHttpError,
-  VisionCooldownRegistry,
-  type ClassifiedVisionError,
-  type VisionCandidate,
-} from './src/shared/visionRouting';
-import {
-  buildGitHubForkUrl,
-  createForkedProjectPayload,
-  mapWorkflowRunToBuildStatus,
-  parseGitHubRepoSlug,
-} from './src/utils/projectRepoUtils';
+import { classifyVisionHttpError } from './src/shared/visionRouting';
 import { detectBengaliOrBanglish } from './src/utils/speechUtils';
 
 dotenv.config();
@@ -151,77 +133,6 @@ const isProduction = process.env.NODE_ENV === 'production';
 const SUPPORTED_MODELS = CANONICAL_SERVER_MODELS;
 
 const apiKey = process.env.GEMINI_API_KEY || '';
-
-interface ChatAttachment {
-  name: string;
-  mimeType: string;
-  data: string;
-}
-
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  attachment?: ChatAttachment;
-}
-
-interface ChatRunConfigPayload {
-  thinking_level?: 'LOW' | 'MEDIUM' | 'HIGH' | 'XHIGH';
-  google_search?: boolean;
-  response_mime_type?: 'text/plain' | 'application/json';
-  response_schema?: Record<string, unknown>;
-}
-
-interface ChatRequestBody {
-  model?: string;
-  messages: ChatMessage[];
-  systemInstruction?: string;
-  groundingContext?: string;
-  stream?: boolean;
-  language?: 'en' | 'bn';
-  temperature?: number;
-  top_p?: number;
-  max_tokens?: number;
-  thinking_budget?: number;
-  run_config?: ChatRunConfigPayload;
-  userContext?: {
-    email?: string;
-    role?: 'admin' | 'user';
-    tier?: 'Free' | 'Pro' | 'Enterprise';
-  };
-}
-
-
-
-// Minimal Supabase PostgREST client (service-role). Returns null when Supabase// Minimal Supabase PostgREST client (service-role). Returns null when Supabase
-// is not configured; throws on non-2xx so callers can fall back to local state.
-async function supabaseRestRequest(
-  pathAndQuery: string,
-  method: string,
-  body?: unknown,
-  prefer = 'return=minimal'
-): Promise<any> {
-  const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '')
-    .trim()
-    .replace(/\/$/, '');
-  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  if (!url || !key) return null;
-  const res = await fetch(`${url}/rest/v1/${pathAndQuery}`, {
-    method,
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      Prefer: prefer,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(6000),
-  });
-  if (!res.ok)
-    throw new Error(`Supabase ${method} ${pathAndQuery.split('?')[0]} -> HTTP ${res.status}`);
-  if (res.status === 204) return null;
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
-}
 
 async function startServer() {
   const app = express();
@@ -300,91 +211,11 @@ async function startServer() {
   });
 
   // --- Admin Platform Control Endpoints & Central Governance State ---
-  let runtimeFeatureFlags: Record<string, boolean> = {
-    enable_supreme_reason: true,
-    enable_multimodal_vision: true,
-    enable_rag_grounding: true,
-    enable_continuous_agent_swarm: true,
-    enforce_strict_rate_limits: false,
-    maintenance_mode: false,
-  };
-
-  type PlanTier = 'Free' | 'Pro' | 'Enterprise';
-  const TIER_RANK: Record<PlanTier, number> = { Free: 0, Pro: 1, Enterprise: 2 };
-
-  let platformConfig = {
-    maintenanceMode: false,
-    maintenanceMessage:
-      'SupremeAI Studio is undergoing scheduled database maintenance. Administrators remain online.',
-    announcementBanner: {
-      active: false,
-      message: 'All SupremeAI Core and SupremeAI Reason routes are operating normally.',
-      level: 'info' as 'info' | 'warning' | 'critical',
-    },
-    allowNewSignups: true,
-    defaultModelId: DEFAULT_MODEL_ID,
-    modelPolicies: { ...DEFAULT_MODEL_POLICIES } as Record<
-      string,
-      { enabled: boolean; minTier: PlanTier }
-    >,
-  };
-
-  interface ServerAuditRecord {
-    id: string;
-    timestamp: string;
-    actor: string;
-    action: string;
-    resource: string;
-    details: string;
-    ipAddress: string;
-  }
-
-  const auditRecords: ServerAuditRecord[] = isProduction
-    ? []
-    : [
-        {
-          id: 'audit_rec_01',
-          timestamp: 'Today at 09:40',
-          actor: 'platform-admin',
-          action: 'SERVICE_REBOOT',
-          resource: 'MCP Tower / code-auditor-worker',
-          details:
-            'Graceful reboot triggered via Admin Dashboard. Memory garbage collected, cold boot latency 28ms.',
-          ipAddress: '10.0.4.12',
-        },
-        {
-          id: 'audit_rec_02',
-          timestamp: 'Today at 08:15',
-          actor: 'platform-admin',
-          action: 'RATE_LIMIT_OVERRIDE',
-          resource: 'Customer: techcorp_labs (cust_1042)',
-          details: 'Increased RPM from 120 to 600 for Enterprise pilot rollout.',
-          ipAddress: '10.0.4.12',
-        },
-        {
-          id: 'audit_rec_03',
-          timestamp: 'Yesterday at 17:20',
-          actor: 'system-agent-scheduler',
-          action: 'AUTONOMOUS_SWARM_SCALE',
-          resource: 'Swarm Worker: solver-daemon-01',
-          details:
-            'Auto-scaled worker concurrency to 4 threads during high GitHub issue throughput.',
-          ipAddress: '127.0.0.1',
-        },
-        {
-          id: 'audit_rec_04',
-          timestamp: 'Apr 10, 2026',
-          actor: 'platform-admin',
-          action: 'FAILOVER_RULE_UPDATE',
-          resource: 'LLM Gateway / supreme-core',
-          details: 'Configured automated fallback to supreme-spark on 503 high demand.',
-          ipAddress: '10.0.4.12',
-        },
-      ];
-
-  const getClientIp = (req: Request): string => {
-    return String(req.ip || req.socket?.remoteAddress || '127.0.0.1').trim();
-  };
+  // Seeds, getClientIp, the durable loader and the schema probe live in
+  // src/server/platformState.ts; the mutable state + audit writer stay here.
+  let runtimeFeatureFlags: Record<string, boolean> = createRuntimeFeatureFlags();
+  let platformConfig = createPlatformConfig();
+  const auditRecords: ServerAuditRecord[] = createAuditSeed(isProduction);
 
   const resolveAuditActor = (req?: Request, explicitActor?: unknown): string => {
     if (typeof explicitActor === 'string' && explicitActor.trim()) {
@@ -432,12 +263,7 @@ async function startServer() {
     void supabaseRestRequest('audit_logs', 'POST', [buildDurableAuditRow(entry)]).catch(() => {});
   };
 
-  let blockedIps: { ip: string; reason: string; date: string }[] = isProduction
-    ? []
-    : [
-        { ip: '45.154.255.8', reason: 'Internal MCP Port Scanner', date: '2 days ago' },
-        { ip: '198.51.100.44', reason: 'Adversarial Jailbreak Payload Injection', date: 'Today' },
-      ];
+  let blockedIps: BlockedIpEntry[] = createBlockedIpsSeed(isProduction);
 
   const isIpBlocked = (req: Request): boolean => {
     const clientIp = getClientIp(req);
@@ -460,169 +286,17 @@ async function startServer() {
       'resolution=merge-duplicates,return=minimal'
     ).catch(() => {});
   };
-  const loadPlatformState = async () => {
-    try {
-      const rows = await supabaseRestRequest('platform_settings?id=eq.global&select=value', 'GET');
-      const value = Array.isArray(rows) ? rows[0]?.value : rows?.value;
-      if (value && typeof value === 'object') {
-        // বাংলা মন্তব্য: রেফারেন্স-ভাঙা রেস কন্ডিশন ফিক্স — blockedIps/runtimeFeatureFlags/platformConfig
-        // রুট মডিউল ও WebSocket ব্রিজে রেজিস্ট্রেশনের সময় রেফারেন্স হিসেবে পাস করা হয়;
-        // এখানে নতুন অ্যারে/অবজেক্ট অ্যাসাইন করলে পুরনো রেফারেন্স স্টেল হয়ে যায়।
-        // তাই ইন-প্লেস মিউটেশন: অ্যারেতে splice, অবজেক্টে Object.assign।
-        if (Array.isArray(value.blockedIps)) {
-          blockedIps.splice(0, blockedIps.length, ...value.blockedIps);
-        }
-        if (value.runtimeFeatureFlags && typeof value.runtimeFeatureFlags === 'object') {
-          Object.assign(runtimeFeatureFlags, value.runtimeFeatureFlags);
-        }
-        if (value.platformConfig && typeof value.platformConfig === 'object') {
-          Object.assign(platformConfig, value.platformConfig);
-        }
-      }
-      const logs = await supabaseRestRequest(
-        'audit_logs?select=id,actor,action,resource,details,ip_address,created_at&order=created_at.desc&limit=200',
-        'GET'
-      );
-      if (Array.isArray(logs) && logs.length > 0) {
-        const mapped = logs.map((l: any) => ({
-          id: l.id,
-          timestamp: l.created_at
-            ? new Date(l.created_at).toLocaleTimeString('en-US', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : '',
-          actor: l.actor,
-          action: l.action,
-          resource: l.resource,
-          details: l.details,
-          ipAddress: l.ip_address || '127.0.0.1',
-        }));
-        auditRecords.splice(0, auditRecords.length, ...mapped);
-      }
-    } catch {
-      /* offline: keep seed/local state */
-    }
-  };
+  const loadPlatformState = () =>
+    loadDurablePlatformState({ blockedIps, runtimeFeatureFlags, platformConfig, auditRecords });
   // বাংলা মন্তব্য: রুট রেজিস্ট্রেশনের আগেই দুর্যোগ-প্রতিরোধী প্ল্যাটফর্ম স্টেট লোড শেষ নিশ্চিত করা হচ্ছে — ফায়ার-অ্যান্ড-ফরগেট হলে প্রথম অনুরোধগুলো সিড/স্টেল স্টেট দেখে চলতে পারে।
   await loadPlatformState();
 
-  // Startup schema probe. The durable audit + platform-state writers swallow
-  // errors so they can never break a request, which previously hid the fact
-  // that `platform_settings` did not exist and that `audit_logs` had no
-  // partition covering "now". Surface that drift in the logs instead of
-  // failing silently.
-  const verifyGatewaySchema = async () => {
-    const checks: Array<{ table: string; path: string; requiredColumns: string[] }> = [
-      {
-        table: 'platform_settings',
-        path: 'platform_settings?select=id&limit=1',
-        requiredColumns: ['id', 'value', 'updated_at'],
-      },
-      {
-        table: 'audit_logs',
-        path: 'audit_logs?select=id,actor,action,resource,details,ip_address,created_at&limit=1',
-        requiredColumns: [
-          'id',
-          'actor',
-          'action',
-          'resource',
-          'details',
-          'ip_address',
-          'created_at',
-        ],
-      },
-    ];
-    for (const check of checks) {
-      try {
-        await supabaseRestRequest(check.path, 'GET');
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        console.error(
-          `[schema] ${check.table} is not usable by the gateway (expected columns: ${check.requiredColumns.join(', ')}). ` +
-            `Durable writes to this table will be dropped. Apply supabase/migrations before deploying. Cause: ${detail}`
-        );
-      }
-    }
-  };
   void verifyGatewaySchema();
 
   // --- User Authentication & Unified Customer Directory ---
-  const envAdminEmails = [
-    'niloyjoy7@gmail.com',
-    'paykaribazaronline@gmail.com',
-    process.env.ADMIN_EMAIL,
-    ...(process.env.ADMIN_EMAILS ? process.env.ADMIN_EMAILS.split(',') : []),
-  ]
-    .map((e) => (e || '').trim().toLowerCase())
-    .filter(Boolean);
-
-  // Personal/organisational emails are never seeded from source control. The only
-  // built-in admin identities come from ADMIN_EMAIL / ADMIN_EMAILS, and users or
-  // customers declared admin in the database (see getDatabaseAdminEmails below).
-  const SEEDED_ADMIN_EMAILS = new Set<string>(envAdminEmails);
-  // Admin user IDs are likewise environment-driven, never hardcoded.
-  const ADMIN_USER_IDS = new Set(
-    (process.env.ADMIN_USER_IDS || '')
-      .split(',')
-      .map((id) => id.trim())
-      .filter(Boolean)
-  );
-  const ADMIN_RBAC_ROLES = new Set(['admin', 'super_admin', 'superadmin', 'root_admin', 'owner']);
-
-  type RbacRole = 'admin' | 'super_admin' | 'developer' | 'user';
-
-  interface ServerUser {
-    id: string;
-    name: string;
-    email: string;
-    passwordHash: string;
-    role: 'admin' | 'user';
-    rbacRole?: RbacRole;
-    isAdminEligible: boolean;
-    isDeveloperEligible: boolean;
-    adminUserId?: string;
-    plan: PlanTier;
-    createdAt: string;
-    avatar?: string;
-  }
-
-  interface ServerCustomerRecord {
-    id: string;
-    name: string;
-    email: string;
-    tier: PlanTier;
-    status: 'active' | 'past_due' | 'suspended';
-    mrr: number;
-    tokensUsed: number;
-    tokenLimit: number;
-    connectedRepos: number;
-    joinedDate: string;
-    lastActive: string;
-    githubHandle?: string;
-    region: string;
-    isDeveloperEligible: boolean;
-    isAdminEligible?: boolean;
-    rbacRole?: RbacRole;
-  }
-
-  const getSessionSigningSecret = (): string => {
-    // বাংলা মন্তব্য: ডুয়াল-পারপাস কী (ADMIN_PASSKEY) সাইনিং চেইন থেকে বাদ দেওয়া হয়েছে যাতে সেশন টোকেন ও পাসকি আলাদা থাকে
-    const fromEnv = process.env.AUTH_TOKEN_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
-    if (fromEnv) return fromEnv;
-    const keyFilePath = path.join(os.tmpdir(), 'supremeai_session_signing.key');
-    try {
-      if (fs.existsSync(keyFilePath)) {
-        const existing = fs.readFileSync(keyFilePath, 'utf8').trim();
-        if (existing.length >= 32) return existing;
-      }
-      const generated = crypto.randomBytes(32).toString('hex');
-      fs.writeFileSync(keyFilePath, generated, { mode: 0o600 });
-      return generated;
-    } catch {
-      return crypto.randomBytes(32).toString('hex');
-    }
-  };
+  // Admin identity config, record types, signing secret, dev users cache and the
+  // demo customer seed live in src/server/userDirectory.ts.
+  const { SEEDED_ADMIN_EMAILS, ADMIN_USER_IDS, ADMIN_RBAC_ROLES } = createAdminIdentityConfig();
 
   const TOKEN_SIGNING_SECRET = getSessionSigningSecret();
   const activeAdminSessions = new PersistentSessionMap<number>('supremeai:admin_sess:', 86_400, true);
@@ -642,662 +316,21 @@ async function startServer() {
   ): { sub: string; email: string; iat: number; exp: number; role?: string } | null =>
     verifySessionToken(token, TOKEN_SIGNING_SECRET);
 
-  const DEV_USERS_FILE = path.join(os.tmpdir(), 'supremeai_dev_users.json');
-  const loadDevUsersDb = (): ServerUser[] => {
-    if (isProduction) return [];
-    try {
-      if (fs.existsSync(DEV_USERS_FILE)) {
-        const raw = fs.readFileSync(DEV_USERS_FILE, 'utf8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {
-      // Ignore corrupt dev cache
-    }
-    return [];
-  };
-  const persistDevUsersDb = (users: ServerUser[]) => {
-    if (isProduction) return;
-    try {
-      fs.writeFileSync(DEV_USERS_FILE, JSON.stringify(users, null, 2), { mode: 0o600 });
-    } catch {
-      // Non-fatal in read-only environments
-    }
-  };
+  const loadDevUsersDb = (): ServerUser[] => loadDevUsersFile(isProduction);
+  const persistDevUsersDb = (users: ServerUser[]) => persistDevUsersFile(users, isProduction);
 
   // Seeded local user credentials removed; real accounts register or authenticate via upstream gateway.
   let usersDb: ServerUser[] = loadDevUsersDb();
 
-  let customerDirectory: ServerCustomerRecord[] = isProduction
-    ? []
-    : [
-        {
-          id: 'cust_001',
-          name: 'Studio Developer',
-          email: 'demo.developer@supremeai.bd',
-          tier: 'Pro',
-          status: 'active',
-          mrr: 29,
-          tokensUsed: 142500,
-          tokenLimit: 1000000,
-          connectedRepos: 2,
-          joinedDate: '2026-01-14',
-          lastActive: 'Just now',
-          githubHandle: 'supremeai-dev',
-          region: 'Asia/Dhaka',
-          isDeveloperEligible: true,
-        },
-        {
-          id: 'cust_sarah',
-          name: 'Sarah Chen',
-          email: 'sarah.chen@fintech.io',
-          tier: 'Pro',
-          status: 'active',
-          mrr: 29,
-          tokensUsed: 384200,
-          tokenLimit: 1000000,
-          connectedRepos: 4,
-          joinedDate: '2026-03-10',
-          lastActive: '5 mins ago',
-          githubHandle: 'sarah-fintech',
-          region: 'US/West',
-          isDeveloperEligible: true,
-        },
-        {
-          id: 'cust_alex',
-          name: 'Alex Johnson',
-          email: 'alex.j@partner.io',
-          tier: 'Free',
-          status: 'active',
-          mrr: 0,
-          tokensUsed: 24500,
-          tokenLimit: 100000,
-          connectedRepos: 1,
-          joinedDate: '2026-04-01',
-          lastActive: '1 hour ago',
-          githubHandle: 'alexj-partner',
-          region: 'Europe/London',
-          isDeveloperEligible: false,
-        },
-        {
-          id: 'cust_002',
-          name: 'Rahim Chowdhury',
-          email: 'rahim.chowdhury@techscale.io',
-          tier: 'Enterprise',
-          status: 'active',
-          mrr: 199,
-          tokensUsed: 1845000,
-          tokenLimit: 5000000,
-          connectedRepos: 14,
-          joinedDate: '2025-11-03',
-          lastActive: '12 mins ago',
-          githubHandle: 'rahim-techscale',
-          region: 'Asia/Singapore',
-          isDeveloperEligible: true,
-        },
-        {
-          id: 'cust_003',
-          name: 'Sarah Jenkins',
-          email: 'sarah.j@vertexlabs.ai',
-          tier: 'Enterprise',
-          status: 'active',
-          mrr: 199,
-          tokensUsed: 2910000,
-          tokenLimit: 5000000,
-          connectedRepos: 8,
-          joinedDate: '2025-10-22',
-          lastActive: '45 mins ago',
-          githubHandle: 'sjenkins-ai',
-          region: 'US/East',
-          isDeveloperEligible: true,
-        },
-        {
-          id: 'cust_004',
-          name: 'Demo Developer',
-          email: 'developer@supremeai.bd',
-          tier: 'Pro',
-          status: 'active',
-          mrr: 29,
-          tokensUsed: 620400,
-          tokenLimit: 1000000,
-          connectedRepos: 3,
-          joinedDate: '2026-02-01',
-          lastActive: '2 hours ago',
-          githubHandle: 'demo-developer',
-          region: 'Asia/Dhaka',
-          isDeveloperEligible: true,
-        },
-        {
-          id: 'cust_005',
-          name: 'Elena Rostova',
-          email: 'elena@novasoft.eu',
-          tier: 'Pro',
-          status: 'past_due',
-          mrr: 29,
-          tokensUsed: 980200,
-          tokenLimit: 1000000,
-          connectedRepos: 4,
-          joinedDate: '2026-01-18',
-          lastActive: '5 hours ago',
-          githubHandle: 'elena-novasoft',
-          region: 'Europe/Berlin',
-          isDeveloperEligible: false,
-        },
-        {
-          id: 'cust_006',
-          name: 'Marcus Brody',
-          email: 'marcus.brody@openbuild.dev',
-          tier: 'Free',
-          status: 'active',
-          mrr: 0,
-          tokensUsed: 42100,
-          tokenLimit: 100000,
-          connectedRepos: 1,
-          joinedDate: '2026-02-10',
-          lastActive: '1 day ago',
-          githubHandle: 'mbrody',
-          region: 'US/West',
-          isDeveloperEligible: false,
-        },
-        {
-          id: 'cust_007',
-          name: 'Fatima Al-Mansoor',
-          email: 'fatima@cloudcore.ae',
-          tier: 'Enterprise',
-          status: 'active',
-          mrr: 199,
-          tokensUsed: 3120000,
-          tokenLimit: 5000000,
-          connectedRepos: 12,
-          joinedDate: '2025-12-08',
-          lastActive: '3 hours ago',
-          githubHandle: 'fatima-cloud',
-          region: 'MiddleEast/Dubai',
-          isDeveloperEligible: true,
-        },
-        {
-          id: 'cust_010',
-          name: 'David Zhao',
-          email: 'zhao.david@quantmatrix.com',
-          tier: 'Free',
-          status: 'suspended',
-          mrr: 0,
-          tokensUsed: 100000,
-          tokenLimit: 100000,
-          connectedRepos: 0,
-          joinedDate: '2026-02-04',
-          lastActive: '7 days ago',
-          githubHandle: 'zhaodavid',
-          region: 'Asia/Tokyo',
-          isDeveloperEligible: false,
-        },
-      ];
+  let customerDirectory: ServerCustomerRecord[] = createCustomerDirectorySeed(isProduction);
 
-  // Provider Health & Failover Registry (server-managed + Infisical Vault synced secrets)
-  const maskServerSecret = (val: string) => {
-    if (!val || val === 'MY_GEMINI_API_KEY') return 'Not configured in server environment';
-    if (val.length <= 10) return '••••••••••••';
-    return `${val.slice(0, 6)}••••••••••••••••${val.slice(-4)}`;
-  };
-
-  // Map each provider to the server-side env var that holds its real API key.
-  const PROVIDER_KEY_ENV: Record<string, string> = {
-    google_ai_studio: 'GEMINI_API_KEY',
-    groq: 'GROQ_API_KEY',
-    openai: 'OPENAI_API_KEY',
-    anthropic: 'ANTHROPIC_API_KEY',
-    deepseek: 'DEEPSEEK_API_KEY',
-    mistral: 'MISTRAL_API_KEY',
-  };
-
-  // Lightweight, real upstream health probes. Each provider has a documented
-  // models endpoint that validates the key without incurring token cost.
-  const probeProviderUpstream = async (
-    provider: string,
-    key: string
-  ): Promise<{
-    status: 'healthy' | 'degraded' | 'unhealthy';
-    latencyMs: number;
-    message: string;
-  }> => {
-    const startedAt = Date.now();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
-    const headers: Record<string, string> = {};
-    let url = '';
-
-    switch (provider) {
-      case 'openai':
-        url = 'https://api.openai.com/v1/models';
-        headers.Authorization = `Bearer ${key}`;
-        break;
-      case 'groq':
-        url = 'https://api.groq.com/openai/v1/models';
-        headers.Authorization = `Bearer ${key}`;
-        break;
-      case 'deepseek':
-        url = 'https://api.deepseek.com/v1/models';
-        headers.Authorization = `Bearer ${key}`;
-        break;
-      case 'mistral':
-        url = 'https://api.mistral.ai/v1/models';
-        headers.Authorization = `Bearer ${key}`;
-        break;
-      case 'anthropic':
-        url = 'https://api.anthropic.com/v1/models';
-        headers['x-api-key'] = key;
-        headers['anthropic-version'] = '2023-06-01';
-        break;
-      default:
-        clearTimeout(timer);
-        return {
-          status: 'unhealthy',
-          latencyMs: 0,
-          message: `No real probe implemented for provider "${provider}".`,
-        };
-    }
-
-    try {
-      const upstream = await fetch(url, { method: 'GET', headers, signal: controller.signal });
-      const latencyMs = Math.max(1, Date.now() - startedAt);
-      clearTimeout(timer);
-      if (upstream.ok) {
-        return {
-          status: 'healthy',
-          latencyMs,
-          message: `${provider} models endpoint responded HTTP ${upstream.status}`,
-        };
-      }
-      // 401/403 => dead/invalid key. Other 4xx => key accepted but request rejected.
-      const dead = upstream.status === 401 || upstream.status === 403;
-      return {
-        status: dead ? 'unhealthy' : 'degraded',
-        latencyMs,
-        message: `${provider} upstream returned HTTP ${upstream.status}`,
-      };
-    } catch (err: unknown) {
-      clearTimeout(timer);
-      const aborted = err instanceof Error && err.name === 'AbortError';
-      return {
-        status: 'unhealthy',
-        latencyMs: Math.max(1, Date.now() - startedAt),
-        message: aborted
-          ? `${provider} probe timed out after 6s`
-          : err instanceof Error
-            ? err.message
-            : 'Probe failed',
-      };
-    }
-  };
-
-  const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-    supremeai: 'SupremeAI Gateway Mesh',
-    google_ai_studio: 'Google AI Studio (Gemini)',
-    vertex_ai: 'Google Cloud Vertex AI',
-    openai: 'OpenAI Platform',
-    anthropic: 'Anthropic Claude',
-    groq: 'Groq LPU Broker',
-    deepseek: 'DeepSeek R1',
-    mistral: 'Mistral Codestral',
-  };
-
-  let providerMesh: Array<{
-    id: string;
-    provider: string;
-    displayName: string;
-    maskedKey: string;
-    status: 'healthy' | 'degraded' | 'unhealthy' | 'untested';
-    latencyMs: number;
-    avgLatencyMs: number;
-    p95LatencyMs: number;
-    priority: number;
-    lastChecked: string;
-    rateLimitTpm: string;
-    infisicalPath: string;
-    infisicalEnv: 'prod' | 'staging' | 'dev';
-    vaultVersion: number;
-    region: string;
-  }> = [
-    {
-      id: 'prov_google_ai',
-      provider: 'google_ai_studio',
-      displayName: 'Google AI Studio (Gemini Global Direct)',
-      maskedKey: process.env.GEMINI_API_KEY?.trim()
-        ? maskServerSecret(process.env.GEMINI_API_KEY.trim())
-        : 'not-configured',
-      status: process.env.GEMINI_API_KEY?.trim() ? 'healthy' : 'untested',
-      latencyMs: 0,
-      avgLatencyMs: 0,
-      p95LatencyMs: 0,
-      priority: 1,
-      lastChecked: process.env.GEMINI_API_KEY?.trim()
-        ? 'Configured (pending probe)'
-        : 'Not configured (no API key)',
-      rateLimitTpm: '4,000,000 TPM',
-      infisicalPath: '/ai-providers/GEMINI_API_KEY',
-      infisicalEnv: 'prod',
-      vaultVersion: 7,
-      region: 'global-edge',
-    },
-    {
-      id: 'prov_vertex_ai',
-      provider: 'vertex_ai',
-      displayName: 'Google Cloud Vertex AI (asia-northeast1)',
-      maskedKey: process.env.VERTEX_PROJECT_ID
-        ? `projects/${process.env.VERTEX_PROJECT_ID}/locations/asia-northeast1`
-        : 'not-configured',
-      status: 'untested',
-      latencyMs: 0,
-      avgLatencyMs: 0,
-      p95LatencyMs: 0,
-      priority: 2,
-      lastChecked: process.env.VERTEX_PROJECT_ID ? 'Configured (pending probe)' : 'Not configured',
-      rateLimitTpm: '10,000,000 TPM',
-      infisicalPath: '/ai-providers/VERTEX_ADC_CREDENTIALS',
-      infisicalEnv: 'prod',
-      vaultVersion: 4,
-      region: 'asia-northeast1',
-    },
-    {
-      id: 'prov_groq',
-      provider: 'groq',
-      displayName: 'Groq LPU Inference Broker (Llama-3-70b)',
-      maskedKey: process.env.GROQ_API_KEY?.trim()
-        ? maskServerSecret(process.env.GROQ_API_KEY.trim())
-        : 'not-configured',
-      status: 'untested',
-      latencyMs: 0,
-      avgLatencyMs: 0,
-      p95LatencyMs: 0,
-      priority: 3,
-      lastChecked: process.env.GROQ_API_KEY?.trim()
-        ? 'Configured (pending probe)'
-        : 'Not configured (no API key)',
-      rateLimitTpm: '2,500,000 TPM',
-      infisicalPath: '/ai-providers/GROQ_API_KEY',
-      infisicalEnv: 'prod',
-      vaultVersion: 3,
-      region: 'us-east-lpu',
-    },
-    {
-      id: 'prov_openai',
-      provider: 'openai',
-      displayName: 'OpenAI Platform (GPT-4o / o3-mini)',
-      maskedKey: process.env.OPENAI_API_KEY?.trim()
-        ? maskServerSecret(process.env.OPENAI_API_KEY.trim())
-        : 'not-configured',
-      status: 'untested',
-      latencyMs: 0,
-      avgLatencyMs: 0,
-      p95LatencyMs: 0,
-      priority: 4,
-      lastChecked: process.env.OPENAI_API_KEY?.trim()
-        ? 'Configured (pending probe)'
-        : 'Not configured (no API key)',
-      rateLimitTpm: '2,000,000 TPM',
-      infisicalPath: '/ai-providers/OPENAI_API_KEY',
-      infisicalEnv: 'prod',
-      vaultVersion: 5,
-      region: 'us-east-1',
-    },
-    {
-      id: 'prov_anthropic',
-      provider: 'anthropic',
-      displayName: 'Anthropic Claude 3.7 Sonnet',
-      maskedKey: process.env.ANTHROPIC_API_KEY?.trim()
-        ? maskServerSecret(process.env.ANTHROPIC_API_KEY.trim())
-        : 'not-configured',
-      status: 'untested',
-      latencyMs: 0,
-      avgLatencyMs: 0,
-      p95LatencyMs: 0,
-      priority: 5,
-      lastChecked: process.env.ANTHROPIC_API_KEY?.trim()
-        ? 'Configured (pending probe)'
-        : 'Not configured (no API key)',
-      rateLimitTpm: '1,000,000 TPM',
-      infisicalPath: '/ai-providers/ANTHROPIC_API_KEY',
-      infisicalEnv: 'prod',
-      vaultVersion: 2,
-      region: 'us-west-2',
-    },
-    {
-      id: 'prov_deepseek',
-      provider: 'deepseek',
-      displayName: 'DeepSeek R1 Reasoning Cluster',
-      maskedKey: process.env.DEEPSEEK_API_KEY?.trim()
-        ? maskServerSecret(process.env.DEEPSEEK_API_KEY.trim())
-        : 'not-configured',
-      status: 'untested',
-      latencyMs: 0,
-      avgLatencyMs: 0,
-      p95LatencyMs: 0,
-      priority: 6,
-      lastChecked: process.env.DEEPSEEK_API_KEY?.trim()
-        ? 'Configured (pending probe)'
-        : 'Not configured (no API key)',
-      rateLimitTpm: '1,500,000 TPM',
-      infisicalPath: '/ai-providers/DEEPSEEK_API_KEY',
-      infisicalEnv: 'prod',
-      vaultVersion: 2,
-      region: 'ap-southeast-1',
-    },
-    {
-      id: 'prov_mistral',
-      provider: 'mistral',
-      displayName: 'Mistral Codestral Enterprise',
-      maskedKey: process.env.MISTRAL_API_KEY?.trim()
-        ? maskServerSecret(process.env.MISTRAL_API_KEY.trim())
-        : 'not-configured',
-      status: 'untested',
-      latencyMs: 0,
-      avgLatencyMs: 0,
-      p95LatencyMs: 0,
-      priority: 7,
-      lastChecked: process.env.MISTRAL_API_KEY?.trim()
-        ? 'Configured (pending probe)'
-        : 'Not configured (no API key)',
-      rateLimitTpm: '1,000,000 TPM',
-      infisicalPath: '/ai-providers/MISTRAL_API_KEY',
-      infisicalEnv: 'staging',
-      vaultVersion: 1,
-      region: 'eu-west-1',
-    },
-  ];
-
-  let infisicalExtraVaultKeys: Array<{
-    id: string;
-    secretName: string;
-    infisicalPath: string;
-    environment: 'prod' | 'staging' | 'dev';
-    provider: string;
-    providerDisplayName: string;
-    maskedKey: string;
-    version: number;
-    status: 'healthy' | 'degraded' | 'unhealthy' | 'untested';
-    latencyMs: number;
-    avgLatencyMs: number;
-    p95LatencyMs: number;
-    lastChecked: string;
-    lastSyncedAt: string;
-  }> = isProduction
-    ? []
-    : [
-        {
-          id: 'vault_infisical_gateway_master',
-          secretName: 'SUPREMEAI_GATEWAY_SIGNING_KEY',
-          infisicalPath: '/core/SUPREMEAI_GATEWAY_SIGNING_KEY',
-          environment: 'prod' as const,
-          provider: 'supremeai',
-          providerDisplayName: 'SupremeAI Gateway Mesh',
-          maskedKey: 'sk-supreme-••••••••••••••••not-configured',
-          version: 9,
-          status: 'healthy' as const,
-          latencyMs: 12,
-          avgLatencyMs: 15,
-          p95LatencyMs: 24,
-          lastChecked: 'Just now (HTTP 200)',
-          lastSyncedAt: new Date().toISOString(),
-        },
-        {
-          id: 'vault_infisical_gemini_staging',
-          secretName: 'GEMINI_API_KEY_STAGING',
-          infisicalPath: '/staging/ai-providers/GEMINI_API_KEY',
-          environment: 'staging' as const,
-          provider: 'google_ai_studio',
-          providerDisplayName: 'Google AI Studio (Staging)',
-          maskedKey: 'gsk-••••••••••••••••not-configured',
-          version: 3,
-          status: 'healthy' as const,
-          latencyMs: 31,
-          avgLatencyMs: 34,
-          p95LatencyMs: 56,
-          lastChecked: '5m ago (HTTP 200)',
-          lastSyncedAt: new Date().toISOString(),
-        },
-        {
-          id: 'vault_infisical_openai_dev',
-          secretName: 'OPENAI_API_KEY_DEV',
-          infisicalPath: '/dev/ai-providers/OPENAI_API_KEY',
-          environment: 'dev' as const,
-          provider: 'openai',
-          providerDisplayName: 'OpenAI Platform (Dev Sandbox)',
-          maskedKey: 'sk-proj-••••••••••••••••not-configured',
-          version: 2,
-          status: 'healthy' as const,
-          latencyMs: 152,
-          avgLatencyMs: 158,
-          p95LatencyMs: 262,
-          lastChecked: '18m ago (HTTP 200)',
-          lastSyncedAt: new Date().toISOString(),
-        },
-      ];
-
-  const buildInfisicalVaultKeys = () => {
-    const nowIso = new Date().toISOString();
-    const mappedProviders = providerMesh.map((p) => {
-      const secretName = p.infisicalPath.split('/').pop() || `${p.provider.toUpperCase()}_API_KEY`;
-      return {
-        id: `vault_${p.id}`,
-        secretName,
-        infisicalPath: p.infisicalPath,
-        environment: p.infisicalEnv,
-        provider: p.provider,
-        providerDisplayName: p.displayName,
-        maskedKey: p.maskedKey,
-        version: p.vaultVersion || 1,
-        status: p.status,
-        latencyMs: p.latencyMs,
-        avgLatencyMs: p.avgLatencyMs ?? p.latencyMs,
-        p95LatencyMs: p.p95LatencyMs ?? Math.round(p.latencyMs * 1.45),
-        lastChecked: p.lastChecked,
-        lastSyncedAt: nowIso,
-      };
-    });
-    return [...mappedProviders, ...infisicalExtraVaultKeys];
-  };
-
-  let userApiKeysStore: Array<{
-    id: string;
-    name: string;
-    provider: string;
-    keyPrefix: string;
-    secretMasked: string;
-    createdAt: string;
-    lastUsed: string;
-    rateLimitRpm: number;
-    status: 'active' | 'revoked';
-    healthStatus: 'healthy' | 'degraded' | 'unhealthy' | 'untested';
-    lastChecked: string;
-    permissions: string[];
-  }> = isProduction
-    ? []
-    : [
-        {
-          id: 'key_prod_01',
-          name: 'SupremeAI Studio Production CLI',
-          provider: 'supremeai',
-          keyPrefix: 'sk-supreme-example',
-          secretMasked: 'sk-supreme-••••••••••••••••not-configured',
-          createdAt: '2026-03-12',
-          lastUsed: '2 minutes ago',
-          rateLimitRpm: 600,
-          status: 'active',
-          healthStatus: 'healthy',
-          lastChecked: '2 mins ago',
-          permissions: ['chat:write', 'models:read', 'knowledge:read', 'agents:invoke'],
-        },
-        {
-          id: 'key_gemini_02',
-          name: 'Google AI Studio (Gemini Flash Primary)',
-          provider: 'google_ai_studio',
-          keyPrefix: 'gsk-example',
-          secretMasked: 'gsk-••••••••••••••••not-configured',
-          createdAt: '2026-04-01',
-          lastUsed: '5 minutes ago',
-          rateLimitRpm: 360,
-          status: 'active',
-          healthStatus: 'healthy',
-          lastChecked: 'Just now',
-          permissions: ['chat:write', 'models:read', 'knowledge:read'],
-        },
-        {
-          id: 'key_openai_03',
-          name: 'OpenAI GPT-4o Fallback Bridge',
-          provider: 'openai',
-          keyPrefix: 'sk-proj-example',
-          secretMasked: 'sk-proj-••••••••••••••••not-configured',
-          createdAt: '2026-04-08',
-          lastUsed: '18 minutes ago',
-          rateLimitRpm: 240,
-          status: 'active',
-          healthStatus: 'healthy',
-          lastChecked: '12 mins ago',
-          permissions: ['chat:write', 'models:read'],
-        },
-        {
-          id: 'key_anthropic_04',
-          name: 'Anthropic Claude Sonnet Review Worker',
-          provider: 'anthropic',
-          keyPrefix: 'sk-ant-example',
-          secretMasked: 'sk-ant-••••••••••••••••not-configured',
-          createdAt: '2026-04-12',
-          lastUsed: '1 hour ago',
-          rateLimitRpm: 120,
-          status: 'active',
-          healthStatus: 'degraded',
-          lastChecked: '1 hour ago',
-          permissions: ['chat:write', 'agents:invoke'],
-        },
-        {
-          id: 'key_groq_05',
-          name: 'Groq LPU Ultra-Fast Synthesis',
-          provider: 'groq',
-          keyPrefix: 'gsk-example',
-          secretMasked: 'gsk-••••••••••••••••not-configured',
-          createdAt: '2026-04-20',
-          lastUsed: '25 minutes ago',
-          rateLimitRpm: 480,
-          status: 'active',
-          healthStatus: 'healthy',
-          lastChecked: '4 mins ago',
-          permissions: ['chat:write', 'models:read'],
-        },
-        {
-          id: 'key_revoked_06',
-          name: 'Legacy Staging Key (Deprecated)',
-          provider: 'mistral',
-          keyPrefix: 'msk-example',
-          secretMasked: 'msk-••••••••••••••••not-configured',
-          createdAt: '2026-01-15',
-          lastUsed: '34 days ago',
-          rateLimitRpm: 60,
-          status: 'revoked',
-          healthStatus: 'untested',
-          lastChecked: '34 days ago',
-          permissions: ['models:read'],
-        },
-      ];
+  // Provider Health & Failover Registry (masking, env map, real probes, seed data)
+  // lives in src/server/providerRegistry.ts. The mutable arrays stay here so the
+  // admin routes' ctx getter/setter keeps working unchanged.
+  let providerMesh = createProviderMesh();
+  let infisicalExtraVaultKeys = createInfisicalExtraVaultKeys(isProduction);
+  const buildInfisicalVaultKeys = () =>
+    buildProviderVaultKeys(providerMesh, infisicalExtraVaultKeys);
 
   const activeAuthSessions = new PersistentSessionMap<string>('supremeai:auth_sess:', 86_400 * 7, true);
   // Local (dev/preview) refresh-token registry backed by Redis when REDIS_URL is configured.
@@ -1817,15 +850,6 @@ async function startServer() {
 
 
   // Dynamic User & Admin Workspace Stores (persistent for runtime lifecycle)
-  interface UserWalletRecord {
-    userId: string;
-    balanceUsd: number;
-    monthlyAllowanceUsd: number;
-    totalSpent: number;
-    totalSaved: number;
-    cachedQueries: number;
-  }
-
   const getRequestUserEmail = (req: Request): string => {
     const authHeader = String(req.headers.authorization || '').trim();
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
@@ -1947,8 +971,6 @@ async function startServer() {
     safeFetchWithRedirectCheck: (...args) => safeFetchWithRedirectCheck(...args),
   });
 
-  const studioDataDir = path.join(process.cwd(), '.studio-data');
-
   registerGitOauthRoutes(app, { PORT });
 
   registerGraphRoutes(app, {
@@ -1979,183 +1001,13 @@ async function startServer() {
   // বাংলা মন্তব্য: /api/* ক্যাচ-অল প্রক্সির আগেই Control Plane রাউট রেজিস্টার করতে হবে।
   registerControlPlaneRoutes(app, { recordAudit, isIpBlocked });
 
-  // ---------------------------------------------------------------------------
-  const FEDERATION_PROXY_HOP_HEADERS = new Set([
-    'host',
-    'connection',
-    'keep-alive',
-    'transfer-encoding',
-    'upgrade',
-    'content-length',
-    'accept-encoding',
-    'cf-connecting-ip',
-    'cf-ipcountry',
-    'cf-ray',
-    'cf-visitor',
-    'x-forwarded-proto',
-    'x-real-ip',
-  ]);
+  // Federation `/api/*` catch-all proxy — src/server/federationProxy.ts (must stay last for /api).
+  registerFederationProxy(app, { gatewayBase: GATEWAY_BASE });
 
-  app.use('/api', async (req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith('/mock')) {
-      next();
-      return;
-    }
-
-    const originalUrl = req.originalUrl || req.url;
-    const targetUrl = `${GATEWAY_BASE}${originalUrl}`;
-    const upstreamHeaders: Record<string, string> = { Accept: 'application/json' };
-
-    for (const [key, value] of Object.entries(req.headers)) {
-      if (typeof value !== 'string') continue;
-      const lower = key.toLowerCase();
-      if (FEDERATION_PROXY_HOP_HEADERS.has(lower)) continue;
-      upstreamHeaders[key] = value;
-    }
-    if (!upstreamHeaders.accept || upstreamHeaders.accept === '*/*') {
-      upstreamHeaders.accept = 'application/json';
-    }
-
-    const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
-    let body: string | undefined;
-    if (hasBody) {
-      if (typeof req.body === 'object' && req.body !== null && Object.keys(req.body).length > 0) {
-        body = JSON.stringify(req.body);
-        upstreamHeaders['content-type'] = upstreamHeaders['content-type'] || 'application/json';
-      }
-    }
-
-    const controller = new AbortController();
-    let responseStarted = false;
-    const timeout = setTimeout(() => {
-      if (!responseStarted) controller.abort();
-    }, 9_000);
-
-    req.on('close', () => {
-      if (!res.writableEnded) controller.abort();
-    });
-
-    try {
-      const upstream = await fetch(targetUrl, {
-        method: req.method,
-        headers: upstreamHeaders,
-        body,
-        signal: controller.signal,
-        redirect: 'manual',
-      });
-      responseStarted = true;
-      clearTimeout(timeout);
-
-      const responseHeaders = new Headers(upstream.headers);
-      for (const header of [
-        'content-encoding',
-        'content-length',
-        'transfer-encoding',
-        'connection',
-        'keep-alive',
-      ]) {
-        responseHeaders.delete(header);
-      }
-      responseHeaders.forEach((value, key) => {
-        res.setHeader(key, value);
-      });
-      if ((responseHeaders.get('content-type') || '').includes('text/event-stream')) {
-        res.setHeader('Cache-Control', 'no-cache, no-transform');
-        res.setHeader('X-Accel-Buffering', 'no');
-      }
-      res.setHeader('X-SupremeAI-Proxy', 'federation');
-
-      res.status(upstream.status);
-      if (!upstream.body) {
-        res.end();
-        return;
-      }
-      const nodeStream = Readable.fromWeb(upstream.body as any);
-      nodeStream.on('error', () => {
-        if (!res.writableEnded) res.end();
-      });
-      nodeStream.pipe(res);
-    } catch (error: unknown) {
-      clearTimeout(timeout);
-      if (res.writableEnded) return;
-      const detail = error instanceof Error ? error.message : String(error);
-      const timedOut = error instanceof Error && error.name === 'AbortError';
-      res.status(timedOut ? 504 : 502).json({
-        success: false,
-        error: timedOut ? 'Federation upstream timeout' : 'Federation upstream unreachable',
-        detail,
-        upstreamPath: originalUrl,
-        retryable: true,
-      });
-    }
-  });
-
-  // Express Vite Dev Server or Production Static Serving
-  let viteServerPromise: Promise<Awaited<ReturnType<typeof createViteServer>>> | null = null;
-  if (isProduction) {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
-    // Express 5-compatible SPA fallback (avoids path-to-regexp v8 wildcard TypeError)
-    app.use((req: Request, res: Response, next: NextFunction) => {
-      if ((req.method !== 'GET' && req.method !== 'HEAD') || req.path.startsWith('/api')) {
-        next();
-        return;
-      }
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
-    });
-  } else {
-    // Initialize Vite asynchronously so Express binds PORT 3000 and /api/health immediately.
-    // Disable Vite's standalone WebSocket server (ws: false) to avoid port 24678 collisions on restart.
-    viteServerPromise = createViteServer({
-      server: {
-        middlewareMode: true,
-        hmr: false,
-        ws: false,
-        watch:
-          process.env.DISABLE_HMR === 'true'
-            ? null
-            : {
-                ignored: [
-                  '**/.git/**',
-                  '**/dist/**',
-                  '**/.aistudio/**',
-                  '**/node_modules/**',
-                  '**/functions/**',
-                ],
-              },
-      },
-      appType: 'spa',
-    });
-    viteServerPromise.catch((err) => {
-      console.error('Failed to initialize Vite dev middleware:', err);
-    });
-    app.use(async (req: Request, res: Response, next) => {
-      try {
-        const vite = await viteServerPromise;
-        if (!vite) {
-          next();
-          return;
-        }
-        vite.middlewares(req, res, next);
-      } catch (err) {
-        next(err);
-      }
-    });
-  }
-
-  // Centralized 4-arg Express error handler (prevents stack trace leakage in production)
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status =
-      typeof err?.status === 'number' && err.status >= 400 && err.status < 600 ? err.status : 500;
-    if (res.headersSent) return;
-    res.status(status).json({
-      error:
-        status < 500
-          ? String(err?.message || 'Bad request')
-          : isProduction
-            ? 'Internal server error.'
-            : String(err?.message || 'Internal server error.'),
-    });
-  });
+  // Vite dev middleware / production static + SPA fallback, then the final error
+  // handler — src/server/frontendServing.ts (same order as before).
+  const viteServerPromise = mountFrontend(app, { isProduction, rootDir: __dirname });
+  registerErrorHandler(app, isProduction);
 
   // Create HTTP server & mount /api/live + /ws WebSocket bridges
   const server = http.createServer(app);

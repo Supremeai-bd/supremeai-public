@@ -2,8 +2,8 @@
 
 `server.ts` is the Express + Vite bootstrap for the web app, the desktop shell
 and the Android WebView bridge. Previously **11,782 lines** with **149 inline
-route registrations**, it has now been refactored down to **2,209 lines**
-(81.3% reduction) with **all feature route groups extracted** into
+route registrations**, it has now been refactored down to **1,061 lines**
+(91.0% reduction) with **all feature route groups extracted** into
 `src/server/routes/**`, WebSocket bridges in `src/server/wsBridge.ts`, and
 durable session/queue state in `src/server/redisStore.ts`.
 
@@ -67,6 +67,7 @@ by hitting the live routes**, with a ratchet so the file can never grow back.
 | `api/workspace/terminal` (terminal + files + file + project-run) | moved to `src/server/routes/workspace/terminal.ts` (408 lines, `mcpClusterServices`/`PORT`/`apiKey` via ctx) | `tsc` clean; 4 routes, 459 lines removed (469−10) |
 | `api/workspace remaining` (browser-proxy 1 + vault 3 + gmail 3 + schedules 5) | moved to `src/server/routes/workspace/{browserProxy,browserVault,gmailSession,browserSchedules}.ts` (386+132+78+258 lines, stores `expressVaultStore`/`expressSchedule*` owned, cron timer owned) | `tsc` clean; 12 routes, 798 lines removed (325+131+86+284 −16 delegation + `studioDataDir` dedup); `server.ts` 9617→8819 (−798) |
 | bootstrap helpers (`isHttpsRequest` + SSRF `safeFetchWithRedirectCheck` + per-IP rate limiter + MCP Tower `mcpClusterServices` data) | moved to `src/server/httpGuards.ts` (pure, no closure deps; `createRateLimiter()` keeps a per-server bucket map) and `src/server/mcpClusterServices.ts` (`createMcpClusterServices()` factory, fresh mutable copy per server) | `tsc` clean; `app.use` order unchanged; booted + curled `/api/health`, `/api/mcp-tower/services`, `/api/mcp-tower/health`, security headers present, 11th `/api/auth/login` → 429; `httpGuards.test.ts` 5 tests; `server.ts` 2508→2209 (−299) |
+| final bootstrap split (provider registry + governance state + user directory + federation proxy + frontend serving) | `src/server/providerRegistry.ts` (masking, `PROVIDER_KEY_ENV`, `probeProviderUpstream`, `createProviderMesh()`, `createInfisicalExtraVaultKeys()`, `buildInfisicalVaultKeys()`), `platformState.ts` (flag/config/audit/blocklist seeds, `getClientIp`, in-place `loadDurablePlatformState`, `verifyGatewaySchema`), `supabaseRest.ts`, `userDirectory.ts` (admin identity config, `ServerUser`/`ServerCustomerRecord`, signing secret, dev users cache, demo customer seed), `federationProxy.ts` (`registerFederationProxy`), `frontendServing.ts` (`mountFrontend`, `registerErrorHandler`); 41 unused imports + dead `userApiKeysStore`/`ChatRequestBody`/`UserWalletRecord`/`studioDataDir` removed. `server.ts` keeps only the mutable `let`s, audit writer, session maps, auth/admin middleware and the ordered `register…` calls | `tsc` + edge clean; old (HEAD) vs new server booted side by side in dev **and** production and compared on 29 routes (public, 401/403 guards, admin data with a minted admin session, federation 502/504, SPA, security headers) — identical status/content-type/JSON except live latency/timestamps; `serverBootstrapModules.test.ts`; `server.ts` 2209→1061 (−1,148) |
 
 The MCP Tower closure was 5 names (`app`, `mcpClusterServices`, `resolveAuditActor`,
 `recordAudit`, `verifyAdminAuthorization`). Admin customers closed over 4 shared
