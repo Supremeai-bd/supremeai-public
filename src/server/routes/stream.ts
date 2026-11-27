@@ -2,12 +2,47 @@ import type { Express, Request, Response } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import type { PlanTier } from '../../types';
 import type { ClassifiedVisionError } from '../../shared/visionRouting';
+import type * as GeminiVision from '../geminiVision';
+import type { IncomingChatMessage } from '../geminiVision';
 
 interface ChatRunConfigPayload {
   thinking_level?: 'LOW' | 'MEDIUM' | 'HIGH' | 'XHIGH';
   google_search?: boolean;
   response_mime_type?: 'text/plain' | 'application/json';
   response_schema?: Record<string, unknown>;
+}
+
+/**
+ * Untrusted JSON body shared by `/api/v1/stream/chat` and `/api/chat`.
+ * Numeric tuning fields are re-checked with `typeof === 'number'` downstream.
+ */
+interface ChatRequestBody {
+  model?: string;
+  messages?: IncomingChatMessage[];
+  prompt?: unknown;
+  message?: unknown;
+  systemInstruction?: string;
+  groundingContext?: string;
+  stream?: boolean;
+  language?: string;
+  language_pref?: string;
+  temperature?: number;
+  top_p?: number;
+  max_tokens?: number;
+  thinking_budget?: number;
+  reasoning_effort?: string;
+  run_config?: ChatRunConfigPayload;
+  task_type?: string;
+  session_id?: unknown;
+  conversation_id?: unknown;
+  deepResearch?: unknown;
+  userContext?: unknown;
+}
+
+interface WebhookRelayReply {
+  choices?: Array<{ message?: { content?: unknown } }>;
+  reply?: unknown;
+  text?: unknown;
 }
 
 /**
@@ -48,27 +83,17 @@ export interface StreamContext {
   TIER_RANK: Record<string, number>;
   verifyBearerIdentity: (token: string) => Promise<{ email: string; isAdmin: boolean; tier: PlanTier } | null>;
   verifyAdminAuthorization: (req: Request) => Promise<{ ok: boolean; email?: string }>;
-  resolveServerAutoModel: (reqModel: string, messages: any[]) => string;
+  resolveServerAutoModel: typeof GeminiVision.resolveServerAutoModel;
   resolveUpstreamGeminiModel: (validatedModel: string, runConfig?: ChatRunConfigPayload) => string;
-  buildGeminiPartsFromMessage: (msg: any) => any[];
-  buildGeminiGenerateConfig: (systemInstruction: string, validatedModel: string, runConfig: any, tuning: any, upstreamModel: string) => any;
-  collectGroundingSourcesAndUsage: (chunk: any, sourcesMap: Map<string, { title: string; uri: string }>, latestUsage: any) => any;
-  executeFreeVisionCascade: (params: {
-    messages: any[];
-    combinedSystem: string;
-    resolvedModel: string;
-    runConfig: any;
-    tuning: any;
-    imageCount: number;
-    effectiveThinkingLevel: string;
-    res: Response;
-    priorRemoteError?: ClassifiedVisionError | null;
-  }) => Promise<void>;
-  extractTextFromMessageContent: (content: any) => string;
-  messageHasActualImage: (m: any) => boolean;
-  messageHasVisionOrAttachment: (m: any) => boolean;
-  countImagesInMessages: (messages: any[]) => number;
-  resolveReasoningEffort: (effort: any, thinkingLevel: any, model: string) => any;
+  buildGeminiPartsFromMessage: typeof GeminiVision.buildGeminiPartsFromMessage;
+  buildGeminiGenerateConfig: typeof GeminiVision.buildGeminiGenerateConfig;
+  collectGroundingSourcesAndUsage: typeof GeminiVision.collectGroundingSourcesAndUsage;
+  executeFreeVisionCascade: typeof GeminiVision.executeFreeVisionCascade;
+  extractTextFromMessageContent: typeof GeminiVision.extractTextFromMessageContent;
+  messageHasActualImage: typeof GeminiVision.messageHasActualImage;
+  messageHasVisionOrAttachment: typeof GeminiVision.messageHasVisionOrAttachment;
+  countImagesInMessages: typeof GeminiVision.countImagesInMessages;
+  resolveReasoningEffort: typeof GeminiVision.resolveReasoningEffort;
   detectBengaliOrBanglish: (text: string) => boolean;
   classifyVisionHttpError: (params: { status?: number; message?: string; retryAfterHeader?: string | null; provider?: string; model?: string }) => ClassifiedVisionError;
 }
@@ -86,10 +111,11 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
       Boolean(effectiveToken) &&
       !effectiveToken.startsWith('tok_') &&
       !effectiveToken.startsWith('mock_tok_');
-    const incomingMessagesPrecheck = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const body = (req.body || {}) as ChatRequestBody;
+    const incomingMessagesPrecheck = Array.isArray(body.messages) ? body.messages : [];
     const hasImageInRequest =
-      req.body?.task_type === 'vision' ||
-      incomingMessagesPrecheck.some((m: any) => ctx.messageHasActualImage(m));
+      body.task_type === 'vision' ||
+      incomingMessagesPrecheck.some((m) => ctx.messageHasActualImage(m));
     const localKeyPrecheck = process.env.GEMINI_API_KEY?.trim() || '';
     const hasLocalGeminiKey = Boolean(localKeyPrecheck && localKeyPrecheck !== 'MY_GEMINI_API_KEY');
     let remoteVisionFailure: ClassifiedVisionError | null = null;
@@ -109,8 +135,8 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
       res.on('close', onClientClose);
 
       try {
-        const rawBody = (req.body || {}) as Record<string, any>;
-        const upstreamBody: Record<string, any> = {
+        const rawBody = body;
+        const upstreamBody: Record<string, unknown> = {
           model: rawBody.model || 'auto',
           messages: Array.isArray(rawBody.messages) ? rawBody.messages : [],
           stream: rawBody.stream !== false,
@@ -220,8 +246,7 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
       }
     }
 
-    const body = req.body || {};
-    const messages =
+    const messages: IncomingChatMessage[] =
       Array.isArray(body.messages) && body.messages.length > 0
         ? body.messages
         : [{ role: 'user', content: String(body.prompt || body.message || '') }];
@@ -256,7 +281,7 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
           }),
         });
         if (wRes.ok) {
-          const wJson = (await wRes.json().catch(() => null)) as any;
+          const wJson = (await wRes.json().catch(() => null)) as WebhookRelayReply | null;
           const replyText =
             wJson?.choices?.[0]?.message?.content ?? wJson?.reply ?? wJson?.text ?? '';
           if (typeof replyText === 'string' && replyText.trim()) {
@@ -304,13 +329,13 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
     ).toUpperCase();
 
     const systemMsgs = messages
-      .filter((m: any) => m.role === 'system' && m.content)
-      .map((m: any) => ctx.extractTextFromMessageContent(m.content).trim())
+      .filter((m) => m.role === 'system' && m.content)
+      .map((m) => ctx.extractTextFromMessageContent(m.content).trim())
       .filter(Boolean);
     const systemMsg = systemMsgs.join('\n\n');
-    const lastUserMsgObj = [...messages].reverse().find((m: any) => m.role === 'user');
+    const lastUserMsgObj = [...messages].reverse().find((m) => m.role === 'user');
     const lastUserMessageText = ctx.extractTextFromMessageContent(lastUserMsgObj?.content);
-    const hasVisionAttachment = messages.some((m: any) => ctx.messageHasVisionOrAttachment(m));
+    const hasVisionAttachment = messages.some((m) => ctx.messageHasVisionOrAttachment(m));
     const rawBuildIntent =
       /\b(build|create|make|design|generate|project|php|laravel|python|flask|django|node|express|react|html|css|app|website|dashboard|portfolio|ecommerce|todo|calculator)\b|(প্রজেক্ট|অ্যাপ|ওয়েবসাইট|ড্যাশবোর্ড|বানাও|তৈরি\s*করো)/i.test(
         lastUserMessageText
@@ -389,8 +414,8 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
           httpOptions: { apiVersion: 'v1beta', headers: { 'User-Agent': 'aistudio-build' } },
         });
         const contents = messages
-          .filter((m: any) => m.role === 'user' || m.role === 'assistant')
-          .map((m: any) => ({
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({
             role: m.role === 'assistant' ? 'model' : 'user',
             parts: ctx.buildGeminiPartsFromMessage(m),
           }));
@@ -421,7 +446,7 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
         let firstTokenMs: number | undefined;
         for await (const chunk of streamRes) {
           latestUsage = ctx.collectGroundingSourcesAndUsage(chunk, sourcesMap, latestUsage);
-          const textChunk = (chunk as any).text || '';
+          const textChunk = chunk.text || '';
           if (textChunk) {
             if (firstTokenMs === undefined) {
               firstTokenMs = Math.max(1, Date.now() - streamStartAt);
@@ -473,7 +498,7 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
   app.post(
     '/api/chat',
     async (
-      req: Request<Record<string, never>, Record<string, never>, any>,
+      req: Request<Record<string, never>, Record<string, never>, ChatRequestBody>,
       res: Response
     ) => {
       try {
@@ -557,7 +582,7 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
           }
         }
 
-        const hasAttachment = messages.some((m: any) => ctx.messageHasVisionOrAttachment(m));
+        const hasAttachment = messages.some((m) => ctx.messageHasVisionOrAttachment(m));
         if (hasAttachment && !ctx.runtimeFeatureFlags.enable_multimodal_vision) {
           res.status(403).json({
             error:
@@ -612,8 +637,8 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
           });
 
           const contents = messages
-            .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
-            .map((msg: any) => ({
+            .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+            .map((msg) => ({
               role: msg.role === 'assistant' ? 'model' : 'user',
               parts: ctx.buildGeminiPartsFromMessage(msg),
             }));
@@ -673,7 +698,7 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
             } | null = null;
             for await (const chunk of responseStream) {
               latestUsage = ctx.collectGroundingSourcesAndUsage(chunk, sourcesMap, latestUsage);
-              const textChunk = (chunk as any).text || '';
+              const textChunk = chunk.text || '';
               if (textChunk) {
                 res.write(`data: ${JSON.stringify({ text: textChunk })}\n\n`);
               }
@@ -719,7 +744,7 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
             const groundingSources = Array.from(sourcesMap.values());
 
             res.json({
-              text: (response as any).text ?? '',
+              text: response.text ?? '',
               model: validatedModel,
               routeMeta: {
                 provider: 'local-gemini-pool',
@@ -737,7 +762,7 @@ export function registerStreamRoutes(app: Express, ctx: StreamContext): void {
         }
 
         const lastUserMessage =
-          [...messages].reverse().find((m: any) => m.role === 'user')?.content || 'Inquiry';
+          [...messages].reverse().find((m) => m.role === 'user')?.content || 'Inquiry';
         const fallbackResponse = `### SupremeAI Studio Intelligence Engine\n\n**Model**: \`${validatedModel}\` · **Role**: Active Persona\n\nReceived prompt:\n> ${lastUserMessage}\n\n#### Architectural Insight\nSupremeAI Studio has processed your request through the ${validatedModel} pipeline. Here is the recommended technical approach for your \`supremeai-studio\` frontend and \`supremeai\` architecture:\n\n\`\`\`typescript\n// SupremeAI Core Pipeline Invariant\nexport interface StudioOrchestrator {\n  model: '${validatedModel}';\n  systemInstruction: string;\n  status: 'active';\n  latencyMode: 'low-latency';\n}\n\`\`\`\n\n*Note: To stream live inference directly, ensure your gateway connection is active.*`;
 
         if (stream) {
