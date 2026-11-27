@@ -135,13 +135,11 @@ describe('Cloudflare Pages Edge Parity Functions', () => {
     expect(setupJson.otpauthUrl).toContain('otpauth://totp/');
   });
 
-  it('handles /api/user/team GET & POST cleanly on Edge', async () => {
+  it('fails closed on /api/user/team without a verified Supabase-backed session', async () => {
+    // বাংলা মন্তব্য: রোস্টার এখন Supabase-এ (4.4) — অপরিচিত কলার আর পড়তে/লিখতে পারে না।
     const getReq = new Request('https://supremeai-studio.pages.dev/api/user/team');
     const getRes = await teamHandler({ request: getReq, env: {} });
-    expect(getRes.status).toBe(200);
-    const getData = (await getRes.json()) as { members: unknown[]; maxSeats: number };
-    expect(Array.isArray(getData.members)).toBe(true);
-    expect(getData.maxSeats).toBe(10);
+    expect(getRes.status).toBe(401);
 
     const postReq = new Request('https://supremeai-studio.pages.dev/api/user/team', {
       method: 'POST',
@@ -149,8 +147,10 @@ describe('Cloudflare Pages Edge Parity Functions', () => {
       body: JSON.stringify({ email: 'dev@supremeai.bd', role: 'Developer' }),
     });
     const postRes = await teamHandler({ request: postReq, env: {} });
-    expect(postRes.status).toBe(200);
-    const postData = (await postRes.json()) as { member?: { email: string }; members: unknown[] };
-    expect(postData.member?.email).toBe('dev@supremeai.bd');
+    expect(postRes.status).toBe(401);
+
+    const chatReq = new Request('https://supremeai-studio.pages.dev/api/user/team/chat');
+    const chatRes = await teamHandler({ request: chatReq, env: {} });
+    expect(chatRes.status).toBe(401);
   });
 });

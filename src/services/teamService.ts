@@ -10,6 +10,24 @@ export interface TeamRosterResponse {
   tier?: string;
 }
 
+/** A team the caller can chat in — their own (once it has members) or one they were invited to. */
+export interface TeamChatRoom {
+  ownerId: string;
+  ownerEmail: string;
+  myRole: TeamMember['role'];
+  memberCount: number;
+  lastMessage: { content: string; createdAt: string; senderEmail: string | null } | null;
+}
+
+export interface TeamChatMessage {
+  id: string;
+  content: string;
+  createdAt: string;
+  senderId: string | null;
+  senderEmail: string | null;
+  mine: boolean;
+}
+
 export const teamService = {
   async fetchTeam(): Promise<TeamRosterResponse> {
     if (env.isMockEnabled) {
@@ -33,11 +51,12 @@ export const teamService = {
 
   async inviteMember(
     email: string,
-    role: TeamMember['role']
+    role: TeamMember['role'],
+    name?: string
   ): Promise<{ member: TeamMember; members: TeamMember[]; maxSeats?: number }> {
     if (env.isMockEnabled) {
       const namePart = email.split('@')[0] || 'Member';
-      const displayName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+      const displayName = name?.trim() || namePart.charAt(0).toUpperCase() + namePart.slice(1);
       const created: TeamMember = {
         id: `mem_${Date.now()}`,
         name: displayName,
@@ -50,7 +69,7 @@ export const teamService = {
       };
       return { member: created, members: [created] };
     }
-    return apiClient.post('/api/user/team', { email, role });
+    return apiClient.post('/api/user/team', { email, role, name });
   },
 
   async updateMemberRole(id: string, role: TeamMember['role']): Promise<{ members: TeamMember[] }> {
@@ -65,5 +84,29 @@ export const teamService = {
       return { members: [] };
     }
     return apiClient.delete(`/api/user/team/${encodeURIComponent(id)}`);
+  },
+
+  async fetchChatRooms(): Promise<TeamChatRoom[]> {
+    if (env.isMockEnabled) return [];
+    const res = await apiClient.get<{ rooms?: TeamChatRoom[] }>('/api/user/team/chat');
+    return Array.isArray(res?.rooms) ? res.rooms : [];
+  },
+
+  /** `after` = createdAt of the newest message already shown (polling cursor). */
+  async fetchChatMessages(ownerId: string, after?: string | null): Promise<TeamChatMessage[]> {
+    if (env.isMockEnabled) return [];
+    const qs = after ? `?after=${encodeURIComponent(after)}` : '';
+    const res = await apiClient.get<{ messages?: TeamChatMessage[] }>(
+      `/api/user/team/chat/${encodeURIComponent(ownerId)}${qs}`
+    );
+    return Array.isArray(res?.messages) ? res.messages : [];
+  },
+
+  async postChatMessage(ownerId: string, content: string): Promise<TeamChatMessage> {
+    const res = await apiClient.post<{ message: TeamChatMessage }>(
+      `/api/user/team/chat/${encodeURIComponent(ownerId)}`,
+      { content }
+    );
+    return res.message;
   },
 };

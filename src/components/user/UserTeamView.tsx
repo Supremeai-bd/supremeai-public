@@ -3,6 +3,7 @@ import { Users, UserPlus, ShieldCheck, ShieldAlert, Trash2 } from 'lucide-react'
 import { PlanTier, TeamMember } from '../../types';
 import { getPlanSpec } from '../../config/plans';
 import { useI18n } from '../../utils/i18n';
+import { TeamChatPanel } from './TeamChatPanel';
 
 interface UserTeamViewProps {
   members: TeamMember[];
@@ -181,7 +182,7 @@ export const UserTeamView: React.FC<UserTeamViewProps> = ({
                         disabled={member.role === 'Owner'}
                         className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white disabled:opacity-60 cursor-pointer"
                       >
-                        <option value="Owner">{t.roleOwner}</option>
+                        {member.role === 'Owner' && <option value="Owner">{t.roleOwner}</option>}
                         <option value="Developer">{t.roleEditor}</option>
                         <option value="Reviewer">{t.roleReviewer}</option>
                         <option value="Viewer">{t.roleViewer}</option>
@@ -233,6 +234,9 @@ export const UserTeamView: React.FC<UserTeamViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Team chat (roadmap 4.4) */}
+      <TeamChatPanel rosterVersion={members.length} />
 
       {/* --- INVITE MODAL --- */}
       {isInviteModalOpen && (

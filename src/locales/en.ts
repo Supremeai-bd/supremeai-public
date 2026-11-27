@@ -1413,6 +1413,19 @@ export const EN_DICT = {
   inboxAiNoMatch: 'No chat matches this search.',
   inboxAiUntitled: 'Untitled chat',
   inboxAiMessages: '{n} messages',
+  tcTitle: 'Team chat',
+  tcDesc: 'Talk with everyone on your team. Only team members can read it.',
+  tcLoading: 'Loading team chat…',
+  tcEmpty: 'No team chat yet. Invite someone above — chat opens as soon as your team has a member.',
+  tcMyTeam: 'My team',
+  tcTeamOf: "{email}'s team",
+  tcMembers: '{n} people',
+  tcNoMessages: 'No messages yet. Say hello!',
+  tcPlaceholder: 'Message your team…',
+  tcSend: 'Send',
+  tcYou: 'You',
+  tcLoadError: 'Could not load team chat.',
+  tcSendError: 'Could not send the message.',
 };
 
 export type TranslationKeys = keyof typeof EN_DICT;
