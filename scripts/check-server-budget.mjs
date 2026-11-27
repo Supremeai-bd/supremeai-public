@@ -138,7 +138,7 @@ const TARGET = 'server.ts';
 //         src/server/userDirectory.ts; federation catch-all → src/server/federationProxy.ts;
 //         Vite/static serving + error handler → src/server/frontendServing.ts; plus 41
 //         unused imports and 3 dead declarations removed (−1,148 lines).
-const BUDGET = 1061;
+const BUDGET = 1056;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

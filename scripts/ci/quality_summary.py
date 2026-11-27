@@ -91,6 +91,26 @@ def parse_audit(data: dict) -> dict[str, int]:
     return {k: int(vulns.get(k, 0)) for k in ("critical", "high", "moderate", "low", "info")}
 
 
+_SARIF_LINK = re.compile(r"\[([^\]]+)\]\((\d+)\)")
+
+
+def _resolve_sarif_links(text: str, related: list[dict]) -> str:
+    """Turn CodeQL's ``[file data](1)`` placeholders into ``file data (path:line)``."""
+    where: dict[int, str] = {}
+    for rel in related or []:
+        phys = rel.get("physicalLocation") or {}
+        uri = (phys.get("artifactLocation") or {}).get("uri")
+        line = (phys.get("region") or {}).get("startLine")
+        if uri and rel.get("id") is not None:
+            where[int(rel["id"])] = f"{uri}:{line}" if line else uri
+
+    def _sub(m: re.Match) -> str:
+        loc = where.get(int(m.group(2)))
+        return f"{m.group(1)} ({loc})" if loc else m.group(1)
+
+    return _SARIF_LINK.sub(_sub, text)
+
+
 def parse_sarif_dir(directory: Path) -> list[dict]:
     findings = []
     for sarif in sorted(directory.rglob("*.sarif")):
@@ -113,7 +133,10 @@ def parse_sarif_dir(directory: Path) -> list[dict]:
                         "line": int((loc.get("region") or {}).get("startLine") or 1),
                         "rule": rule_id,
                         "severity": "error" if level == "error" else "warning",
-                        "message": (res.get("message") or {}).get("text", ""),
+                        "message": _resolve_sarif_links(
+                            (res.get("message") or {}).get("text", ""),
+                            res.get("relatedLocations") or [],
+                        ),
                         "security": (rules.get(rule_id) or {}).get("security"),
                     }
                 )
@@ -159,8 +182,23 @@ def render_findings(title: str, findings: list[dict], extra: list[str] | None = 
     return "\n".join(lines) + "\n"
 
 
+def _round_robin_by_rule(findings: list[dict]) -> list[dict]:
+    """Interleave rules so one noisy rule cannot fill GitHub's 10-warnings-per-step cap."""
+    buckets: dict[str, list[dict]] = {}
+    for f in findings:
+        buckets.setdefault(f["rule"], []).append(f)
+    out: list[dict] = []
+    while any(buckets.values()):
+        for rule in list(buckets):
+            if buckets[rule]:
+                out.append(buckets[rule].pop(0))
+    return out
+
+
 def annotations(findings: list[dict], limit: int = MAX_ANNOTATIONS) -> list[str]:
-    ordered = sorted(findings, key=lambda f: f["severity"] != "error")
+    errors = [f for f in findings if f["severity"] == "error"]
+    others = [f for f in findings if f["severity"] != "error"]
+    ordered = _round_robin_by_rule(errors) + _round_robin_by_rule(others)
     return [
         f"::{f['severity']} file={f['file']},line={f['line']},title={_escape_annotation(f['rule'])}::{_escape_annotation(f['message'])}"
         for f in ordered[:limit]

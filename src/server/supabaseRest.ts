@@ -20,7 +20,7 @@ export async function supabaseRestRequest(
       'Content-Type': 'application/json',
       Prefer: prefer,
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(6000),
   });
   if (!res.ok)

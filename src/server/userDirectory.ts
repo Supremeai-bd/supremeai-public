@@ -6,23 +6,30 @@ import type { PlanTier } from './platformState';
 
 /**
  * User & customer directory primitives for the Express bootstrap: admin identity
- * config (env-driven), user/customer record types, the session signing secret,
- * the dev-only users cache file and the dev-only demo customer seed. Moved
+ * config (env-driven), user/customer record types, the session signing secret
+ * and the dev-only demo customer seed. Moved
  * verbatim out of `server.ts` (docs/SERVER_TS_SPLIT_PLAN.md); the mutable
  * `usersDb` / `customerDirectory` arrays stay in `server.ts`.
  *
  * বাংলা: server.ts ভাগ — শুধু টাইপ/সিড/হেল্পার; আচরণ অপরিবর্তিত।
  */
 
+/**
+ * Owner/admin emails come ONLY from the environment (`ADMIN_EMAIL`, `ADMIN_EMAILS`) —
+ * the same SSOT the edge (`functions/_lib/adminTeam.ts`) and the private backend
+ * (`settings.admin_emails`) read. Nothing personal is committed to this public repo.
+ */
+export const readEnvAdminEmails = (env: NodeJS.ProcessEnv = process.env): string[] =>
+  Array.from(
+    new Set(
+      [env.ADMIN_EMAIL, ...String(env.ADMIN_EMAILS || '').split(',')]
+        .map((e) => (e || '').trim().toLowerCase())
+        .filter((e) => e.includes('@'))
+    )
+  );
+
 export const createAdminIdentityConfig = () => {
-  const envAdminEmails = [
-    'niloyjoy7@gmail.com',
-    'paykaribazaronline@gmail.com',
-    process.env.ADMIN_EMAIL,
-    ...(process.env.ADMIN_EMAILS ? process.env.ADMIN_EMAILS.split(',') : []),
-  ]
-    .map((e) => (e || '').trim().toLowerCase())
-    .filter(Boolean);
+  const envAdminEmails = readEnvAdminEmails();
 
   // Personal/organisational emails are never seeded from source control. The only
   // built-in admin identities come from ADMIN_EMAIL / ADMIN_EMAILS, and users or
@@ -107,29 +114,6 @@ export const getSessionSigningSecret = (): string => {
       /* read-only tmp: in-memory secret for this process */
     }
     return generated;
-  }
-};
-
-export const DEV_USERS_FILE = path.join(os.tmpdir(), 'supremeai_dev_users.json');
-export const loadDevUsersDb = (isProduction: boolean): ServerUser[] => {
-  if (isProduction) return [];
-  try {
-    if (fs.existsSync(DEV_USERS_FILE)) {
-      const raw = fs.readFileSync(DEV_USERS_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {
-    // Ignore corrupt dev cache
-  }
-  return [];
-};
-export const persistDevUsersDb = (users: ServerUser[], isProduction: boolean) => {
-  if (isProduction) return;
-  try {
-    fs.writeFileSync(DEV_USERS_FILE, JSON.stringify(users, null, 2), { mode: 0o600 });
-  } catch {
-    // Non-fatal in read-only environments
   }
 };
 
