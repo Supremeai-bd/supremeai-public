@@ -6,6 +6,7 @@ import { INITIAL_FEATURE_FLAGS } from '../../data/adminExpansionData';
 import { usePlatformStore } from '../../stores/usePlatformStore';
 import { useI18n } from '../../utils/i18n';
 import { AdminConnectionsCard } from './AdminConnectionsCard';
+import { guardAdminAction } from '../../utils/adminGuard';
 
 /**
  * বাংলা মন্তব্য: প্ল্যাটফর্মের সব গুরুত্বপূর্ণ সেটিং এক জায়গায় — মেইনটেন্যান্স লক, ঘোষণা ব্যানার,
@@ -81,9 +82,20 @@ export const AdminPlatformSettingsView: React.FC<AdminPlatformSettingsViewProps>
                 <button
                   type="button"
                   onClick={() =>
-                    updateConfig({
-                      maintenanceMode: !config.maintenanceMode,
-                      maintenanceMessage,
+                    guardAdminAction({
+                      title: config.maintenanceMode
+                        ? 'মেইনটেন্যান্স লক খুলবেন'
+                        : 'মেইনটেন্যান্স লক চালু করবেন',
+                      description: config.maintenanceMode
+                        ? 'সব ইউজার আবার প্ল্যাটফর্ম ব্যবহার করতে পারবে।'
+                        : 'অ্যাডমিন ছাড়া সব ইউজার লক হয়ে যাবে।',
+                      impactSummary: `maintenanceMode=${!config.maintenanceMode}`,
+                      riskLevel: config.maintenanceMode ? 'medium' : 'critical',
+                      run: () =>
+                        updateConfig({
+                          maintenanceMode: !config.maintenanceMode,
+                          maintenanceMessage,
+                        }),
                     })
                   }
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
@@ -195,7 +207,17 @@ export const AdminPlatformSettingsView: React.FC<AdminPlatformSettingsViewProps>
               </div>
               <button
                 type="button"
-                onClick={() => updateConfig({ allowNewSignups: !config.allowNewSignups })}
+                onClick={() =>
+                  guardAdminAction({
+                    title: config.allowNewSignups ? 'নতুন সাইনআপ বন্ধ' : 'নতুন সাইনআপ চালু',
+                    description: config.allowNewSignups
+                      ? 'নতুন কেউ অ্যাকাউন্ট খুলতে পারবে না।'
+                      : 'যে কেউ আবার অ্যাকাউন্ট খুলতে পারবে।',
+                    impactSummary: `allowNewSignups=${!config.allowNewSignups}`,
+                    riskLevel: 'high',
+                    run: () => updateConfig({ allowNewSignups: !config.allowNewSignups }),
+                  })
+                }
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
                   config.allowNewSignups
                     ? 'bg-emerald-600 text-white hover:bg-emerald-700'
