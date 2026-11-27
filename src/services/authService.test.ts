@@ -57,3 +57,33 @@ describe('normalizeAuthUser RBAC & DB admin email matching', () => {
     expect(normalizeAuthUser(null)).toBeNull();
   });
 });
+
+describe('normalizeAuthUser narrowing of untyped gateway JSON', () => {
+  it('stringifies a non-string adminUserId instead of leaking the raw value', () => {
+    const user = normalizeAuthUser({ id: 'usr-1', email: 'a@example.com', admin_user_id: 42 });
+    expect(user?.adminUserId).toBe('42');
+    expect(user?.isAdminEligible).toBe(true);
+  });
+
+  it('ignores non-array roles / admin-email fields and unknown plans', () => {
+    const user = normalizeAuthUser({
+      email: 'b@example.com',
+      roles: 'admin',
+      adminEmails: 'b@example.com',
+      plan: { tier: 'Enterprise' },
+    });
+    expect(user?.isAdminEligible).toBe(false);
+    expect(user?.role).toBe('user');
+    expect(user?.plan).toBe('Free');
+    expect(user?.adminUserId).toBeUndefined();
+  });
+
+  it('merges a nested user object and lower-cases admin email lists', () => {
+    const user = normalizeAuthUser({
+      admin_emails: ['C@Example.com', 7],
+      user: { email: 'c@example.com', name: 'Cee', plan: 'Pro' },
+    });
+    expect(user).toMatchObject({ email: 'c@example.com', name: 'Cee', isAdminEligible: true });
+    expect(user?.plan).toBe('Enterprise');
+  });
+});

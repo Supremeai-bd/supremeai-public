@@ -38,15 +38,32 @@ export { isAuthorizedAdminEmail };
 
 const ADMIN_RBAC_ROLES = new Set(['admin', 'super_admin', 'superadmin', 'root_admin', 'owner']);
 
+/** Untyped JSON object from the gateway; every field is narrowed before use. */
+type AuthJson = Record<string, unknown>;
+
+/** Token-bearing auth response. Token fields are typed; user fields go through normalizeAuthUser. */
+interface AuthTokenPayload extends AuthJson {
+  access_token?: string;
+  token?: string;
+  refresh_token?: string;
+  refreshToken?: string;
+}
+
+function toLowerList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item).trim().toLowerCase()) : [];
+}
+
 export function normalizeAuthUser(
-  data: any,
+  input: unknown,
   fallbackEmail?: string,
   fallbackName?: string
 ): AuthUser | null {
-  if (!data || typeof data !== 'object') return null;
+  if (!input || typeof input !== 'object') return null;
 
-  const nestedUser = data.user && typeof data.user === 'object' ? data.user : {};
-  const raw = { ...data, ...nestedUser };
+  const data = input as AuthJson;
+  const nestedUser: AuthJson =
+    data.user && typeof data.user === 'object' ? (data.user as AuthJson) : {};
+  const raw: AuthJson = { ...data, ...nestedUser };
 
   const email = String(raw.email || data.email || fallbackEmail || '')
     .trim()
@@ -56,18 +73,14 @@ export function normalizeAuthUser(
   )
     .trim()
     .toLowerCase();
-  const rolesArray = Array.isArray(raw.roles)
-    ? raw.roles.map((r: any) => String(r).trim().toLowerCase())
-    : [];
+  const rolesArray = toLowerList(raw.roles);
 
   const adminEmailsList = [
-    ...(Array.isArray(data.adminEmails) ? data.adminEmails : []),
-    ...(Array.isArray(data.admin_emails) ? data.admin_emails : []),
-    ...(Array.isArray(raw.adminEmails) ? raw.adminEmails : []),
-    ...(Array.isArray(raw.admin_emails) ? raw.admin_emails : []),
-  ]
-    .map((item: any) => String(item).trim().toLowerCase())
-    .filter(Boolean);
+    ...toLowerList(data.adminEmails),
+    ...toLowerList(data.admin_emails),
+    ...toLowerList(raw.adminEmails),
+    ...toLowerList(raw.admin_emails),
+  ].filter(Boolean);
 
   const emailMatchedAdminDb =
     Boolean(email && adminEmailsList.includes(email)) ||
@@ -135,9 +148,11 @@ export function normalizeAuthUser(
     isDeveloperEligible:
       isAdminEligible || Boolean(raw.isDeveloperEligible ?? raw.is_developer_eligible),
     adminUserId:
-      raw.adminUserId ||
-      raw.admin_user_id ||
-      (isAdminEligible ? String(raw.id || raw.user_id || 'admin_rbac') : undefined),
+      raw.adminUserId || raw.admin_user_id
+        ? String(raw.adminUserId || raw.admin_user_id)
+        : isAdminEligible
+          ? String(raw.id || raw.user_id || 'admin_rbac')
+          : undefined,
     plan,
     createdAt: String(raw.createdAt || raw.created_at || new Date().toISOString().slice(0, 10)),
   };
@@ -170,7 +185,7 @@ export const authService = {
       };
     }
 
-    const data = await apiClient.post<any>(
+    const data = await apiClient.post<AuthTokenPayload>(
       '/api/v1/auth/login',
       {
         username: email,
@@ -218,14 +233,14 @@ export const authService = {
           isAdminEligible: isAdmin,
           isDeveloperEligible: isAdmin || isDeveloperEligible,
           adminUserId: isAdmin ? 'admin_rbac' : undefined,
-          plan: plan as any,
+          plan: plan === 'Free' || plan === 'Enterprise' ? plan : 'Pro',
           createdAt: new Date().toISOString().slice(0, 10),
         },
         token: `mock_tok_${Date.now()}`,
       };
     }
 
-    const data = await apiClient.post<any>(
+    const data = await apiClient.post<AuthTokenPayload>(
       '/api/v1/auth/register',
       {
         username: email,
@@ -261,7 +276,7 @@ export const authService = {
 
   async getMe(fallbackEmail?: string, fallbackName?: string): Promise<AuthUser | null> {
     try {
-      const data = await apiClient.get<any>('/api/v1/auth/me');
+      const data = await apiClient.get<AuthJson>('/api/v1/auth/me');
       // বাংলা মন্তব্য: সার্ভার যদি রেসপন্সে email ফিল্ড খালি রাখে, লোকাল স্টোরেজে থাকা পূর্বের ভ্যালিড সেশন থেকে email রিকভার করা হবে
       let effectiveEmail = fallbackEmail;
       let effectiveName = fallbackName;
@@ -330,7 +345,7 @@ export const authService = {
   async refreshAccessToken(): Promise<string | null> {
     if (env.isMockEnabled) return null;
 
-    let refreshToken: string | null = null;
+    let refreshToken: string | null;
     try {
       refreshToken = localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
     } catch {
@@ -338,7 +353,7 @@ export const authService = {
     }
 
     try {
-      const data = await apiClient.post<any>(
+      const data = await apiClient.post<AuthTokenPayload>(
         '/api/v1/auth/refresh',
         refreshToken ? { refresh_token: refreshToken } : {},
         { skipAuth: true, skipRefresh: true, credentials: 'include', timeoutMs: 10000 }
@@ -347,9 +362,10 @@ export const authService = {
       if (!token) return null;
       authService.persistSession(token, data?.refresh_token || data?.refreshToken);
       return token;
-    } catch (err: any) {
+    } catch (err: unknown) {
       // বাংলা মন্তব্য: রিফ্রেশ এন্ডপয়েন্ট অনুপস্থিত (404), রেট-লিমিটেড (429) বা সাময়িক অনুপলব্ধ (502/503/504/0) হলে বিদ্যমান অ্যাক্সেস টোকেন রেখে দেওয়া হবে যাতে ব্রাউজার রিফ্রেশে লগআউট না হয়
-      const status = err?.status ?? err?.response?.status;
+      const errLike = (err ?? {}) as { status?: unknown; response?: { status?: unknown } };
+      const status = errLike.status ?? errLike.response?.status;
       if (status !== 401 && status !== 403) {
         try {
           const existing =
