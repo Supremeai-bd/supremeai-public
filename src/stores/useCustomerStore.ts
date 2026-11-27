@@ -437,7 +437,7 @@ export const useCustomerStore = create<CustomerState>((set, get) => {
 
     inviteTeamMember: async (member) => {
       try {
-        const res = await teamService.inviteMember(member.email, member.role);
+        const res = await teamService.inviteMember(member.email, member.role, member.name);
         set((state) => {
           const updated =
             Array.isArray(res.members) && res.members.length > 0
