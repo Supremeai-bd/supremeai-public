@@ -1,0 +1,154 @@
+diff --git a/scripts/ops/supreme_ops.py b/scripts/ops/supreme_ops.py
+index 22f34d205f5922605e851ee843bee180cac3e315..62d3cb08f99b0c74196a2ffe86f35b8cfc52fd7f 100644
+--- a/scripts/ops/supreme_ops.py
++++ b/scripts/ops/supreme_ops.py
+@@ -12,6 +12,8 @@ Usage:
+     python scripts/supreme_ops.py sync-env
+     python scripts/supreme_ops.py clean
+     python scripts/supreme_ops.py recipe <recipe_id>
++    python scripts/ops/supreme_ops.py cookies status   # == ghost_tower/3_check_cookies_status.bat
++    python scripts/ops/supreme_ops.py cookies sync     # == ghost_tower/4_sync_cookies_to_infisical.bat
+ """
+ 
+ from __future__ import annotations
+@@ -19,11 +21,13 @@ from __future__ import annotations
+ import argparse
+ import asyncio
+ import os
++import subprocess
+ import sys
+ from pathlib import Path
+ 
+ # Add project root and backend to sys.path
+-PROJECT_ROOT = Path(__file__).resolve().parent.parent
++# scripts/ops/supreme_ops.py -> repo root is two levels up (the file moved from scripts/).
++PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ sys.path.insert(0, str(PROJECT_ROOT))
+ sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+ 
+@@ -91,6 +95,36 @@ def run_cache_clean():
+     print(f"[OK] Cleaned {cleaned_count} temporary cache files.")
+ 
+ 
++# Ghost Tower cookie tools (browser/ghost_tower). Run exactly the way the .bat
++# launchers do — `cd ghost_tower && python <script>` — so the scripts' own
++# sys.path / credential_vault imports and the .bat files keep working unchanged.
++# বাংলা মন্তব্য: .bat ফাইল আর এই CLI একই স্ক্রিপ্ট একই cwd-তে চালায়; স্ক্রিপ্টে কোনো পরিবর্তন নেই।
++GHOST_TOWER_DIR = PROJECT_ROOT / "browser" / "ghost_tower"
++COOKIE_SCRIPTS = {
++    "status": "check_cookies_status.py",
++    "sync": "sync_cookies_to_infisical.py",
++}
++
++
++def run_cookies(action: str) -> int:
++    """Run a Ghost Tower cookie script (status | sync) and return its exit code."""
++    script = COOKIE_SCRIPTS.get(action)
++    if script is None:
++        print(f"[SupremeOps] Unknown cookies action: {action!r} (use: {', '.join(COOKIE_SCRIPTS)})")
++        return 2
++    script_path = GHOST_TOWER_DIR / script
++    if not script_path.is_file():
++        print(f"[SupremeOps] Missing Ghost Tower script: {script_path}")
++        return 2
++    print(f"=== [SupremeOps] Ghost Tower cookies {action} ({script}) ===")
++    completed = subprocess.run(  # noqa: S603 - fixed script path, current interpreter
++        [sys.executable, str(script_path)],
++        cwd=str(GHOST_TOWER_DIR),
++        check=False,
++    )
++    return completed.returncode
++
++
+ def main():
+     parser = argparse.ArgumentParser(description="SupremeAI Unified Operations CLI")
+     subparsers = parser.add_subparsers(dest="command", help="Available operations")
+@@ -109,6 +143,10 @@ def main():
+     # clean
+     subparsers.add_parser("clean", help="Clean pycache and temp artifacts")
+ 
++    # cookies (Ghost Tower)
++    c_parser = subparsers.add_parser("cookies", help="Ghost Tower AI cookie status / Infisical sync")
++    c_parser.add_argument("action", choices=sorted(COOKIE_SCRIPTS), help="status = verify local + live session; sync = push cookies to Infisical")
++
+     args = parser.parse_args()
+ 
+     if args.command == "health":
+@@ -119,6 +157,8 @@ def main():
+         run_knowledge_ops(inject=args.inject, verify=args.verify)
+     elif args.command == "clean":
+         run_cache_clean()
++    elif args.command == "cookies":
++        sys.exit(run_cookies(args.action))
+     else:
+         parser.print_help()
+ 
+diff --git a/tests/test_supreme_ops_cookies.py b/tests/test_supreme_ops_cookies.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..37d3c63025ce7d63dd71baf26424cfa2a6fa1a35
+--- /dev/null
++++ b/tests/test_supreme_ops_cookies.py
+@@ -0,0 +1,63 @@
++"""supreme_ops.py `cookies status|sync` wiring for browser/ghost_tower.
++
++বাংলা মন্তব্য: CLI ঠিক .bat ফাইলের মতো (cwd=ghost_tower, একই স্ক্রিপ্ট) চালায় কিনা যাচাই।
++"""
++from __future__ import annotations
++
++import importlib.util
++import subprocess
++import sys
++from pathlib import Path
++from unittest import mock
++
++import pytest
++
++ROOT = Path(__file__).resolve().parents[1]
++OPS = ROOT / "scripts" / "ops" / "supreme_ops.py"
++GHOST = ROOT / "browser" / "ghost_tower"
++
++
++def _load():
++    spec = importlib.util.spec_from_file_location("supreme_ops_under_test", OPS)
++    mod = importlib.util.module_from_spec(spec)
++    assert spec.loader is not None
++    spec.loader.exec_module(mod)
++    return mod
++
++
++@pytest.mark.parametrize(
++    ("action", "script", "bat"),
++    [
++        ("status", "check_cookies_status.py", "3_check_cookies_status.bat"),
++        ("sync", "sync_cookies_to_infisical.py", "4_sync_cookies_to_infisical.bat"),
++    ],
++)
++def test_cookies_action_runs_same_script_as_bat(action, script, bat):
++    ops = _load()
++    assert (GHOST / script).is_file()
++    bat_text = (GHOST / bat).read_text(encoding="utf-8", errors="replace")
++    assert f"python {script}" in bat_text, "the .bat launcher must keep running the same script"
++    with mock.patch.object(ops.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
++        assert ops.run_cookies(action) == 0
++    args, kwargs = run.call_args
++    assert args[0] == [sys.executable, str(GHOST / script)]
++    assert kwargs["cwd"] == str(GHOST)
++    assert kwargs["check"] is False
++
++
++def test_cookies_propagates_exit_code_and_rejects_unknown():
++    ops = _load()
++    with mock.patch.object(ops.subprocess, "run", return_value=subprocess.CompletedProcess([], 3)):
++        assert ops.run_cookies("status") == 3
++    assert ops.run_cookies("nope") == 2
++
++
++def test_cli_parses_cookies_subcommand():
++    ops = _load()
++    with mock.patch.object(ops, "run_cookies", return_value=0) as rc, mock.patch.object(
++        sys, "argv", ["supreme_ops.py", "cookies", "status"]
++    ):
++        with pytest.raises(SystemExit) as exc:
++            ops.main()
++    assert exc.value.code == 0
++    rc.assert_called_once_with("status")
