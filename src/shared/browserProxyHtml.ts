@@ -34,15 +34,47 @@ export function escapeHtmlText(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+const BASIC_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  '#39': "'",
+  nbsp: ' ',
+};
+
+/**
+ * Single-pass decode so `&amp;lt;` becomes the literal text `&lt;` — decoding
+ * `&amp;` first and then `&lt;` would double-unescape it into `<`.
+ */
 export function decodeBasicEntities(value: string): string {
   return value
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
+    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (_m, name: string) => BASIC_ENTITIES[name])
     .trim();
+}
+
+/**
+ * Removes every tag, repeating until stable so nested fragments such as
+ * `<<b>script>` cannot reassemble into a tag, then drops any stray `<` / `>`.
+ */
+export function stripHtmlTags(value: string, replacement = ''): string {
+  let previous: string;
+  let current = value;
+  do {
+    previous = current;
+    current = current.replace(/<[^<>]*>/g, replacement);
+  } while (current !== previous);
+  return current.replace(/[<>]/g, replacement);
+}
+
+/** Only http(s) links are offered to the user (blocks javascript:, data:, vbscript:, …). */
+export function isSafeNavigableHref(href: string): boolean {
+  try {
+    const { protocol } = new URL(href);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 export function buildJsonViewerHtml(prettyJson: string): string {
@@ -280,10 +312,10 @@ export function processProxiedHtml(
       }
       return {
         href: resolvedHref,
-        text: decodeBasicEntities(m[2].replace(/<[^>]+>/g, '')) || m[1],
+        text: decodeBasicEntities(stripHtmlTags(m[2])) || m[1],
       };
     })
-    .filter((l) => l.text.length > 0 && !l.href.startsWith('javascript:'));
+    .filter((l) => l.text.length > 0 && isSafeNavigableHref(l.href));
 
   const { headInject, bodyInject } = buildSrcdocRuntimeShims(finalUrl, parentOrigin);
   let cleanHtml = rawBody
@@ -304,10 +336,12 @@ export function processProxiedHtml(
     cleanHtml = `${cleanHtml}${bodyInject}`;
   }
 
-  const textPreview = rawBody
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
+  const textPreview = stripHtmlTags(
+    rawBody
+      .replace(/<script\b[\s\S]*?<\/script\b[^>]*>/gi, ' ')
+      .replace(/<style\b[\s\S]*?<\/style\b[^>]*>/gi, ' '),
+    ' '
+  )
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 800);

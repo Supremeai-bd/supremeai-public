@@ -249,7 +249,8 @@ function main() {
 
   // Export to GitHub Actions step outputs if running in CI
   const outputFile = process.env.GITHUB_OUTPUT;
-  if (outputFile && existsSync(outputFile)) {
+  // No existsSync() pre-check (TOCTOU race): appendFileSync creates/appends atomically.
+  if (outputFile) {
     appendFileSync(outputFile, `risk_tier=${riskTier}\npr_guard_passed=true\nchanged_count=${files.length}\n`);
   }
 

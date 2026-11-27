@@ -69,7 +69,8 @@ export function classifyClient(userAgent: string | null | undefined): {
   if (/python-httpx|python-requests|aiohttp|node-fetch|undici|okhttp/i.test(ua)) {
     return { client: 'studio-server', device: null };
   }
-  if (/^curl\/|wget|httpie|postman/i.test(ua)) return { client: 'cli', device: null };
+  if (/^curl\//i.test(ua) || /wget|httpie|postman/i.test(ua))
+    return { client: 'cli', device: null };
   const browser = /Edg\//.test(ua)
     ? 'Edge'
     : /OPR\//.test(ua)

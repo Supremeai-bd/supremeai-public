@@ -11,6 +11,13 @@ export function createSecureStore(): SecureStore {
 
   if (vscode && typeof window !== 'undefined') {
     window.addEventListener('message', (event: MessageEvent) => {
+      // Only the webview host (same origin as this frame) may answer secret reads.
+      if (
+        event.origin !== window.location.origin &&
+        !event.origin.startsWith('vscode-webview://')
+      ) {
+        return;
+      }
       const m = event.data;
       if (m && m.type === 'secure_get_result' && typeof m.reqId === 'number') {
         const resolve = pending.get(m.reqId);

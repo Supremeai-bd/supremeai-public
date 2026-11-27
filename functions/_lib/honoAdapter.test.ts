@@ -64,7 +64,7 @@ describe('onRequestViaHono (Cloudflare Pages adapter)', () => {
     });
     expect(res.status).toBe(200);
     const restCall = (fetchMock.mock.calls as unknown as Array<[string, RequestInit?]>).find(
-      ([u]) => String(u).includes('api.github.com')
+      ([u]) => new URL(String(u)).hostname === 'api.github.com'
     );
     expect((restCall?.[1]?.headers as Record<string, string>).Authorization).toBe(
       'Bearer edge-token'
