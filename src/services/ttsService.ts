@@ -53,8 +53,12 @@ type TtsConfigListener = (config: TtsServiceConfig) => void;
 
 const VALID_VOICES: LiveVoiceName[] = ['Zephyr', 'Puck', 'Kore', 'Charon', 'Fenrir'];
 
+// বাংলা মন্তব্য: TTS-এ শুধু বাংলা ও ইংরেজি ভয়েস আছে। আঞ্চলিক বাংলা (bn-ctg, bn-syl …)
+// আগে 'en'-এ পড়ে ইংরেজি ভয়েসে কথা বলত — এখন বাংলা ভয়েসেই বলবে।
 function normalizeAppLanguage(raw: unknown): AppLanguage {
-  return raw === 'bn' ? 'bn' : 'en';
+  return typeof raw === 'string' && (raw === 'bn' || raw.toLowerCase().startsWith('bn-'))
+    ? 'bn'
+    : 'en';
 }
 
 function normalizeVoicePersona(raw: unknown): LiveVoiceName {
@@ -349,7 +353,7 @@ class GlobalTtsService {
   }
 
   getSamplePhrase(language?: AppLanguage): string {
-    const lang = language ?? this.config.language;
+    const lang = normalizeAppLanguage(language ?? this.config.language);
     if (lang === 'bn') {
       return this.config.banglaAccent === 'bn-in'
         ? 'নমস্কার! আমি আপনার SupremeAI ভয়েস অবতার। আপনার পছন্দের বাংলা ভাষা এবং গ্লোবাল TTS সেটিংস এখন সক্রিয়।'

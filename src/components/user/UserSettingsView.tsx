@@ -12,9 +12,7 @@ import {
   Palette,
   Play,
   Pause,
-  Terminal,
   MessageSquareCode,
-  Code2,
   Database,
   Lightbulb,
   AudioLines,
@@ -25,13 +23,13 @@ import {
   Loader2,
   ShieldCheck,
   AlertCircle,
-  Globe,
-  RotateCcw,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AppLanguage, UserAccountSettings, UserRole } from '../../types';
-import { APP_LANGUAGE_OPTIONS, TranslationKeys, useI18n } from '../../utils/i18n';
+import { UserAccountSettings, UserRole } from '../../types';
+import { TranslationKeys, useI18n } from '../../utils/i18n';
 import { AccountSettingsPanel } from './settings/AccountSettingsPanel';
+import { LanguageVoicePanel } from './settings/LanguageVoicePanel';
+import { VOICE_TONE_KEYS } from '../../config/languageVoiceOptions';
 import { PersonalMcpHubCard } from './PersonalMcpHubCard';
 import {
   useThemeStore,
@@ -45,7 +43,7 @@ import {
 import { useChatStore } from '../../stores/useChatStore';
 import { useAppPreferencesStore } from '../../stores/useAppPreferencesStore';
 import { toast } from '../../stores/useToastStore';
-import { LIVE_VOICE_OPTIONS, LiveVoiceName } from '../../hooks/useLiveVoiceSession';
+import { LiveVoiceName } from '../../hooks/useLiveVoiceSession';
 import { LiveVoiceAvatarCanvas } from '../chat/LiveVoiceAvatarCanvas';
 import {
   AVATAR_PRESETS,
@@ -54,17 +52,9 @@ import {
   saveAvatarPreference,
   resolveAvatarSource,
   processCustomFaceUpload,
-  saveVoicePreference,
   VOICE_AVATAR_SYNC_EVENT,
 } from '../../utils/hologramAvatar';
-import {
-  type BanglaAccentId,
-  clampVoicePitch,
-  DEFAULT_VOICE_PITCH,
-  MAX_VOICE_PITCH,
-  MIN_VOICE_PITCH,
-} from '../../utils/speechUtils';
-import { ttsService, type TtsServiceConfig } from '../../services/ttsService';
+import { ttsService } from '../../services/ttsService';
 import {
   connectGitOAuthPopup,
   fetchGitOAuthStatus,
@@ -73,7 +63,7 @@ import {
   loadGitTokens,
 } from '../../services/gitExportService';
 
-export type SettingsSubTab = 'general' | 'appearance' | 'voice-avatar' | 'account';
+export type SettingsSubTab = 'general' | 'language-voice' | 'appearance' | 'account';
 
 interface UserSettingsViewProps {
   settings: UserAccountSettings;
@@ -100,8 +90,12 @@ const SETTINGS_TABS: Array<{
   icon: React.ReactNode;
 }> = [
   { id: 'general', labelKey: 'tabGeneral', icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  {
+    id: 'language-voice',
+    labelKey: 'tabLanguageVoice',
+    icon: <AudioLines className="w-3.5 h-3.5" />,
+  },
   { id: 'appearance', labelKey: 'tabAppearance', icon: <Palette className="w-3.5 h-3.5" /> },
-  { id: 'voice-avatar', labelKey: 'tabVoiceAvatar', icon: <AudioLines className="w-3.5 h-3.5" /> },
   { id: 'account', labelKey: 'tabAccount', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
 ];
 
@@ -168,7 +162,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   const [customInstructions, setCustomInstructions] = useState(settings.customInstructions || '');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const language = useAppPreferencesStore((s) => s.language);
-  const setCentralizedLanguage = useAppPreferencesStore((s) => s.setLanguage);
   const centralizedRole = useAppPreferencesStore((s) => s.role);
   const setCentralizedRole = useAppPreferencesStore((s) => s.setRole);
   const currentRole = currentRoleProp ?? centralizedRole;
@@ -176,14 +169,9 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   const { t } = useI18n();
 
   // Voice & 3D Hologram Avatar state (synced live with global ttsService & LiveVoicePanel)
-  const [ttsConfig, setTtsConfig] = useState<TtsServiceConfig>(() => ttsService.getConfig());
   const [avatarPref, setAvatarPref] = useState<AvatarPreference>(() => loadAvatarPreference());
   const [voiceName, setVoiceName] = useState<LiveVoiceName>(
     () => ttsService.getConfig().voicePersona
-  );
-  const [voicePitch, setVoicePitch] = useState<number>(() => ttsService.getConfig().pitch);
-  const [banglaAccent, setBanglaAccent] = useState<BanglaAccentId>(
-    () => ttsService.getConfig().banglaAccent
   );
   const [isProcessingAvatar, setIsProcessingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -204,18 +192,11 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
 
   useEffect(() => {
     const unsubscribeTts = ttsService.subscribe((nextCfg) => {
-      setTtsConfig(nextCfg);
       setVoiceName(nextCfg.voicePersona);
-      setVoicePitch(nextCfg.pitch);
-      setBanglaAccent(nextCfg.banglaAccent);
     });
     const handleSync = () => {
       setAvatarPref(loadAvatarPreference());
-      const latestCfg = ttsService.getConfig();
-      setTtsConfig(latestCfg);
-      setVoiceName(latestCfg.voicePersona);
-      setVoicePitch(latestCfg.pitch);
-      setBanglaAccent(latestCfg.banglaAccent);
+      setVoiceName(ttsService.getConfig().voicePersona);
     };
     window.addEventListener(VOICE_AVATAR_SYNC_EVENT, handleSync);
     return () => {
@@ -277,11 +258,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
     setChatCustomInstruction(customInstructions);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
-  };
-
-  const handleSelectLanguage = (nextLang: AppLanguage) => {
-    setCentralizedLanguage(nextLang);
-    setTtsConfig(ttsService.getConfig());
   };
 
   const triggerPreviewPulse = () => {
@@ -378,29 +354,10 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
     toast.info('Custom Photo Removed', 'Switched back to preset 3D hologram avatar.');
   };
 
-  const handleSelectVoice = (voice: LiveVoiceName) => {
-    setVoiceName(voice);
-    saveVoicePreference(voice);
-    setTtsConfig(ttsService.setVoicePersona(voice));
-    triggerPreviewPulse();
-  };
-
-  const handleChangeVoicePitch = (nextVal: number) => {
-    const safe = clampVoicePitch(nextVal);
-    setVoicePitch(safe);
-    setTtsConfig(ttsService.setPitch(safe));
-  };
-
-  const handleSelectBanglaAccent = (nextAccent: BanglaAccentId) => {
-    setBanglaAccent(nextAccent);
-    setTtsConfig(ttsService.setBanglaAccent(nextAccent));
-    triggerPreviewPulse();
-  };
-
-  const handlePreviewVoiceSample = (forceBangla: boolean = false) => {
+  const handlePreviewVoiceSample = () => {
     triggerPreviewPulse();
     if (!onPreviewVoice) return;
-    const sample = ttsService.getSamplePhrase(forceBangla ? 'bn' : language);
+    const sample = ttsService.getSamplePhrase(language);
     onPreviewVoice(sample);
   };
 
@@ -592,103 +549,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                   className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-slate-400"
                 />
               </div>
-            </div>
-
-            {/* Unified Language Preference (Interface + Chat/Research + Global TTS) */}
-            <div
-              data-testid="unified-language-card"
-              className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 space-y-3"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <Globe className="w-3.5 h-3.5 theme-accent-text" />
-                    <span>{t.languageCardTitle}</span>
-                  </label>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    {t.languageCardSubtitle}
-                  </p>
-                </div>
-                {onPreviewVoice && (
-                  <button
-                    type="button"
-                    data-testid="preview-language-tts-btn"
-                    onClick={() => handlePreviewVoiceSample(false)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/80 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-[var(--theme-accent)] cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    <Volume2 className="w-3.5 h-3.5 theme-accent-text" />
-                    <span>{t.previewLangVoiceBtn}</span>
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {APP_LANGUAGE_OPTIONS.map((opt) => {
-                  const active = language === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      data-testid={`lang-option-${opt.id}`}
-                      onClick={() => handleSelectLanguage(opt.id)}
-                      className={`flex items-start justify-between gap-2.5 p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                        active
-                          ? 'theme-accent-active text-slate-900 dark:text-white shadow-xs'
-                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold">{opt.nativeLabel}</span>
-                          <span className="text-[10px] font-mono text-slate-400">{opt.label}</span>
-                        </div>
-                        <p className="text-[11px] opacity-80 mt-0.5">{opt.description}</p>
-                      </div>
-                      {active && (
-                        <Check className="w-3.5 h-3.5 theme-accent-text shrink-0 mt-0.5" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Live Propagation Summary across UI, Chat/Research, and Global TTS */}
-              <div
-                data-testid="unified-language-sync-summary"
-                className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2.5 border-t border-slate-200/70 dark:border-slate-700/60 text-[11px]"
-              >
-                <div className="px-2.5 py-2 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                    {t.langSyncUiLabel}
-                  </div>
-                  <div className="font-semibold text-slate-800 dark:text-slate-100 mt-0.5">
-                    {language === 'bn' ? t.langSyncUiValueBn : t.langSyncUiValueEn}
-                  </div>
-                </div>
-                <div className="px-2.5 py-2 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                    {t.langSyncChatLabel}
-                  </div>
-                  <div className="font-semibold text-slate-800 dark:text-slate-100 mt-0.5">
-                    {language === 'bn' ? t.langSyncChatValueBn : t.langSyncChatValueEn}
-                  </div>
-                </div>
-                <div className="px-2.5 py-2 rounded-lg bg-white/80 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                    {t.langSyncTtsLabel}
-                  </div>
-                  <div
-                    data-testid="settings-global-tts-summary"
-                    className="font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100 mt-0.5 truncate"
-                    title={`${ttsConfig.locale} · ${ttsConfig.edgeVoice}`}
-                  >
-                    {ttsConfig.locale} · {ttsConfig.edgeVoice.replace(/Neural$/, '')}
-                  </div>
-                </div>
-              </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                {t.langUnifiedSyncNote}
-              </p>
             </div>
 
             {/* বাংলা মন্তব্য: মডেল পিকার ও Auto Routing টগল নেই — সিস্টেম প্রতিটি অনুরোধে নিজেই সেরা মডেল বাছে */}
@@ -1433,7 +1293,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
       {/* ============================================================
           SUB-TAB 3: VOICE & 3D HOLOGRAM AVATAR
       ============================================================ */}
-      {activeSubTab === 'voice-avatar' && (
+      {activeSubTab === 'language-voice' && (
         <div className="space-y-6">
           <input
             ref={avatarFileInputRef}
@@ -1457,7 +1317,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => handlePreviewVoiceSample(false)}
+                  onClick={() => handlePreviewVoiceSample()}
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-200 hover:border-[var(--theme-accent)] cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Volume2 className="w-3 h-3 theme-accent-text" />
@@ -1508,7 +1368,9 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                 <div className="px-4 py-3 border-t border-slate-200/70 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 flex items-center justify-between gap-2">
                   <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                     {t.activeVoiceLabel}:{' '}
-                    <strong className="text-slate-800 dark:text-slate-200">{voiceName}</strong>
+                    <strong className="text-slate-800 dark:text-slate-200">
+                      {t[VOICE_TONE_KEYS[voiceName]]}
+                    </strong>
                   </span>
                   <button
                     type="button"
@@ -1524,6 +1386,11 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
 
             {/* Avatar Presets & Custom Upload + Voice Persona Picker */}
             <div className="lg:col-span-7 space-y-5">
+              <LanguageVoicePanel
+                onPreview={onPreviewVoice ? () => handlePreviewVoiceSample() : undefined}
+                onChanged={triggerPreviewPulse}
+              />
+
               {/* Hologram Avatar Selection */}
               <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 space-y-4 shadow-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1704,200 +1571,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                 )}
               </div>
 
-              {/* Voice Persona */}
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 space-y-4 shadow-xs">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      <Volume2 className="w-4 h-4 theme-accent-text" />
-                      <span>{t.voicePersonaTitle}</span>
-                    </h2>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      {t.voicePersonaSubtitle}
-                    </p>
-                  </div>
-
-                  {/* বাংলা মন্তব্য: এখানে আগে General ট্যাবের ভাষা-পিকারের হুবহু কপি
-                      (একই handleSelectLanguage) ছিল। ভাষা এখন শুধু General-এ বদলায়;
-                      নিচের Global TTS বার বর্তমান ভাষা/লোকেল দেখায়। */}
-                </div>
-
-                {/* Synchronized Global TTS Engine Bar */}
-                <div
-                  data-testid="voice-global-tts-bar"
-                  className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/70 text-[11px]"
-                >
-                  <span className="font-semibold text-slate-700 dark:text-slate-200">
-                    {t.globalTtsConfigLabel}
-                  </span>
-                  <div className="flex flex-wrap items-center gap-3 font-mono text-slate-600 dark:text-slate-300">
-                    <span>
-                      {t.ttsLocaleLabel}:{' '}
-                      <strong className="text-slate-900 dark:text-white">{ttsConfig.locale}</strong>
-                    </span>
-                    <span>
-                      {t.ttsNeuralVoiceLabel}:{' '}
-                      <strong className="text-slate-900 dark:text-white">
-                        {ttsConfig.edgeVoice}
-                      </strong>
-                    </span>
-                    <span>
-                      <strong className="text-slate-900 dark:text-white">
-                        {ttsConfig.pitch.toFixed(2)}×
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-                  {LIVE_VOICE_OPTIONS.map((opt) => {
-                    const active = voiceName === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => handleSelectVoice(opt.id)}
-                        className={`flex items-start justify-between gap-2 p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                          active
-                            ? 'theme-accent-active text-slate-900 dark:text-white shadow-xs'
-                            : 'border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold">{opt.label}</div>
-                          <div className="text-[11px] opacity-80 mt-0.5">{opt.tone}</div>
-                        </div>
-                        {active && (
-                          <Check className="w-3.5 h-3.5 theme-accent-text shrink-0 mt-0.5" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Pitch Control Slider */}
-                <div className="pt-4 border-t border-slate-200/70 dark:border-slate-800/80 space-y-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <label
-                        htmlFor="settings-voice-pitch-slider"
-                        className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5"
-                      >
-                        <AudioLines className="w-3.5 h-3.5 theme-accent-text" />
-                        <span>{t.voicePitchLabel}</span>
-                      </label>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        {t.voicePitchDesc}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {Math.abs(voicePitch - DEFAULT_VOICE_PITCH) > 0.01 && (
-                        <button
-                          type="button"
-                          data-testid="settings-reset-pitch-btn"
-                          onClick={() => handleChangeVoicePitch(DEFAULT_VOICE_PITCH)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:border-[var(--theme-accent)] cursor-pointer"
-                        >
-                          <RotateCcw className="w-3 h-3" />
-                          <span>{t.resetPitchBtn}</span>
-                        </button>
-                      )}
-                      <span
-                        data-testid="settings-voice-pitch-value"
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-xs font-mono font-semibold tabular-nums text-slate-900 dark:text-white"
-                      >
-                        {voicePitch.toFixed(2)}×
-                      </span>
-                    </div>
-                  </div>
-
-                  <input
-                    id="settings-voice-pitch-slider"
-                    data-testid="settings-voice-pitch-slider"
-                    type="range"
-                    min={MIN_VOICE_PITCH}
-                    max={MAX_VOICE_PITCH}
-                    step={0.05}
-                    value={voicePitch}
-                    aria-label={t.voicePitchLabel}
-                    onChange={(e) => handleChangeVoicePitch(Number.parseFloat(e.target.value))}
-                    className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-slate-700 accent-cyan-500"
-                  />
-
-                  <div className="flex items-center justify-between text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                    <span>{t.voicePitchLow} (0.60×)</span>
-                    <span>{t.voicePitchNatural} (1.00×)</span>
-                    <span>{t.voicePitchHigh} (1.60×)</span>
-                  </div>
-                </div>
-
-                {/* Bangla Accent Selector */}
-                <div
-                  data-testid="settings-bangla-accent-selector"
-                  className="pt-4 border-t border-slate-200/70 dark:border-slate-800/80 space-y-3"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <div className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <Globe className="w-3.5 h-3.5 theme-accent-text" />
-                        <span>{t.banglaAccentLabel}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        {t.banglaAccentDesc}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      data-testid="test-bangla-accent-btn"
-                      onClick={() => handlePreviewVoiceSample(true)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-[var(--theme-accent)] cursor-pointer whitespace-nowrap shrink-0"
-                    >
-                      <Volume2 className="w-3.5 h-3.5 theme-accent-text" />
-                      <span>{t.testBanglaAccentBtn}</span>
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {(
-                      [
-                        {
-                          id: 'bn-bd' as BanglaAccentId,
-                          title: t.accentDhakaBdTitle,
-                          desc: t.accentDhakaBdDesc,
-                        },
-                        {
-                          id: 'bn-in' as BanglaAccentId,
-                          title: t.accentKolkataInTitle,
-                          desc: t.accentKolkataInDesc,
-                        },
-                      ] as const
-                    ).map((accentOpt) => {
-                      const active = banglaAccent === accentOpt.id;
-                      return (
-                        <button
-                          key={accentOpt.id}
-                          type="button"
-                          data-testid={`bangla-accent-${accentOpt.id}`}
-                          onClick={() => handleSelectBanglaAccent(accentOpt.id)}
-                          className={`flex items-start justify-between gap-2 p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                            active
-                              ? 'theme-accent-active text-slate-900 dark:text-white shadow-xs'
-                              : 'border-slate-200/80 dark:border-slate-700/80 bg-slate-50/70 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
-                          }`}
-                        >
-                          <div className="min-w-0">
-                            <div className="text-xs font-semibold">{accentOpt.title}</div>
-                            <div className="text-[11px] opacity-80 mt-0.5">{accentOpt.desc}</div>
-                          </div>
-                          {active && (
-                            <Check className="w-3.5 h-3.5 theme-accent-text shrink-0 mt-0.5" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
