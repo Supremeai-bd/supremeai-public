@@ -13,11 +13,13 @@ import {
   resolveUpstreamOrigin,
 } from '../_lib/edgeHelpers';
 import { enforceAuthCaptcha } from '../_lib/turnstile';
+import { isLoginSessionRoute, stampLoginSession } from '../_lib/loginSessionStamp';
 
 interface PagesContext {
   request: Request;
   env?: Record<string, string | undefined>;
   params?: { path?: string | string[] };
+  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export async function onRequest(context: PagesContext): Promise<Response> {
@@ -162,6 +164,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
           headers: challengeHeaders,
         }
       );
+    }
+
+    // Real browser UA/IP on the new Supabase session (Admin → Sessions). Background only.
+    if (upstreamResponse.ok && isLoginSessionRoute(request.method, incomingUrl.pathname)) {
+      const stamp = stampLoginSession(env, request, upstreamResponse.clone());
+      if (context.waitUntil) context.waitUntil(stamp);
+      else void stamp;
     }
 
     const responseHeaders = new Headers(upstreamResponse.headers);
