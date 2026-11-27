@@ -82,6 +82,15 @@ class QualitySummaryTest(unittest.TestCase):
                 self.assertEqual(qs.main(["sarif", d]), 0)
             self.assertIn("high/critical", summary.read_text())
 
+    def test_sarif_links_resolve_to_locations(self):
+        related = [
+            {"id": 1, "physicalLocation": {"artifactLocation": {"uri": "src/a.ts"}, "region": {"startLine": 9}}},
+        ]
+        self.assertEqual(
+            qs._resolve_sarif_links("Request depends on [file data](1) and [x](2).", related),
+            "Request depends on file data (src/a.ts:9) and x.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

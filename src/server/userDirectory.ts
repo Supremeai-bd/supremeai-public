@@ -14,15 +14,22 @@ import type { PlanTier } from './platformState';
  * বাংলা: server.ts ভাগ — শুধু টাইপ/সিড/হেল্পার; আচরণ অপরিবর্তিত।
  */
 
+/**
+ * Owner/admin emails come ONLY from the environment (`ADMIN_EMAIL`, `ADMIN_EMAILS`) —
+ * the same SSOT the edge (`functions/_lib/adminTeam.ts`) and the private backend
+ * (`settings.admin_emails`) read. Nothing personal is committed to this public repo.
+ */
+export const readEnvAdminEmails = (env: NodeJS.ProcessEnv = process.env): string[] =>
+  Array.from(
+    new Set(
+      [env.ADMIN_EMAIL, ...String(env.ADMIN_EMAILS || '').split(',')]
+        .map((e) => (e || '').trim().toLowerCase())
+        .filter((e) => e.includes('@'))
+    )
+  );
+
 export const createAdminIdentityConfig = () => {
-  const envAdminEmails = [
-    'niloyjoy7@gmail.com',
-    'paykaribazaronline@gmail.com',
-    process.env.ADMIN_EMAIL,
-    ...(process.env.ADMIN_EMAILS ? process.env.ADMIN_EMAILS.split(',') : []),
-  ]
-    .map((e) => (e || '').trim().toLowerCase())
-    .filter(Boolean);
+  const envAdminEmails = readEnvAdminEmails();
 
   // Personal/organisational emails are never seeded from source control. The only
   // built-in admin identities come from ADMIN_EMAIL / ADMIN_EMAILS, and users or

@@ -91,6 +91,26 @@ def parse_audit(data: dict) -> dict[str, int]:
     return {k: int(vulns.get(k, 0)) for k in ("critical", "high", "moderate", "low", "info")}
 
 
+_SARIF_LINK = re.compile(r"\[([^\]]+)\]\((\d+)\)")
+
+
+def _resolve_sarif_links(text: str, related: list[dict]) -> str:
+    """Turn CodeQL's ``[file data](1)`` placeholders into ``file data (path:line)``."""
+    where: dict[int, str] = {}
+    for rel in related or []:
+        phys = rel.get("physicalLocation") or {}
+        uri = (phys.get("artifactLocation") or {}).get("uri")
+        line = (phys.get("region") or {}).get("startLine")
+        if uri and rel.get("id") is not None:
+            where[int(rel["id"])] = f"{uri}:{line}" if line else uri
+
+    def _sub(m: re.Match) -> str:
+        loc = where.get(int(m.group(2)))
+        return f"{m.group(1)} ({loc})" if loc else m.group(1)
+
+    return _SARIF_LINK.sub(_sub, text)
+
+
 def parse_sarif_dir(directory: Path) -> list[dict]:
     findings = []
     for sarif in sorted(directory.rglob("*.sarif")):
@@ -113,7 +133,10 @@ def parse_sarif_dir(directory: Path) -> list[dict]:
                         "line": int((loc.get("region") or {}).get("startLine") or 1),
                         "rule": rule_id,
                         "severity": "error" if level == "error" else "warning",
-                        "message": (res.get("message") or {}).get("text", ""),
+                        "message": _resolve_sarif_links(
+                            (res.get("message") or {}).get("text", ""),
+                            res.get("relatedLocations") or [],
+                        ),
                         "security": (rules.get(rule_id) or {}).get("security"),
                     }
                 )

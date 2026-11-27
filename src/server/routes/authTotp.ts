@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import QRCode from 'qrcode';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import { buildOtpAuthUri, generateTotpSecret, verifyTotpToken } from '../totp';
 import { parseCookieHeader } from '../../shared/serverSecurity';
 import { parseBody, totpConfirmSchema, verify2faSchema } from '../validation';
@@ -219,8 +220,20 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
     return null;
   };
 
+  // Per-route brute-force guard for every TOTP/2FA handler (defence in depth on top
+  // of the shared server.ts prefix limiter). 6-digit codes must not be guessable:
+  // 10 attempts per IP per minute, per route.
+  const totpRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 10,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    keyGenerator: (req) => `${req.path}:${ipKeyGenerator(req.ip || 'unknown')}`,
+    message: { error: 'Too many 2-step verification attempts. Please wait a minute and retry.' },
+  });
+
   // GET /api/auth/totp/status - Check whether admin has enrolled a real RFC 6238 TOTP secret
-  app.get('/api/auth/totp/status', async (req: Request, res: Response) => {
+  app.get('/api/auth/totp/status', totpRateLimit, async (req: Request, res: Response) => {
     const requestedEmail = typeof req.query.userEmail === 'string' ? req.query.userEmail : '';
     const { cleanEmail, isEligible } = await resolveAdminEligibilityForTotp(req, requestedEmail);
     if (!isEligible) {
@@ -240,7 +253,7 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
   });
 
   // POST /api/auth/totp/setup - Generate a fresh cryptographic Base32 secret & QR code for Authenticator pairing
-  app.post('/api/auth/totp/setup', async (req: Request, res: Response) => {
+  app.post('/api/auth/totp/setup', totpRateLimit, async (req: Request, res: Response) => {
     const { userEmail, currentToken } = req.body || {};
     const { cleanEmail, isEligible } = await resolveAdminEligibilityForTotp(req, userEmail);
     if (!isEligible) {
@@ -312,7 +325,7 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
   });
 
   // POST /api/auth/totp/confirm - Confirm Authenticator pairing with a live 6-digit RFC 6238 code
-  app.post('/api/auth/totp/confirm', async (req: Request, res: Response) => {
+  app.post('/api/auth/totp/confirm', totpRateLimit, async (req: Request, res: Response) => {
     const parsed = parseBody(totpConfirmSchema, req, res);
     if (!parsed.ok) return;
     const { userEmail, token, trustFor7Days = false } = parsed.data;
@@ -385,7 +398,7 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
   });
 
   // POST /api/auth/verify-2fa (Real RFC 6238 TOTP token only, with replay protection & 7-day trust)
-  app.post('/api/auth/verify-2fa', async (req: Request, res: Response) => {
+  app.post('/api/auth/verify-2fa', totpRateLimit, async (req: Request, res: Response) => {
     const parsed = parseBody(verify2faSchema, req, res);
     if (!parsed.ok) return;
     const { token, method, trustFor7Days = false, userEmail } = parsed.data;

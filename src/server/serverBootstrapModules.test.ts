@@ -22,7 +22,11 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { mountFrontend, registerErrorHandler } from './frontendServing';
-import { getSessionSigningSecret } from './userDirectory';
+import {
+  createAdminIdentityConfig,
+  getSessionSigningSecret,
+  readEnvAdminEmails,
+} from './userDirectory';
 
 describe('server.ts bootstrap modules (split from server.ts)', () => {
   afterEach(() => {
@@ -149,5 +153,21 @@ describe('server.ts bootstrap modules (split from server.ts)', () => {
     const a = getSessionSigningSecret();
     expect(a.length).toBeGreaterThanOrEqual(32);
     expect(getSessionSigningSecret()).toBe(a);
+  });
+
+  it('admin emails come only from ADMIN_EMAIL / ADMIN_EMAILS (nothing hardcoded)', () => {
+    vi.stubEnv('ADMIN_EMAIL', '');
+    vi.stubEnv('ADMIN_EMAILS', '');
+    expect(createAdminIdentityConfig().SEEDED_ADMIN_EMAILS.size).toBe(0);
+
+    expect(
+      readEnvAdminEmails({
+        ADMIN_EMAIL: ' Owner@Example.com ',
+        ADMIN_EMAILS: 'ops@example.com, owner@example.com,,not-an-email',
+      } as NodeJS.ProcessEnv)
+    ).toEqual(['owner@example.com', 'ops@example.com']);
+
+    vi.stubEnv('ADMIN_EMAILS', 'ops@example.com');
+    expect([...createAdminIdentityConfig().SEEDED_ADMIN_EMAILS]).toEqual(['ops@example.com']);
   });
 });
