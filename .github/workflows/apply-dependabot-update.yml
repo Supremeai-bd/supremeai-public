@@ -12,7 +12,7 @@ name: 'Dependabot — Intelligent Apply Gate'
 #                                                     breaking-change রিপোর্ট + BLOCK
 #
 # হার্ড গেট (একটিও ফেল করলে merge হবে না):
-#   ১. required checks (unified-pipeline + CodeQL)
+#   ১. required checks (unified-pipeline — CodeQL এখন এর ভেতরের job)
 #   ২. lockfile consistency (npm ci --dry-run)
 #   ৩. Node-runtime ↔ @types/node parity  ← #14-এর মতো skew ঠেকায়
 #   ৪. cross-tree version consistency (root/ext)
