@@ -76,6 +76,7 @@ import {
   type AgentToolAction,
   type PendingTaskApproval,
 } from '../shared/agentTypes';
+import { isAutoModelRoutingActive } from '../utils/modelRouting';
 
 const STORAGE_KEY = 'supremeai_studio_sessions_v1';
 const RUN_SETTINGS_STORAGE_KEY = 'supremeai_workbench_run_settings_v1';
@@ -651,8 +652,11 @@ export const useChatStore = create<ChatState>((set, get) => {
       // বাংলা মন্তব্য: Developer Mode নেই — সাধারণ ইউজারের জন্য thinking/search/JSON সব সিস্টেম
       // নিজেই ঠিক করে। শুধু অ্যাডমিন টেস্টিংয়ের জন্য সেভ করা ম্যানুয়াল রান-সেটিং ব্যবহার করতে পারেন।
       const canUseManualRunOverrides = authStateSnapshot.currentRole === 'admin';
-      // বাংলা মন্তব্য: সব প্ল্যাটফর্মে (Web, Desktop, Mobile, VS Code) ব্যবহারকারী যে মডেল বা Auto-Routing বেছে নেবেন সেটিই কার্যকর হবে
-      const useAutoRouting = customerSettingsSnapshot.autoModelRouting !== false;
+      // বাংলা মন্তব্য: মডেল সবসময় সিস্টেম নিজে বাছে — শুধু অ্যাডমিন টেস্টিংয়ের জন্য অটো-রাউটিং বন্ধ রাখতে পারেন
+      const useAutoRouting = isAutoModelRoutingActive(
+        customerSettingsSnapshot.autoModelRouting,
+        authStateSnapshot.currentRole
+      );
 
       const semanticRecommendedModel = precomputedIntent?.recommendedModelId
         ? SUPREMEAI_MODELS.find((m) => m.id === precomputedIntent.recommendedModelId)

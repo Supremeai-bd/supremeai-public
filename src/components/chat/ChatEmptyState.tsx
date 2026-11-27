@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import { RolePersona, ModelDetail } from '../../types';
 import { useThemeStore } from '../../stores/useThemeStore';
 import { useCustomerStore } from '../../stores/useCustomerStore';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { isAutoModelRoutingActive } from '../../utils/modelRouting';
 import { useI18n } from '../../utils/i18n';
 
 interface ChatEmptyStateProps {
@@ -18,7 +20,9 @@ export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
 }) => {
   const [isKeyPulse, setIsKeyPulse] = useState(false);
   const liveTheme = useThemeStore((s) => s.liveTheme);
-  const autoModelRouting = useCustomerStore((s) => s.userSettings.autoModelRouting !== false);
+  const savedAutoRouting = useCustomerStore((s) => s.userSettings.autoModelRouting);
+  const currentRole = useAuthStore((s) => s.currentRole);
+  const autoModelRouting = isAutoModelRoutingActive(savedAutoRouting, currentRole);
   const isScenic = liveTheme !== 'cyber-studio';
   const { t } = useI18n();
 

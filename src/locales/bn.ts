@@ -395,7 +395,6 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   monthlyUsageAllowanceTitle: 'মাসিক ব্যবহারের সীমা',
   resetsMonthlyLabel: 'প্রতি মাসে রিসেট হয়',
   preferencesAiModeTitle: 'পছন্দসমূহ, AI পারসোনা ও ওয়ার্কস্পেস মোড',
-  defaultModelLabel: 'ডিফল্ট SupremeAI মডেল',
   customInstructionsTitle: 'কাস্টম নির্দেশনা ও AI পারসোনা',
   activePersonaLabel: 'সক্রিয় পারসোনা:',
   manageDocsBtn: 'ডকুমেন্ট দেখুন',
@@ -906,8 +905,6 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsLiveAutoPreviewHint: 'প্রিভিউ-এর সাথে স্বয়ংক্রিয় সিঙ্ক',
   opsConsoleTitle: 'অপস ও অ্যাডমিন কনসোল',
   autoModelTitle: 'SupremeAI · অটো',
-  autoModelSettingLabel: 'স্মার্ট অটো মডেল রাউটিং',
-  autoModelSettingDesc: 'কাজের জটিলতা অনুযায়ী স্বয়ংক্রিয়ভাবে সেরা SupremeAI মডেল নির্বাচন করুন।',
   quickStartersHeader: 'দ্রুত শুরু করুন',
   starterBuildAppTitle: 'ওয়েব অ্যাপ তৈরি',
   starterBuildAppPrompt:
