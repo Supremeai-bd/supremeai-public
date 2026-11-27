@@ -1190,7 +1190,7 @@ export default function App() {
                   </p>
                 </div>
                 <div className="flex items-center justify-center gap-2 pt-2">
-                  {(Boolean(authUser && isAuthorizedAdminEmail(authUser.email)) ||
+                  {(isAuthorizedAdmin ||
                     impersonatedCustomer) && (
                     <button
                       type="button"
@@ -2003,6 +2003,7 @@ export default function App() {
           {isTwoFactorModalOpen && (
             <AdminTwoFactorModal
               isOpen={isTwoFactorModalOpen}
+              isAdminEligible={isAuthorizedAdmin}
               onClose={() => setIsTwoFactorModalOpen(false)}
               onSuccess={(newTrustedUntil) => {
                 if (newTrustedUntil) {

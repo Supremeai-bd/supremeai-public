@@ -1,6 +1,7 @@
 import { env } from '../config/env';
 import { DEFAULT_BACKEND_ORIGIN } from '../config/platformEndpoints';
 import { logger } from '../utils/logger';
+import { storedAuthUserIsAdmin } from '../utils/adminIdentity';
 
 export interface ApiRequestOptions extends RequestInit {
   timeoutMs?: number;
@@ -180,16 +181,8 @@ class ApiClient {
 
       // বাংলা মন্তব্য: অনুমোদিত প্রোজেক্ট অ্যাডমিনের ক্ষেত্রে সেশন টোকেনটিকেই অ্যাডমিন টোকেন হিসেবে ব্রিজ করা হচ্ছে
       const userRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('supremeai_auth_user') : null;
-      if (userRaw) {
-        const user = JSON.parse(userRaw);
-        const email = String(user?.email || '').trim().toLowerCase();
-        const isHardcodedAdmin =
-          email === 'niloyjoy7@gmail.com' ||
-          email === 'paykaribazaronline@gmail.com' ||
-          email === 'operator@supremeai.bd';
-        if (user?.role === 'admin' || user?.isAdminEligible || isHardcodedAdmin) {
-          return this.getAuthToken();
-        }
+      if (storedAuthUserIsAdmin(userRaw)) {
+        return this.getAuthToken();
       }
     } catch {
       return null;
