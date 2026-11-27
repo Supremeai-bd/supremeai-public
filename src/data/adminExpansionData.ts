@@ -379,7 +379,7 @@ export const INITIAL_FEATURE_FLAGS = [
   // enable_multimodal_vision (stream.ts) ও enable_rag_grounding (stream.ts)।
   // enable_supreme_reason, enable_continuous_agent_swarm, enforce_strict_rate_limits —
   // সার্ভারে কোথাও এনফোর্স হয় না, তাই ডেড ফ্ল্যাগ হিসেবে বাদ দেওয়া হয়েছে।
-  // maintenance_mode ইতিমধ্যেই AdminOverviewView-এর Platform Governance কার্ডে
+  // maintenance_mode ইতিমধ্যেই AdminPlatformSettingsView-এ
   // আলাদা টগল আছে, তাই এখানে পুনরায় রাখা হয়নি।
   {
     key: 'enable_multimodal_vision',

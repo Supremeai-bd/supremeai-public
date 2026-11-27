@@ -2,6 +2,8 @@ import type { TranslationKeys } from '../locales/en';
 
 export const ADMIN_ONLY_TABS = new Set([
   'admin-overview',
+  'admin-logs',
+  'platform-settings',
   'hitl-policies',
   'release-gate',
   'external-agents',
@@ -34,7 +36,9 @@ export const SUBVIEW_TITLES: Record<string, string> = {
   'user-team': 'Team & Members',
   'user-billing': 'Plan & Usage',
   'user-settings': 'Account & Workspace Settings',
-  'admin-overview': 'Central Control Center',
+  'admin-overview': 'Admin Overview',
+  'admin-logs': 'Logs',
+  'platform-settings': 'Platform Settings',
   'hitl-policies': 'HITL Approvals & Policies',
   'release-gate': 'Release Gate & Render Deploy',
   'external-agents': 'External Agents & Bridge',
