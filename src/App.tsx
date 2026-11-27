@@ -63,9 +63,6 @@ import {
   computeJarvisToggleState,
 } from './utils/jarvisVoiceRouter';
 
-const ChatHistoryView = React.lazy(() =>
-  import('./components/chat/ChatHistoryView').then((m) => ({ default: m.ChatHistoryView }))
-);
 const LiveVoicePanel = React.lazy(() =>
   import('./components/chat/LiveVoicePanel').then((m) => ({ default: m.LiveVoicePanel }))
 );
@@ -225,6 +222,7 @@ import { AdminConsoleNav } from './components/admin/AdminConsoleNav';
 import { AdminSectionTabs } from './components/admin/AdminSectionTabs';
 import { UserProject, ChatAttachment } from './types';
 import { useI18n } from './utils/i18n';
+import { FOCUS_CHAT_SEARCH_EVENT } from './utils/chatSearch';
 import { executeScheduledTaskOnce, loadScheduledTasks } from './services/browserVaultService';
 import { getCronMinuteKey, matchesCronAtDate } from './shared/cronMatcher';
 
@@ -838,7 +836,10 @@ export default function App() {
         handleSelectTab('user-settings');
         return true;
       case 'open_history':
-        handleSelectTab('chat-history');
+        // বাংলা মন্তব্য: আলাদা হিস্ট্রি পেজ নেই — সাইডবার খুলে চ্যাট সার্চে ফোকাস
+        handleSelectTab('chat');
+        setSidebarOpen(true);
+        window.dispatchEvent(new Event(FOCUS_CHAT_SEARCH_EVENT));
         return true;
       case 'open_admin_health':
         if (effectiveRole === 'admin') {
@@ -1715,21 +1716,6 @@ export default function App() {
                         </div>
                       }
                     >
-                      {/* All Conversations / Chat History View */}
-                      {activeTab === 'chat-history' && (
-                        <ChatHistoryView
-                          sessions={sessions}
-                          activeSessionId={currentSession?.id || ''}
-                          onSelectSession={selectSession}
-                          onDeleteSession={deleteSession}
-                          onRenameSession={renameSession}
-                          onTogglePinSession={togglePinSession}
-                          onBranchSession={branchSession}
-                          onNewSession={createNewSession}
-                          onOpenChat={() => setActiveTab('chat')}
-                        />
-                      )}
-
                       {/* 2. Customer Workspace Views */}
                       {activeTab === 'user-projects' && (
                         <UserProjectsView

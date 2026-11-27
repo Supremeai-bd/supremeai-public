@@ -29,7 +29,6 @@ export const DEV_ONLY_TABS = new Set<string>();
 
 export const SUBVIEW_TITLES: Record<string, string> = {
   'universal-inbox': 'Universal Inbox',
-  'chat-history': 'All Conversations',
   'user-projects': 'My Projects',
   'user-api-keys': 'API Keys & Providers',
   'boost-limit': 'Boost Limit — Add Your Free AI Keys',
@@ -77,7 +76,6 @@ export function getLocalizedSubviewTitle(
   t: Record<TranslationKeys, string>
 ): string {
   const localizedMap: Record<string, string> = {
-    'chat-history': t.subviewChatHistory,
     'user-projects': t.subviewProjects,
     'user-api-keys': t.subviewApiKeys,
     'boost-limit': t.subviewBoostLimit,
