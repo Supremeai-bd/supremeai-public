@@ -16,6 +16,7 @@ import {
   tierToModel,
 } from '../models';
 import { VsCodeSyncEngine, VsCodeSyncEnvelope } from '../sync_client';
+import { gatewayFetch, normalizeUserKey, resetGatewayAuthCache } from '../gatewayAuth';
 
 async function runTests(): Promise<void> {
   console.log('=== SupremeAI VS Code Extension & 4-Platform Sync Tests ===');
@@ -271,6 +272,77 @@ async function runTests(): Promise<void> {
       (sseResponse as http.ServerResponse).end();
     }
     mockServer.close();
+  }
+
+  // ── P0: VSIX 401 — gateway auth never sends the literal "guest" ──────────
+  {
+    resetGatewayAuthCache();
+    let guestIssued = 0;
+    const seenKeys: string[] = [];
+    const gw = http.createServer((req, res) => {
+      if (req.url === '/api/v1/auth/guest' && req.method === 'POST') {
+        guestIssued += 1;
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ access_token: `sk-supreme-guest-${guestIssued}.sig`, expires_in: 3600 }));
+        return;
+      }
+      if (req.url === '/v1/chat/completions') {
+        const key = String(req.headers['x-supremeai-key'] || '');
+        seenKeys.push(key);
+        // Mirrors gateway auth_verification: only signed guest tokens or the real user key pass.
+        const ok = key === 'sk-user-valid' || /^sk-supreme-guest-\d+\.sig$/.test(key);
+        // Guest token #1 is "expired" server-side to exercise the refresh path.
+        const expired = key === 'sk-supreme-guest-1.sig' && guestIssued === 1;
+        res.writeHead(ok && !expired ? 200 : 401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(ok && !expired ? { choices: [{ message: { content: 'hi' } }] } : { detail: 'Unauthorized' }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((r) => gw.listen(0, '127.0.0.1', () => r()));
+    const port = (gw.address() as { port: number }).port;
+    const gatewayUrl = `http://127.0.0.1:${port}/`;
+    const init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' };
+    try {
+      assert.strictEqual(normalizeUserKey('guest'), null);
+      assert.strictEqual(normalizeUserKey('  '), null);
+      assert.strictEqual(normalizeUserKey('sk-supreme-guest-x'), null);
+      assert.strictEqual(normalizeUserKey('sk-user-valid'), 'sk-user-valid');
+
+      // No key → signed guest token; a 401 on it refreshes once and succeeds.
+      const r1 = await gatewayFetch('/v1/chat/completions', init, { gatewayUrl, apiKey: '' });
+      assert.strictEqual(r1.status, 200);
+      assert.ok(!seenKeys.includes('guest'), 'literal "guest" must never be sent');
+      assert.deepStrictEqual(seenKeys, ['sk-supreme-guest-1.sig', 'sk-supreme-guest-2.sig']);
+
+      // Cached guest token is reused (no new issuance).
+      const r2 = await gatewayFetch('/v1/chat/completions', init, { gatewayUrl, apiKey: 'guest' });
+      assert.strictEqual(r2.status, 200);
+      assert.strictEqual(guestIssued, 2);
+
+      // A valid user key goes straight through.
+      seenKeys.length = 0;
+      const r3 = await gatewayFetch('/v1/chat/completions', init, { gatewayUrl, apiKey: 'sk-user-valid' });
+      assert.strictEqual(r3.status, 200);
+      assert.deepStrictEqual(seenKeys, ['sk-user-valid']);
+
+      // A rejected user key warns once and keeps working in guest mode.
+      const warned: number[] = [];
+      seenKeys.length = 0;
+      const r4 = await gatewayFetch('/v1/chat/completions', init, {
+        gatewayUrl,
+        apiKey: 'sk-user-revoked',
+        onUserKeyRejected: (st) => warned.push(st),
+      });
+      assert.strictEqual(r4.status, 200);
+      assert.deepStrictEqual(warned, [401]);
+      assert.deepStrictEqual(seenKeys, ['sk-user-revoked', 'sk-supreme-guest-2.sig']);
+      console.log('  ✓ Gateway auth: signed guest token, 401 refresh, user-key fallback (VSIX 401 fix)');
+    } finally {
+      gw.close();
+      resetGatewayAuthCache();
+    }
   }
 
   console.log('ALL EXTENSION & UNIFIED VSIX TESTS PASSED!');

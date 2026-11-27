@@ -11,6 +11,8 @@ import {
   tierToModel,
 } from '../models';
 import { VsCodeSyncEngine } from '../sync_client';
+import { warnUserKeyRejected } from '../authNotice';
+import { gatewayFetch } from '../gatewayAuth';
 
 const DEFAULT_GATEWAY_URL = 'https://supremeai-api-ulw0.onrender.com';
 
@@ -63,26 +65,27 @@ export async function inlineChatCommand(syncEngine?: VsCodeSyncEngine): Promise<
     },
     async () => {
       try {
-        const res = await fetch(gatewayUrl.replace(/\/$/, '') + '/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-SupremeAI-Key': apiKey || 'guest',
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        const res = await gatewayFetch(
+          '/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: 'system', content: systemContent },
+                { role: 'user', content: prompt },
+              ],
+              temperature,
+              reasoning_effort: thinkingLevelToReasoningEffort(thinkingLevel),
+              stream: false,
+            }),
           },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: 'system', content: systemContent },
-              { role: 'user', content: prompt },
-            ],
-            temperature,
-            reasoning_effort: thinkingLevelToReasoningEffort(thinkingLevel),
-            stream: false,
-          }),
-        });
+          { gatewayUrl, apiKey, onUserKeyRejected: warnUserKeyRejected }
+        );
         if (!res.ok) {
-          channel.appendLine(`Error: HTTP ${res.status}`);
+          const detail = (await res.text().catch(() => '')).slice(0, 200);
+          channel.appendLine(`Error: HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
           return;
         }
         const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
