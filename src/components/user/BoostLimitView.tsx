@@ -1,456 +1,481 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Zap,
-  Shield,
+  ShieldCheck,
   ExternalLink,
   CheckCircle2,
-  AlertCircle,
-  Sparkles,
+  AlertTriangle,
   KeyRound,
   RefreshCw,
-  Plus,
-  Flame,
-  Layers,
-  Check,
-  X,
+  Eye,
+  EyeOff,
+  ClipboardPaste,
+  Trash2,
+  Loader2,
+  Sparkles,
 } from 'lucide-react';
-import { POOL_PROVIDER_MANIFESTS, PoolProviderManifest } from '../../constants/poolProvidersManifest';
-import { poolService, UserQuotaResponse } from '../../services/poolService';
+import {
+  POOL_PROVIDER_MANIFESTS,
+  PoolProviderManifest,
+} from '../../constants/poolProvidersManifest';
+import {
+  ContributedKey,
+  MAX_ACTIVE_POOL_KEYS,
+  UserQuotaResponse,
+  detectPoolProvider,
+  isKeyFormatValid,
+  maskPoolKey,
+  poolService,
+} from '../../services/poolService';
+import { toast } from '../../stores/useToastStore';
+import { useI18n } from '../../utils/i18n';
 
-interface ContributedKeyItem {
-  id: string;
-  provider: string;
-  keyMasked: string;
-  status: 'valid' | 'pending' | 'invalid';
-  bonusTokens: number;
-  addedAt: string;
+interface BoostLimitViewProps {
+  isGuest?: boolean;
 }
 
-export const BoostLimitView: React.FC = () => {
-  const [manifests, setManifests] = useState<PoolProviderManifest[]>(POOL_PROVIDER_MANIFESTS);
-  const [quota, setQuota] = useState<UserQuotaResponse>({
-    user_id: '',
-    valid_keys_count: 0,
-    daily_bonus_tokens: 0,
-  });
-  const [loading, setLoading] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState<PoolProviderManifest | null>(null);
-  const [inputKey, setInputKey] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
+const formatTokens = (n: number): string =>
+  n >= 1_000_000
+    ? `${(n / 1_000_000).toFixed(1)}M`
+    : n >= 1000
+      ? `${Math.round(n / 1000)}K`
+      : `${n}`;
 
-  // Local state for recently contributed keys to show table feedback
-  const [recentKeys, setRecentKeys] = useState<ContributedKeyItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('supremeai_contributed_keys_cache');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+/**
+ * বাংলা মন্তব্য: "লিমিট বাড়ান" — নিজের Gmail দিয়ে বানানো ফ্রি AI কী যোগ করার ট্যাব (#65-এর ফিচার,
+ * নতুন ডিজাইনে ফেরত)। ইউজারকে প্রোভাইডার বাছতে হয় না: কী পেস্ট করলেই ফরম্যাট দেখে নিজে চিনে নেয়,
+ * সার্ভার যাচাই করে, তারপর দৈনিক বোনাস যোগ হয়। কাঁচা কী ব্রাউজারে কোথাও জমা থাকে না।
+ */
+export const BoostLimitView: React.FC<BoostLimitViewProps> = ({ isGuest = false }) => {
+  const { lang } = useI18n();
+  const bn = lang === 'bn';
+  const L = (bnText: string, enText: string) => (bn ? bnText : enText);
+
+  const [manifests, setManifests] = useState<PoolProviderManifest[]>(POOL_PROVIDER_MANIFESTS);
+  const [quota, setQuota] = useState<UserQuotaResponse | null>(null);
+  const [myKeys, setMyKeys] = useState<ContributedKey[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const [rawKey, setRawKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [manualProviderId, setManualProviderId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    try {
-      const [provs, q] = await Promise.all([
-        poolService.getProviders(),
-        poolService.getQuota(),
-      ]);
-      if (provs && provs.length) setManifests(provs);
-      if (q) setQuota(q);
-    } catch {
-      // Offline fallback
-    } finally {
-      setLoading(false);
-    }
+    const [provs, q, keys] = await Promise.all([
+      poolService.getProviders(),
+      poolService.getQuota(),
+      poolService.listMyKeys(),
+    ]);
+    setManifests(provs);
+    setQuota(q);
+    setMyKeys(keys);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    if (!isGuest) void loadData();
+  }, [isGuest, loadData]);
 
-  const handleOpenConnect = (provider: PoolProviderManifest) => {
-    setSelectedProvider(provider);
-    setInputKey('');
-    setSubmitError(null);
-    setSubmitSuccess(null);
-  };
+  const detected = useMemo(() => detectPoolProvider(rawKey, manifests), [rawKey, manifests]);
+  const manualProvider = manifests.find((m) => m.id === manualProviderId) || null;
+  const targetProvider = detected || manualProvider;
+  const trimmed = rawKey.trim();
+  const formatOk = targetProvider ? isKeyFormatValid(trimmed, targetProvider) : false;
+  const canSubmit = Boolean(targetProvider && formatOk && !submitting);
 
-  const handleCloseModal = () => {
-    setSelectedProvider(null);
-    setInputKey('');
-    setSubmitError(null);
-    setSubmitSuccess(null);
-  };
+  const contributedProviders = useMemo(
+    () => new Set((myKeys || []).filter((k) => k.status === 'valid').map((k) => k.provider)),
+    [myKeys]
+  );
+  const activeCount =
+    quota?.valid_keys_count ?? (myKeys || []).filter((k) => k.status === 'valid').length;
+  const dailyBonus = quota?.daily_bonus_tokens ?? 0;
+  const progressPct = Math.min(100, Math.round((activeCount / MAX_ACTIVE_POOL_KEYS) * 100));
 
-  const isKeyFormatValid = useCallback(() => {
-    if (!selectedProvider || !inputKey.trim()) return false;
+  const handlePaste = async () => {
     try {
-      const re = new RegExp(selectedProvider.keyPattern);
-      return re.test(inputKey.trim());
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setRawKey(text.trim());
+        setSubmitError(null);
+      }
     } catch {
-      return inputKey.trim().length >= 10;
-    }
-  }, [selectedProvider, inputKey]);
-
-  const handleSubmitKey = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedProvider || !inputKey.trim()) return;
-
-    if (!isKeyFormatValid()) {
-      setSubmitError('Key format does not match the expected pattern for this provider.');
-      return;
-    }
-
-    setIsSubmitting(true);
-    setSubmitError(null);
-    try {
-      const res = await poolService.contributeKey(selectedProvider.id, inputKey.trim());
-      setSubmitSuccess(`🎉 Success! Key verified and added. You received +${selectedProvider.bonusTokensPerDay.toLocaleString()} daily tokens!`);
-
-      // Add to local recent keys list
-      const masked = inputKey.trim().slice(0, 7) + '...' + inputKey.trim().slice(-4);
-      const newKeyItem: ContributedKeyItem = {
-        id: `key_${Date.now()}`,
-        provider: selectedProvider.id,
-        keyMasked: masked,
-        status: 'valid',
-        bonusTokens: selectedProvider.bonusTokensPerDay,
-        addedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-
-      const updated = [newKeyItem, ...recentKeys.slice(0, 9)];
-      setRecentKeys(updated);
-      try {
-        localStorage.setItem('supremeai_contributed_keys_cache', JSON.stringify(updated));
-      } catch {}
-
-      // Update quota state immediately
-      setQuota((prev) => ({
-        ...prev,
-        valid_keys_count: Math.min(10, prev.valid_keys_count + 1),
-        daily_bonus_tokens: prev.daily_bonus_tokens + selectedProvider.bonusTokensPerDay,
-      }));
-
-      setTimeout(() => {
-        handleCloseModal();
-      }, 2200);
-    } catch (err: any) {
-      setSubmitError(err.message || 'Verification failed. Please check that the key is active.');
-    } finally {
-      setIsSubmitting(false);
+      toast.info(
+        L('পেস্ট করুন', 'Paste manually'),
+        L('Ctrl+V দিয়ে কী পেস্ট করুন।', 'Use Ctrl+V to paste the key.')
+      );
     }
   };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!targetProvider || !formatOk) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await poolService.contributeKey(targetProvider.id, trimmed);
+      toast.success(
+        L('কী যোগ হয়েছে', 'Key added'),
+        L(
+          `${targetProvider.name} — প্রতিদিন +${formatTokens(res.bonus_earned || targetProvider.bonusTokensPerDay)} টোকেন বোনাস`,
+          `${targetProvider.name} — +${formatTokens(res.bonus_earned || targetProvider.bonusTokensPerDay)} bonus tokens / day`
+        )
+      );
+      setRawKey('');
+      setManualProviderId(null);
+      setShowKey(false);
+      await loadData();
+    } catch (err: unknown) {
+      setSubmitError(
+        err instanceof Error ? err.message : L('কী যোগ করা যায়নি', 'Could not add key')
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRemove = async (key: ContributedKey) => {
+    setRemovingId(key.id);
+    try {
+      await poolService.removeKey(key.id);
+      toast.success(L('কী সরানো হয়েছে', 'Key removed'));
+      await loadData();
+    } catch (err: unknown) {
+      toast.error(
+        L('সরানো যায়নি', 'Could not remove'),
+        err instanceof Error ? err.message : undefined
+      );
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
+  if (isGuest) {
+    return (
+      <div className="max-w-xl mx-auto p-6 text-center text-sm text-slate-600 dark:text-slate-300">
+        {L('লিমিট বাড়াতে আগে সাইন ইন করুন।', 'Sign in to boost your limit.')}
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6 max-w-7xl mx-auto">
-      {/* Header Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-cyan-500/10 border border-amber-500/20 p-6 md:p-8 backdrop-blur-sm">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-500 text-xs font-semibold tracking-wide">
-              <Zap className="w-3.5 h-3.5 animate-pulse" />
-              <span>COMMUNITY COMPUTE FLEET & BONUS QUOTA</span>
-            </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Boost Your Limit with AI Keys
-            </h1>
-            <p className="text-sm text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
-              Donate your free tier AI provider keys to the SupremeAI collective mesh. In exchange,
-              unlock <strong className="text-amber-500">+100,000 to +150,000 daily free tokens</strong> for every active key!
+    <div data-testid="boost-limit-view" className="max-w-4xl mx-auto p-4 sm:p-6 space-y-5">
+      {/* ১. হিরো: আজকের বোনাস ও সক্রিয় কী */}
+      <section className="rounded-2xl border border-amber-200/70 dark:border-amber-500/20 bg-gradient-to-br from-amber-50 via-white to-cyan-50 dark:from-amber-500/10 dark:via-slate-900 dark:to-cyan-500/10 p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Zap className="w-5 h-5 text-amber-500" />
+              {L('লিমিট বাড়ান', 'Boost your limit')}
+            </h2>
+            <p className="text-xs text-slate-600 dark:text-slate-300 max-w-md">
+              {L(
+                'নিজের Gmail দিয়ে ফ্রি AI কী বানান, এখানে পেস্ট করুন। প্রতিটি বৈধ কী-তে প্রতিদিন বোনাস টোকেন যোগ হয়।',
+                'Create free AI keys with your own Gmail and paste them here. Every valid key adds bonus tokens every day.'
+              )}
             </p>
           </div>
-
-          {/* Live Quota Badge Card */}
-          <div className="flex flex-row md:flex-col items-center justify-between p-4 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-lg min-w-[220px]">
-            <div className="text-left md:text-center">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Daily Active Bonus
-              </span>
-              <div className="text-2xl font-black text-amber-500 flex items-center gap-1 md:justify-center">
-                <span>+{quota.daily_bonus_tokens.toLocaleString()}</span>
-                <span className="text-xs text-slate-400 font-normal">Tokens/Day</span>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {L('দৈনিক বোনাস', 'Daily bonus')}
+              </div>
+              <div
+                data-testid="boost-daily-bonus"
+                className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400"
+              >
+                {quota === null && !loading ? '—' : `+${formatTokens(dailyBonus)}`}
               </div>
             </div>
-            <div className="mt-0 md:mt-2 pt-0 md:pt-2 border-l md:border-l-0 md:border-t border-slate-200 dark:border-slate-800 pl-4 md:pl-0 flex items-center justify-between w-full text-xs font-medium text-slate-600 dark:text-slate-300">
-              <span>Active Keys:</span>
-              <span className="font-mono text-emerald-500 font-bold">{quota.valid_keys_count} / 10 Cap</span>
-            </div>
+            <button
+              type="button"
+              onClick={() => void loadData()}
+              aria-label={L('রিফ্রেশ', 'Refresh')}
+              className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/60 text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         </div>
-      </div>
+        <div className="mt-4">
+          <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1">
+            <span>{L('সক্রিয় কী', 'Active keys')}</span>
+            <span className="tabular-nums">
+              {activeCount}/{MAX_ACTIVE_POOL_KEYS}
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-slate-200/80 dark:bg-slate-800 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-cyan-400 transition-all"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+        </div>
+      </section>
 
-      {/* Manifest Provider Grid */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-cyan-500" />
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">
-              Available Fleet Nodes (1-Click Connect)
-            </h2>
+      {/* ২. একটাই বক্স: কী পেস্ট করুন — প্রোভাইডার নিজে থেকেই চেনা হবে */}
+      <form
+        onSubmit={handleSubmit}
+        className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-4 sm:p-5 space-y-3"
+      >
+        <label
+          htmlFor="boost-key-input"
+          className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2"
+        >
+          <KeyRound className="w-4 h-4 text-cyan-500" />
+          {L('আপনার কী পেস্ট করুন', 'Paste your key')}
+        </label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <input
+              id="boost-key-input"
+              data-testid="boost-key-input"
+              type={showKey ? 'text' : 'password'}
+              value={rawKey}
+              onChange={(e) => {
+                setRawKey(e.target.value);
+                setSubmitError(null);
+              }}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={L('যেমন: AIzaSy… বা gsk_…', 'e.g. AIzaSy… or gsk_…')}
+              className="w-full pl-3 pr-10 py-2.5 text-sm font-mono rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-cyan-400"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((v) => !v)}
+              aria-label={showKey ? L('লুকান', 'Hide') : L('দেখান', 'Show')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+            >
+              {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
           </div>
           <button
             type="button"
-            onClick={loadData}
-            disabled={loading}
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+            onClick={() => void handlePaste()}
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 hover:border-cyan-400 cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            <ClipboardPaste className="w-4 h-4" />
+            {L('পেস্ট', 'Paste')}
+          </button>
+          <button
+            type="submit"
+            data-testid="boost-submit"
+            disabled={!canSubmit}
+            className="inline-flex items-center gap-1.5 px-4 rounded-xl text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            {submitting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Zap className="w-4 h-4" />
+            )}
+            {L('যোগ করুন', 'Add')}
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {manifests.map((prov) => {
-            const isKilo = prov.id === 'kilo';
+        {/* লাইভ ফিডব্যাক */}
+        {trimmed.length > 0 && (
+          <div data-testid="boost-detect-status" className="text-xs">
+            {detected ? (
+              <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {L(`চেনা গেছে: ${detected.name}`, `Detected: ${detected.name}`)} ·{' '}
+                {maskPoolKey(trimmed)} · +{formatTokens(detected.bonusTokensPerDay)}/
+                {L('দিন', 'day')}
+              </span>
+            ) : manualProvider ? (
+              formatOk ? (
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  {manualProvider.name}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  {L(
+                    `এটা ${manualProvider.name}-এর কী মনে হচ্ছে না`,
+                    `This doesn't look like a ${manualProvider.name} key`
+                  )}
+                </span>
+              )
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {L(
+                  'কী চেনা যায়নি — নিচ থেকে প্রোভাইডার বেছে নিন।',
+                  'Key not recognised — pick the provider below.'
+                )}
+              </span>
+            )}
+          </div>
+        )}
+        {submitError && (
+          <div
+            role="alert"
+            className="text-xs rounded-lg px-3 py-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30"
+          >
+            {submitError}
+          </div>
+        )}
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          {L(
+            'কী সার্ভারে যাচাই করে এনক্রিপ্ট করে রাখা হয়। ব্রাউজারে কোথাও জমা থাকে না, কেউ দেখতে পায় না।',
+            'Keys are verified and encrypted on the server. Never stored in your browser or shown to anyone.'
+          )}
+        </p>
+      </form>
+
+      {/* ৩. ফ্রি কী কোথায় পাবেন */}
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-violet-500" />
+          {L('ফ্রি কী কোথায় পাবেন', 'Where to get free keys')}
+        </h3>
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+          {L(
+            '"কী নিন" চাপুন → নিজের Gmail দিয়ে লগইন → কী কপি করে উপরে পেস্ট করুন।',
+            'Tap "Get key" → sign in with your Gmail → copy the key and paste it above.'
+          )}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {manifests.map((m) => {
+            const added = contributedProviders.has(m.id);
+            const selected = targetProvider?.id === m.id;
             return (
               <div
-                key={prov.id}
-                className={`relative group rounded-xl p-5 transition-all duration-200 flex flex-col justify-between ${
-                  isKilo
-                    ? 'bg-gradient-to-b from-amber-500/10 to-transparent border-2 border-amber-500/40 shadow-lg shadow-amber-500/5'
-                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-xs'
+                key={m.id}
+                data-testid={`boost-provider-${m.id}`}
+                className={`rounded-xl border p-3 flex flex-col gap-2 transition-colors ${
+                  selected
+                    ? 'border-cyan-400 bg-cyan-50/60 dark:bg-cyan-500/10'
+                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60'
                 }`}
               >
-                {isKilo && (
-                  <div className="absolute -top-3 right-4 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[10px] font-bold tracking-wide uppercase shadow-xs flex items-center gap-1">
-                    <Flame className="w-3 h-3" />
-                    <span>👑 VIP MASTER KEY</span>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="text-2xl p-2 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-center">
-                        {prov.logo}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xl leading-none" aria-hidden="true">
+                      {m.logo}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+                        {m.name}
                       </div>
-                      <div>
-                        <h3 className="font-bold text-slate-900 dark:text-white text-sm">
-                          {prov.name}
-                        </h3>
-                        <span className="inline-block text-[10px] font-mono text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/40 px-1.5 py-0.5 rounded">
-                          {prov.speedBadge}
-                        </span>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                        {m.badge}
                       </div>
                     </div>
                   </div>
-
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed min-h-[36px]">
-                    {prov.description}
-                  </p>
-
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
-                    <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
-                      {prov.badge}
+                  {added ? (
+                    <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="w-3 h-3" />
+                      {L('যোগ হয়েছে', 'Added')}
                     </span>
-                    <span className="font-bold text-amber-500 font-mono text-xs">
-                      +{prov.bonusTokensPerDay.toLocaleString()} / Day
+                  ) : (
+                    <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 tabular-nums">
+                      +{formatTokens(m.bonusTokensPerDay)}
                     </span>
-                  </div>
+                  )}
                 </div>
-
-                <div className="mt-4 pt-3 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenConnect(prov)}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      isKilo
-                        ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-sm'
-                        : 'bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900'
-                    }`}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Connect Key</span>
-                  </button>
-
-                  <a
-                    href={prov.gmailAuthUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Open Provider Console"
-                    className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
+                <div className="flex items-center gap-2 mt-auto">
+                  {m.gmailAuthUrl && (
+                    <a
+                      href={m.gmailAuthUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-90"
+                    >
+                      {L('কী নিন', 'Get key')}
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  {!detected && trimmed.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setManualProviderId(m.id)}
+                      className="text-[11px] text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
+                    >
+                      {L('এটাই', 'This one')}
+                    </button>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
-      </div>
+      </section>
 
-      {/* Connected Keys Table / Live Feedback */}
-      {recentKeys.length > 0 && (
-        <div className="space-y-3 pt-4">
-          <div className="flex items-center gap-2">
-            <KeyRound className="w-4 h-4 text-emerald-500" />
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">
-              Recently Connected Fleet Nodes
-            </h2>
+      {/* ৪. আমার যোগ করা কী */}
+      <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+          {L('আমার যোগ করা কী', 'My added keys')}
+        </h3>
+        {loading && myKeys === null ? (
+          <div className="text-xs text-slate-500 flex items-center gap-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            {L('লোড হচ্ছে…', 'Loading…')}
           </div>
-
-          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 border-b border-slate-200 dark:border-slate-800 font-mono">
-                <tr>
-                  <th className="py-2.5 px-4">Provider</th>
-                  <th className="py-2.5 px-4">Key Preview</th>
-                  <th className="py-2.5 px-4">Bonus Tokens</th>
-                  <th className="py-2.5 px-4">Status</th>
-                  <th className="py-2.5 px-4">Added Time</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                {recentKeys.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="py-2.5 px-4 font-bold capitalize text-slate-800 dark:text-slate-200">
-                      {item.provider}
-                    </td>
-                    <td className="py-2.5 px-4 text-slate-500">{item.keyMasked}</td>
-                    <td className="py-2.5 px-4 text-amber-500 font-bold">
-                      +{item.bonusTokens.toLocaleString()} / Day
-                    </td>
-                    <td className="py-2.5 px-4">
-                      <span className="inline-flex items-center gap-1 text-emerald-500 font-semibold">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>Active</span>
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-4 text-slate-400">{item.addedAt}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        ) : myKeys === null ? (
+          <div
+            data-testid="boost-keys-unavailable"
+            className="text-xs text-slate-500 dark:text-slate-400"
+          >
+            {L(
+              'তালিকা এখন আনা যায়নি — সার্ভার সংযোগ ঠিক হলে নিজেই দেখাবে।',
+              'Could not load the list right now — it will appear once the server is reachable.'
+            )}
           </div>
-        </div>
-      )}
-
-      {/* Connect Modal */}
-      {selectedProvider && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl space-y-5">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="text-2xl p-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
-                  {selectedProvider.logo}
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 dark:text-white text-base">
-                    Connect {selectedProvider.name}
-                  </h3>
-                  <p className="text-xs text-amber-500 font-semibold font-mono">
-                    Reward: +{selectedProvider.bonusTokensPerDay.toLocaleString()} Tokens/Day
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleCloseModal}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Quick Helper Step */}
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 text-xs space-y-2 text-slate-600 dark:text-slate-300">
-              <div className="flex items-center justify-between font-medium">
-                <span>1. Open provider console with Gmail:</span>
-                <a
-                  href={selectedProvider.gmailAuthUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-cyan-600 dark:text-cyan-400 font-semibold hover:underline"
-                >
-                  <span>Open Console</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                2. Generate or copy your free API key, then paste it below.
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmitKey} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                  <span>API Key</span>
-                  {inputKey && (
-                    <span
-                      className={`text-[10px] font-mono flex items-center gap-1 ${
-                        isKeyFormatValid() ? 'text-emerald-500' : 'text-amber-500'
-                      }`}
-                    >
-                      {isKeyFormatValid() ? (
-                        <>
-                          <Check className="w-3 h-3" /> Format Valid
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="w-3 h-3" /> Checking Format...
-                        </>
-                      )}
-                    </span>
-                  )}
-                </label>
-                <input
-                  type="password"
-                  value={inputKey}
-                  onChange={(e) => setInputKey(e.target.value)}
-                  placeholder="Paste your API key here..."
-                  required
-                  autoFocus
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs focus:outline-hidden focus:ring-2 focus:ring-amber-500/50"
-                />
-              </div>
-
-              {submitError && (
-                <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{submitError}</span>
-                </div>
-              )}
-
-              {submitSuccess && (
-                <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-emerald-600 dark:text-emerald-400 text-xs font-medium flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 shrink-0" />
-                  <span>{submitSuccess}</span>
-                </div>
-              )}
-
-              <div className="pt-2 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="flex-1 py-2.5 px-4 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !inputKey.trim()}
-                  className="flex-1 py-2.5 px-4 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Verifying Key...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-3.5 h-3.5" />
-                      <span>Verify & Earn Bonus</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+        ) : myKeys.length === 0 ? (
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            {L('এখনো কোনো কী যোগ করেননি।', 'No keys added yet.')}
           </div>
-        </div>
-      )}
+        ) : (
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {myKeys.map((k) => {
+              const m = manifests.find((x) => x.id === k.provider);
+              const ok = k.status === 'valid';
+              return (
+                <li key={k.id} className="py-2 flex items-center gap-3 text-xs">
+                  <span aria-hidden="true">{m?.logo || '🔑'}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-900 dark:text-white truncate">
+                      {m?.name || k.provider}
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-500">
+                      {k.key_hint || '••••'} · {new Date(k.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <span
+                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                      ok
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                    }`}
+                  >
+                    {ok ? `+${formatTokens(k.bonus_weight)}` : L('অকার্যকর', 'Invalid')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleRemove(k)}
+                    disabled={removingId === k.id}
+                    aria-label={L('কী সরান', 'Remove key')}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 disabled:opacity-40 cursor-pointer"
+                  >
+                    {removingId === k.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
     </div>
   );
 };

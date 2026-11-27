@@ -8,7 +8,7 @@ import {
   Check,
   Users,
   Key,
-  BookOpen,
+  Zap,
   CreditCard,
   LogOut,
   PanelLeft,
@@ -49,7 +49,6 @@ interface SidebarProps {
   projectsCount?: number;
   authUser?: AuthUser | null;
   onSignOut?: () => void;
-  enableKnowledgeGrounding?: boolean;
   tokensUsed?: number;
   tokensLimit?: number;
   isGuest?: boolean;
@@ -72,7 +71,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   projectsCount = 2,
   authUser,
   onSignOut,
-  enableKnowledgeGrounding = false,
   tokensUsed = 0,
   tokensLimit = 1000000,
   isGuest = false,
@@ -393,23 +391,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
 
-          {enableKnowledgeGrounding && (
-            <button
-              type="button"
-              onClick={() => onSelectTab('user-knowledge')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer ${
-                activeTab === 'user-knowledge'
-                  ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-900 dark:text-white font-medium'
-                  : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <BookOpen className="w-4 h-4 text-purple-500" />
-                <span>{t.knowledgeBase}</span>
-              </div>
-              {isGuest && <Lock className="w-3 h-3 text-slate-400" />}
-            </button>
-          )}
+          {/* বাংলা মন্তব্য: নিজের Gmail দিয়ে বানানো ফ্রি AI কী যোগ করে দৈনিক লিমিট বাড়ানোর ট্যাব (#65-এর ফিচার, নতুন ডিজাইনে ফেরত) */}
+          <button
+            type="button"
+            onClick={() => onSelectTab('boost-limit')}
+            data-testid="sidebar-boost-limit"
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer ${
+              activeTab === 'boost-limit'
+                ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-900 dark:text-white font-medium'
+                : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Zap className="w-4 h-4 text-amber-500" />
+              <span>{t.boostLimit}</span>
+            </div>
+            {isGuest && <Lock className="w-3 h-3 text-slate-400" />}
+          </button>
 
           <button
             type="button"
