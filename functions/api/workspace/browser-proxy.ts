@@ -82,6 +82,12 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   // Audit 2026-11-24 (item 1.1): presence of a header/cookie is not proof of
   // authentication. Validate the session against the backend before proxying.
   const session = await verifyUpstreamSession(request, upstreamOrigin);
+  if (session.unavailable) {
+    return new Response(
+      JSON.stringify({ error: 'Session check is temporarily unavailable. Please retry.', code: 'session_check_unavailable' }),
+      { status: 503, headers: jsonHeaders }
+    );
+  }
   if (!session.valid) {
     return new Response(
       JSON.stringify({

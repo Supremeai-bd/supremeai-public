@@ -75,6 +75,9 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     upstreamOrigin
   ).catch(() => ({ valid: false, isGuest: false }));
   // বাংলা মন্তব্য: ব্যাকএন্ড (pool.py) `sub`/user_id দিয়ে লেখে — তাই আগে user_id, না থাকলে email।
+  if (session.unavailable) {
+    return reply({ detail: 'Session check is temporarily unavailable. Please retry.' }, 503);
+  }
   const userId = session.user_id || session.email;
   if (!session.valid || session.isGuest || !userId) {
     return reply({ detail: 'Sign in to boost your limit.' }, 401);
