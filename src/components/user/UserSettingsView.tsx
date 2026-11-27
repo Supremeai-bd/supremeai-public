@@ -232,8 +232,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   }, []);
 
   const setChatCustomInstruction = useChatStore((s) => s.setCustomInstruction);
-  const setIsRoleModalOpen = useChatStore((s) => s.setIsRoleModalOpen);
-  const activeRole = useChatStore((s) => s.activeRole);
 
   const themeMode = useThemeStore((s) => s.themeMode);
   const osPrefersDark = useThemeStore((s) => s.osPrefersDark);

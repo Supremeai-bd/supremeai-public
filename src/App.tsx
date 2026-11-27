@@ -76,9 +76,6 @@ const LiveVoicePanel = React.lazy(() =>
 const WorkspaceDock = React.lazy(() =>
   import('./components/workspace/WorkspaceDock').then((m) => ({ default: m.WorkspaceDock }))
 );
-const RoleModal = React.lazy(() =>
-  import('./components/RoleModal').then((m) => ({ default: m.RoleModal }))
-);
 const UniversalInboxPanel = React.lazy(() =>
   import('./components/inbox/UniversalInboxPanel').then((m) => ({ default: m.UniversalInboxPanel }))
 );
@@ -273,7 +270,6 @@ export default function App() {
     inferenceError,
     generatingTitleIds,
     isPromptModalOpen,
-    isRoleModalOpen,
     selectSession,
     deleteSession,
     renameSession,
@@ -283,10 +279,8 @@ export default function App() {
     clearCurrentThread,
     exportThread,
     selectModel,
-    selectRole,
     setCustomInstruction,
     setIsPromptModalOpen,
-    setIsRoleModalOpen,
     sendMessage,
     appendVoiceTurn,
     stopStreaming,
@@ -1224,10 +1218,6 @@ export default function App() {
             onRenameSession={renameSession}
             onTogglePinSession={togglePinSession}
             onNewSession={createNewSession}
-            activeRole={activeRole}
-            onOpenRoleModal={() =>
-              isGuest ? openAuthModal('Role & Model Customization') : setIsRoleModalOpen(true)
-            }
             isOpen={sidebarOpen}
             onToggleOpen={() => setSidebarOpen(!sidebarOpen)}
             onSelectTab={handleSelectTab}

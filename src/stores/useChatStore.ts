@@ -13,6 +13,7 @@ import {
   WorkbenchRunSettings,
 } from '../types';
 import { SYSTEM_ROLES } from '../data/roles';
+import { pickAutoRole } from '../utils/autoRole';
 import { SUPREMEAI_MODELS, normalizeConcreteModelId } from '../data/models';
 import { mergeSyncedSessions } from '../sync/realtimeSync';
 import { chatService, VisionRequestError } from '../services/chatService';
@@ -137,7 +138,6 @@ interface ChatState {
   generatingTitleIds: string[];
   remotePinnedSessionIds: string[];
   isPromptModalOpen: boolean;
-  isRoleModalOpen: boolean;
 
   // Session Management Actions
   selectSession: (id: string) => Promise<void> | void;
@@ -162,11 +162,9 @@ interface ChatState {
 
   // Model & Role Actions
   selectModel: (model: ModelDetail) => void;
-  selectRole: (role: RolePersona, customPrompt?: string) => void;
   setCustomInstruction: (instruction: string) => void;
   updateRunSettings: (patch: Partial<WorkbenchRunSettings>) => void;
   setIsPromptModalOpen: (open: boolean) => void;
-  setIsRoleModalOpen: (open: boolean) => void;
 
   // Inference Actions
   sendMessage: (
@@ -249,7 +247,6 @@ export const useChatStore = create<ChatState>((set, get) => {
     generatingTitleIds: [],
     remotePinnedSessionIds: [],
     isPromptModalOpen: false,
-    isRoleModalOpen: false,
 
     selectSession: async (id: string) => {
       set({ activeSessionId: id, inferenceError: null, inferenceErrorMeta: null });
@@ -462,17 +459,6 @@ export const useChatStore = create<ChatState>((set, get) => {
       toast.info('Model Switched', `Active model set to ${model.name}`);
     },
 
-    selectRole: (role: RolePersona, customPrompt?: string) => {
-      const matchedModel = SUPREMEAI_MODELS.find((m) => m.id === role.suggestedModel);
-      set((state) => ({
-        activeRole: role,
-        customInstruction: customPrompt || '',
-        activeModel: matchedModel || state.activeModel,
-      }));
-      scheduleChatPrefsSync();
-      toast.info('Role Configured', `Persona set to ${role.name}`);
-    },
-
     setCustomInstruction: (instruction: string) => {
       set({ customInstruction: instruction });
       scheduleChatPrefsSync();
@@ -493,7 +479,6 @@ export const useChatStore = create<ChatState>((set, get) => {
       scheduleChatPrefsSync();
     },
     setIsPromptModalOpen: (open: boolean) => set({ isPromptModalOpen: open }),
-    setIsRoleModalOpen: (open: boolean) => set({ isRoleModalOpen: open }),
     clearInferenceError: () => set({ inferenceError: null, inferenceErrorMeta: null }),
     clearPendingTaskApproval: () => set({ pendingTaskApproval: null }),
 
@@ -622,12 +607,16 @@ export const useChatStore = create<ChatState>((set, get) => {
       extraAttachments?: ChatAttachment[],
       precomputedIntent?: IntentOrchestrationResult
     ) => {
-      const { sessions, activeSessionId, activeModel, activeRole, customInstruction, isStreaming } =
-        get();
+      const { sessions, activeSessionId, activeModel, customInstruction, isStreaming } = get();
       const attachmentFields = normalizeAttachmentPayload(extraAttachments, attachment);
       const allAttachments = getMessageAttachments(attachmentFields);
       const primaryAttachment = allAttachments[0];
       if ((!text.trim() && allAttachments.length === 0) || isStreaming) return;
+
+      // বাংলা মন্তব্য: রোল বাছাইয়ের মেনু নেই — মেসেজ দেখে সিস্টেম নিজেই রোল ঠিক করে
+      // (গল্প → Writer, অ্যাপ → Full-Stack, বাগ → Fast Code …)। ছবি-শুধু মেসেজে আগের রোল থাকে।
+      const activeRole = text.trim() ? pickAutoRole(text) : get().activeRole;
+      if (activeRole.id !== get().activeRole.id) set({ activeRole });
 
       const current = sessions.find((s) => s.id === activeSessionId) || sessions[0];
       if (!current) return;
