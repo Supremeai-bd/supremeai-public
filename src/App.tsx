@@ -127,6 +127,9 @@ const AdminCustomersView = React.lazy(() =>
 const AdminTeamAccessView = React.lazy(() =>
   import('./components/admin/AdminTeamAccessView').then((m) => ({ default: m.AdminTeamAccessView }))
 );
+const AdminBackupsView = React.lazy(() =>
+  import('./components/admin/AdminBackupsView').then((m) => ({ default: m.AdminBackupsView }))
+);
 const AdminMcpTowerView = React.lazy(() =>
   import('./components/admin/AdminMcpTowerView').then((m) => ({ default: m.AdminMcpTowerView }))
 );
@@ -1886,6 +1889,7 @@ export default function App() {
                           )}
 
                           {activeTab === 'team-access' && <AdminTeamAccessView />}
+                          {activeTab === 'backups' && <AdminBackupsView />}
 
                           {activeTab === 'health-monitor' && <ControlCenterHealthMonitorView />}
 

@@ -14,6 +14,7 @@ import { extractCiErrorSnippet } from '../../../src/utils/githubPipelineMetrics'
 import { handleAdminRealDataRoute } from '../../_lib/adminRealDataRoutes';
 import { handleAdminTeamRoute } from '../../_lib/adminTeam';
 import { handleAdminModelRouterRoute } from '../../_lib/adminModelRouter';
+import { handleAdminBackupsRoute } from '../../_lib/adminBackups';
 import {
   handleAdminAuditLogRoute,
   withAdminAudit,
@@ -484,6 +485,9 @@ async function handleAdminRequest(
 
   const modelRouter = await handleAdminModelRouterRoute(path, request, env, audit);
   if (modelRouter) return modelRouter;
+
+  const backups = await handleAdminBackupsRoute(path, request, env);
+  if (backups) return backups;
 
   const realData = await handleAdminRealDataRoute(path, request, env, upstreamOrigin);
   if (realData) return realData;

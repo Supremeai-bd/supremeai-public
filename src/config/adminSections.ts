@@ -99,6 +99,7 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
       { id: 'github-pipeline', label: 'GitHub Pipeline' },
       { id: 'release-gate', label: 'Release Gate' },
       { id: 'schema-parity', label: 'Database Schema' },
+      { id: 'backups', label: 'Backups' },
     ],
   },
   {
