@@ -92,13 +92,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   }
 
   if (sub === 'deployments') {
-    const cfToken = typeof env.CLOUDFLARE_API_TOKEN === 'string' ? env.CLOUDFLARE_API_TOKEN.trim() : '';
-    const cfAccountId = typeof env.CLOUDFLARE_ACCOUNT_ID === 'string' ? env.CLOUDFLARE_ACCOUNT_ID.trim() : '';
+    const cfToken = typeof env?.CLOUDFLARE_API_TOKEN === 'string' ? env.CLOUDFLARE_API_TOKEN.trim() : '';
+    const cfAccountId = typeof env?.CLOUDFLARE_ACCOUNT_ID === 'string' ? env.CLOUDFLARE_ACCOUNT_ID.trim() : '';
     const ghHeaders: Record<string, string> = {
       Accept: 'application/vnd.github+json',
       'User-Agent': 'SupremeAI-Admin-Dashboard',
     };
-    const ghToken = typeof env.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN.trim() : '';
+    const ghToken = typeof env?.GITHUB_TOKEN === 'string' ? env.GITHUB_TOKEN.trim() : '';
     if (ghToken) ghHeaders.Authorization = `Bearer ${ghToken}`;
 
     const [cfRes, ghPubRes, ghCoreRes, towerRelRes, gwRes] = await Promise.allSettled([
