@@ -184,7 +184,6 @@ export interface UserAccountSettings {
   language?: AppLanguage;
   layoutMode?: 'sidebar-focus' | 'classic';
   contentLayout?: WorkspaceContentLayout;
-  developerMode?: boolean;
   autoModelRouting?: boolean;
   enableKnowledgeGrounding?: boolean;
   showWorkspaceTips?: boolean;

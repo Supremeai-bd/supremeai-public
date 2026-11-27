@@ -39,7 +39,6 @@ interface ChatMessageItemProps {
   activeRole: RolePersona;
   activeModel: ModelDetail;
   searchQuery?: string;
-  developerMode?: boolean;
   onSpeakText?: (text: string) => void;
 }
 
@@ -147,7 +146,6 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   previousUserTimestamp,
   activeRole,
   activeModel,
-  developerMode = false,
   onSpeakText,
 }) => {
   const { t } = useI18n();
@@ -225,15 +223,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               {isUser ? t.youLabel : message.roleName || activeRole.name}
             </span>
             {!isUser && (
-              <span
-                className={
-                  developerMode
-                    ? 'text-[10px] font-mono theme-accent-text'
-                    : 'text-[10px] theme-accent-text font-medium'
-                }
-              >
-                {developerMode ? message.model || activeModel.id : activeModel.name}
-              </span>
+              <span className="text-[10px] theme-accent-text font-medium">{activeModel.name}</span>
             )}
             {!isUser && message.agentSteps?.some((s) => s.tool === 'vision_inspect') && (
               <span
@@ -264,7 +254,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                         className="text-[10px] font-medium chat-theme-text-muted tabular-nums"
                       >
                         · {poolLabel}
-                        {developerMode && message.routeMeta.servedModel
+                        {message.routeMeta.servedModel
                           ? ` (${message.routeMeta.servedModel})`
                           : ''}
                         {typeof message.routeMeta.firstTokenMs === 'number'

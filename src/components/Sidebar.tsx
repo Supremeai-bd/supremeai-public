@@ -51,7 +51,6 @@ interface SidebarProps {
   projectsCount?: number;
   authUser?: AuthUser | null;
   onSignOut?: () => void;
-  developerMode?: boolean;
   enableKnowledgeGrounding?: boolean;
   tokensUsed?: number;
   tokensLimit?: number;
@@ -75,7 +74,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   projectsCount = 2,
   authUser,
   onSignOut,
-  developerMode = false,
   enableKnowledgeGrounding = false,
   tokensUsed = 0,
   tokensLimit = 1000000,

@@ -42,7 +42,6 @@ interface ChatThreadProps {
   onSendPrompt: (promptText: string) => void;
   error: string | null;
   userName?: string;
-  developerMode?: boolean;
   onSpeakText?: (text: string) => void;
   isSearchOpen?: boolean;
   onCloseSearch?: () => void;
@@ -57,7 +56,6 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
   onSendPrompt,
   error,
   userName,
-  developerMode = false,
   onSpeakText,
   isSearchOpen = false,
   onCloseSearch,
@@ -337,12 +335,7 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
         className="flex-1 min-h-0 overflow-y-auto chat-scroll-clean p-4 sm:p-6 space-y-4"
       >
         {isEmpty ? (
-          <ChatEmptyState
-            activeRole={activeRole}
-            activeModel={activeModel}
-            userName={userName}
-            developerMode={developerMode}
-          />
+          <ChatEmptyState activeRole={activeRole} activeModel={activeModel} userName={userName} />
         ) : (
           <div className="workspace-chat-container space-y-4">
             {filteredMessages.map((msg) => (
@@ -355,7 +348,6 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
                 activeRole={activeRole}
                 activeModel={activeModel}
                 searchQuery={searchQuery}
-                developerMode={developerMode}
                 onSpeakText={onSpeakText}
               />
             ))}
@@ -369,16 +361,8 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <span className="text-xs font-semibold chat-theme-text">{activeRole.name}</span>
-                    <span
-                      className={
-                        developerMode
-                          ? 'text-[10px] font-mono theme-accent-text'
-                          : 'text-[10px] theme-accent-text font-medium'
-                      }
-                    >
-                      {developerMode
-                        ? `${t.generatingLabel} (${activeModel.id})`
-                        : `${activeModel.name} · ${t.generatingLabel}`}
+                    <span className="text-[10px] theme-accent-text font-medium">
+                      {`${activeModel.name} · ${t.generatingLabel}`}
                     </span>
                     {lastPlanSummary && (
                       <span
@@ -403,7 +387,7 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
                         className="text-[10px] font-medium chat-theme-text-muted tabular-nums"
                       >
                         · {streamingPoolLabel}
-                        {developerMode && streamingRouteMeta?.servedModel
+                        {streamingRouteMeta?.servedModel
                           ? ` (${streamingRouteMeta.servedModel})`
                           : ''}
                         {typeof streamingRouteMeta?.firstTokenMs === 'number'

@@ -9,7 +9,6 @@ interface UserTeamViewProps {
   onInviteMember: (member: Omit<TeamMember, 'id' | 'joinedDate' | 'avatar'>) => void;
   onUpdateRole: (id: string, newRole: TeamMember['role']) => void;
   onRemoveMember: (id: string) => void;
-  developerMode?: boolean;
   maxSeats?: number;
   planTier?: PlanTier;
   onRefreshTeam?: () => void;
@@ -20,7 +19,6 @@ export const UserTeamView: React.FC<UserTeamViewProps> = ({
   onInviteMember,
   onUpdateRole,
   onRemoveMember,
-  developerMode = false,
   maxSeats,
   planTier = 'Free',
   onRefreshTeam,
@@ -28,9 +26,7 @@ export const UserTeamView: React.FC<UserTeamViewProps> = ({
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
-  const [inviteRole, setInviteRole] = useState<TeamMember['role']>(
-    developerMode ? 'Developer' : 'Reviewer'
-  );
+  const [inviteRole, setInviteRole] = useState<TeamMember['role']>('Reviewer');
   const { t } = useI18n();
 
   useEffect(() => {
@@ -65,11 +61,9 @@ export const UserTeamView: React.FC<UserTeamViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 pb-5">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {developerMode ? t.teamDevTitle : t.teamStdTitle}
+            {t.teamStdTitle}
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {developerMode ? t.teamDevDesc : t.teamStdDesc}
-          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{t.teamStdDesc}</p>
         </div>
 
         <button
@@ -77,7 +71,7 @@ export const UserTeamView: React.FC<UserTeamViewProps> = ({
           disabled={isAtSeatLimit}
           title={isAtSeatLimit ? t.seatLimitReachedMsg : undefined}
           onClick={() => {
-            setInviteRole(developerMode ? 'Developer' : 'Reviewer');
+            setInviteRole('Reviewer');
             setIsInviteModalOpen(true);
           }}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-xs transition-colors cursor-pointer shrink-0 whitespace-nowrap"
@@ -115,7 +109,7 @@ export const UserTeamView: React.FC<UserTeamViewProps> = ({
           </div>
           <div>
             <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              {developerMode ? t.security2faStatus : t.accountProtectionLabel}
+              {t.accountProtectionLabel}
             </div>
             <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5 tabular-nums">
               {members.filter((m) => m.twoFactorEnabled).length} / {members.length} {t.verifiedWord}
@@ -129,10 +123,10 @@ export const UserTeamView: React.FC<UserTeamViewProps> = ({
           </div>
           <div>
             <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              {developerMode ? t.rbacRolesDefined : t.activeRolesLabel}
+              {t.activeRolesLabel}
             </div>
             <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
-              {`${t.roleOwner}, ${developerMode ? t.roleDeveloper : t.roleEditor}, ${t.roleReviewer}, ${t.roleViewer}`}
+              {`${t.roleOwner}, ${t.roleEditor}, ${t.roleReviewer}, ${t.roleViewer}`}
             </div>
           </div>
         </div>
@@ -188,9 +182,7 @@ export const UserTeamView: React.FC<UserTeamViewProps> = ({
                         className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white disabled:opacity-60 cursor-pointer"
                       >
                         <option value="Owner">{t.roleOwner}</option>
-                        <option value="Developer">
-                          {developerMode ? t.roleDeveloper : t.roleEditor}
-                        </option>
+                        <option value="Developer">{t.roleEditor}</option>
                         <option value="Reviewer">{t.roleReviewer}</option>
                         <option value="Viewer">{t.roleViewer}</option>
                       </select>
@@ -298,12 +290,8 @@ export const UserTeamView: React.FC<UserTeamViewProps> = ({
                   onChange={(e) => setInviteRole(e.target.value as TeamMember['role'])}
                   className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
                 >
-                  <option value="Developer">
-                    {developerMode ? t.roleDeveloperDesc : t.roleEditorDesc}
-                  </option>
-                  <option value="Reviewer">
-                    {developerMode ? t.roleReviewerDevDesc : t.roleReviewerStdDesc}
-                  </option>
+                  <option value="Developer">{t.roleEditorDesc}</option>
+                  <option value="Reviewer">{t.roleReviewerStdDesc}</option>
                   <option value="Viewer">{t.roleViewerDesc}</option>
                 </select>
               </div>

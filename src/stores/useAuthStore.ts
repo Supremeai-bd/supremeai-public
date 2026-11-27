@@ -59,7 +59,6 @@ interface AuthState {
     userEmail: string;
   }) => Promise<boolean>;
   handleToggleRole: (forcedRole?: UserRole) => void;
-  setDeveloperEligibility: (eligible: boolean) => void;
   setIsTwoFactorModalOpen: (open: boolean) => void;
   setIsAdminAuthModalOpen: (open: boolean) => void;
   revokeTrustedBrowser: () => void;
@@ -281,16 +280,12 @@ export const useAuthStore = create<AuthState>((set, get) => {
           authError: null,
         });
 
-        const existingSettings = useCustomerStore.getState().userSettings;
         useCustomerStore.getState().updateSettings(
           {
             name: res.user.name,
             email: res.user.email,
             plan: res.user.plan,
             monthlyTokensLimit: getPlanSpec(res.user.plan).monthlyTokensLimit,
-            developerMode: res.user.isDeveloperEligible
-              ? Boolean(existingSettings.developerMode)
-              : false,
           },
           true
         );
@@ -347,7 +342,6 @@ export const useAuthStore = create<AuthState>((set, get) => {
             email: res.user.email,
             plan: res.user.plan,
             monthlyTokensLimit: getPlanSpec(res.user.plan).monthlyTokensLimit,
-            developerMode: false,
           },
           true
         );
@@ -458,26 +452,6 @@ export const useAuthStore = create<AuthState>((set, get) => {
       );
     },
 
-    setDeveloperEligibility: (eligible: boolean) => {
-      const { authUser } = get();
-      if (!authUser) return;
-      const updatedUser: AuthUser = {
-        ...authUser,
-        isDeveloperEligible: eligible,
-      };
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedUser));
-      set({ authUser: updatedUser });
-      if (!eligible) {
-        useCustomerStore.getState().updateSettings({ developerMode: false });
-      }
-      toast.info(
-        eligible ? 'Developer Switch Unlocked' : 'Developer Switch Hidden',
-        eligible
-          ? 'You can now switch between Standard and Developer Mode in User Settings.'
-          : 'Your workspace is now set to clean Standard Mode.'
-      );
-    },
-
     setIsTwoFactorModalOpen: (open: boolean) => set({ isTwoFactorModalOpen: open }),
     setIsAdminAuthModalOpen: (open: boolean) => set({ isAdminAuthModalOpen: open }),
 
@@ -514,7 +488,6 @@ export const useAuthStore = create<AuthState>((set, get) => {
           plan: customer.tier,
           monthlyTokensUsed: customer.tokensUsed,
           monthlyTokensLimit: customer.tokenLimit,
-          developerMode: false,
         },
         true
       );

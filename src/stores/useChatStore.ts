@@ -659,10 +659,9 @@ export const useChatStore = create<ChatState>((set, get) => {
           enableKnowledgeGroundingPref: true,
         });
 
-      const isDevOrAdmin =
-        authStateSnapshot.currentRole === 'admin' ||
-        (Boolean(authStateSnapshot.authUser?.isDeveloperEligible) &&
-          Boolean(customerSettingsSnapshot.developerMode));
+      // বাংলা মন্তব্য: Developer Mode নেই — সাধারণ ইউজারের জন্য thinking/search/JSON সব সিস্টেম
+      // নিজেই ঠিক করে। শুধু অ্যাডমিন টেস্টিংয়ের জন্য সেভ করা ম্যানুয়াল রান-সেটিং ব্যবহার করতে পারেন।
+      const canUseManualRunOverrides = authStateSnapshot.currentRole === 'admin';
       // বাংলা মন্তব্য: সব প্ল্যাটফর্মে (Web, Desktop, Mobile, VS Code) ব্যবহারকারী যে মডেল বা Auto-Routing বেছে নেবেন সেটিই কার্যকর হবে
       const useAutoRouting = customerSettingsSnapshot.autoModelRouting !== false;
 
@@ -698,11 +697,11 @@ export const useChatStore = create<ChatState>((set, get) => {
 
       const savedRunSettings = get().runSettings;
       const effectiveThinkingLevel =
-        isDevOrAdmin && savedRunSettings.thinkingMode === 'manual'
+        canUseManualRunOverrides && savedRunSettings.thinkingMode === 'manual'
           ? savedRunSettings.thinkingLevel
           : smartIntent.recommendedThinkingLevel;
       const effectiveResponseMimeType: WorkbenchRunSettings['responseMimeType'] =
-        isDevOrAdmin && savedRunSettings.responseMimeType === 'application/json'
+        canUseManualRunOverrides && savedRunSettings.responseMimeType === 'application/json'
           ? 'application/json'
           : smartIntent.enableJsonOutput
             ? 'application/json'
@@ -710,16 +709,16 @@ export const useChatStore = create<ChatState>((set, get) => {
       const effectiveSearchGrounding =
         effectiveResponseMimeType === 'application/json'
           ? false
-          : isDevOrAdmin && savedRunSettings.searchMode === 'manual'
+          : canUseManualRunOverrides && savedRunSettings.searchMode === 'manual'
             ? savedRunSettings.enableSearchGrounding
             : smartIntent.enableSearchGrounding;
-      const effectiveAgentLoopEnabled = isDevOrAdmin ? savedRunSettings.agentLoopEnabled : true;
+      const effectiveAgentLoopEnabled = canUseManualRunOverrides ? savedRunSettings.agentLoopEnabled : true;
       const effectiveRunSettings: WorkbenchRunSettings = {
         ...savedRunSettings,
         thinkingLevel: effectiveThinkingLevel,
         enableSearchGrounding: effectiveSearchGrounding,
         responseMimeType: effectiveResponseMimeType,
-        jsonSchemaText: isDevOrAdmin ? savedRunSettings.jsonSchemaText : '',
+        jsonSchemaText: canUseManualRunOverrides ? savedRunSettings.jsonSchemaText : '',
         agentLoopEnabled: effectiveAgentLoopEnabled,
       };
 
@@ -977,7 +976,7 @@ export const useChatStore = create<ChatState>((set, get) => {
               : 'Live Web Search Grounding',
           tool: 'google_search',
           status: 'done',
-          detail: isDevOrAdmin && savedRunSettings.searchMode === 'manual' ? 'Manual' : 'Auto',
+          detail: canUseManualRunOverrides && savedRunSettings.searchMode === 'manual' ? 'Manual' : 'Auto',
         });
       }
 
@@ -1383,10 +1382,8 @@ When the user asks to create, build, design, or fix a project, app, website, das
           hasAutoOpenedDockThisTurn = true;
         }
 
-        const canUseSandboxTab =
-          Boolean(authState.authUser) &&
-          Boolean(authState.authUser?.isDeveloperEligible) &&
-          Boolean(customerSettings.developerMode);
+        // বাংলা মন্তব্য: সাইন-ইন করা সবার জন্য Sandbox খোলা (গেস্টদের জন্য Preview)।
+        const canUseSandboxTab = Boolean(authState.authUser);
         const resolvedTargetTab =
           artifact.targetTab === 'sandbox' && !canUseSandboxTab ? 'preview' : artifact.targetTab;
 
@@ -1479,7 +1476,7 @@ When the user asks to create, build, design, or fix a project, app, website, das
                 status: 'done',
                 detail: [
                   formatPoolLabel(latestRouteMeta),
-                  latestRouteMeta.engine && isDevOrAdmin ? latestRouteMeta.engine : '',
+                  latestRouteMeta.engine && canUseManualRunOverrides ? latestRouteMeta.engine : '',
                 ]
                   .filter(Boolean)
                   .join(' · '),

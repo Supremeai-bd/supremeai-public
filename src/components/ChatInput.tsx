@@ -37,7 +37,6 @@ interface ChatInputProps {
   activeModel: ModelDetail;
   onSelectModel: (model: ModelDetail) => void;
   onOpenPromptLibrary?: () => void;
-  developerMode?: boolean;
   onOpenLiveVoice?: () => void;
   isLiveVoiceOpen?: boolean;
   voiceStatus?: LiveSessionStatus;

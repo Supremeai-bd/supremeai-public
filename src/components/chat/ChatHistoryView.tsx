@@ -25,7 +25,6 @@ interface ChatHistoryViewProps {
   onBranchSession?: (id: string) => void;
   onNewSession: () => void;
   onOpenChat: () => void;
-  developerMode?: boolean;
 }
 
 type HistoryFilter = 'all' | 'pinned' | 'with-messages';
@@ -52,7 +51,6 @@ export const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({
   onBranchSession,
   onNewSession,
   onOpenChat,
-  developerMode = false,
 }) => {
   const [searchInput, setSearchInput] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
@@ -388,7 +386,7 @@ export const ChatHistoryView: React.FC<ChatHistoryViewProps> = ({
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
 
-                    {developerMode && onBranchSession && (
+                    {onBranchSession && (
                       <button
                         type="button"
                         onClick={() => {

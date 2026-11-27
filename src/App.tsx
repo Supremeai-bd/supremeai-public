@@ -47,7 +47,6 @@ import {
 } from './components/common/DangerConfirmModal';
 import {
   ADMIN_ONLY_TABS,
-  DEV_ONLY_TABS,
   getLocalizedSubviewTitle,
   isRoutableTab,
   SUBVIEW_TITLES,
@@ -60,12 +59,8 @@ import { IntentClarificationCard } from './components/chat/IntentClarificationCa
 import { TaskApprovalCard } from './components/chat/TaskApprovalCard';
 import {
   orchestrateUserIntent,
-  loadUserMemory,
-  shouldEnableSmartDeveloperMode,
-  USER_MEMORY_UPDATED_EVENT,
   type DashboardActionType,
   type PendingClarification,
-  type UserMemoryProfile,
 } from './services/intentOrchestrator';
 import {
   classifySpokenJarvisCommand,
@@ -393,21 +388,6 @@ export default function App() {
   // বাংলা মন্তব্য: JARVIS ও Live Voice বাটনের একক State Machine (Desync প্রতিরোধে)।
   const [jarvisEnabled, setJarvisEnabled] = useState<boolean>(() => isJarvisModeEnabled());
   useEffect(() => subscribeJarvisMode(setJarvisEnabled), []);
-  const [userMemory, setUserMemory] = useState<UserMemoryProfile>(() => loadUserMemory());
-  const [explicitDevOverride, setExplicitDevOverride] = useState<boolean | undefined>(() => {
-    if (typeof localStorage === 'undefined') return undefined;
-    const saved = localStorage.getItem('supremeai_dev_mode_override');
-    if (saved === 'true') return true;
-    if (saved === 'false') return false;
-    return undefined;
-  });
-
-  useEffect(() => {
-    const syncMemory = () => setUserMemory(loadUserMemory());
-    window.addEventListener(USER_MEMORY_UPDATED_EVENT, syncMemory);
-    return () => window.removeEventListener(USER_MEMORY_UPDATED_EVENT, syncMemory);
-  }, []);
-
   const liveVoiceSystemInstruction =
     customInstruction.trim() ||
     userSettings.customInstructions?.trim() ||
@@ -508,13 +488,6 @@ export default function App() {
   );
   const effectiveRole = isAuthorizedAdmin && currentRole === 'admin' ? 'admin' : 'user';
   const isProjectAdmin = isAuthorizedAdmin && effectiveRole === 'admin';
-  const isDeveloperEligible = true;
-  // বাংলা মন্তব্য: ব্যবহারকারীর কাজের ধরন (developerAffinityScore) বা কমান্ড বুঝে স্মার্টভাবে ডেভ-টুলস আনলক হয়
-  const developerMode = shouldEnableSmartDeveloperMode({
-    explicitDeveloperMode: userSettings.developerMode ? true : explicitDevOverride,
-    isAdmin: isProjectAdmin,
-    memory: userMemory,
-  });
   const enableKnowledgeGrounding = !isGuest;
 
   const openAuthModal = (reason?: string) => {
@@ -658,17 +631,11 @@ export default function App() {
       }
       return;
     }
-    if (effectiveRole !== 'admin') {
-      if (!developerMode && DEV_ONLY_TABS.has(activeTab)) {
-        setActiveTab('chat');
-      }
-    }
   }, [
     isGuest,
     isSharedArtifactView,
     hasGeneratedWorkspace,
     effectiveRole,
-    developerMode,
     enableKnowledgeGrounding,
     isDockOpen,
     setDockOpen,
@@ -734,30 +701,6 @@ export default function App() {
     }
   };
 
-  const handleToggleDeveloperMode = (forceNext?: boolean) => {
-    if (!isDeveloperEligible) return;
-    const next = typeof forceNext === 'boolean' ? forceNext : !developerMode;
-    setExplicitDevOverride(next);
-    if (typeof localStorage !== 'undefined') {
-      try {
-        localStorage.setItem('supremeai_dev_mode_override', String(next));
-      } catch {
-        // Ignore storage errors
-      }
-    }
-    updateSettings({ developerMode: next });
-    if (!next) {
-      if (DEV_ONLY_TABS.has(activeTab)) {
-        setActiveTab('chat');
-      }
-    }
-    toast.info(
-      next ? 'Developer Mode Enabled' : 'Standard Workspace Active',
-      next
-        ? 'API keys, repositories, and Developer Tools are now unlocked.'
-        : 'Clean Standard Mode active for everyday work.'
-    );
-  };
 
   useMcpTelemetry(currentRole === 'admin');
 
@@ -888,12 +831,6 @@ export default function App() {
         setActiveTab('chat');
         return true;
       }
-      case 'enable_dev_mode':
-        handleToggleDeveloperMode(true);
-        return true;
-      case 'disable_dev_mode':
-        handleToggleDeveloperMode(false);
-        return true;
       case 'disable_jarvis':
         handleToggleJarvis(false);
         return true;
@@ -1298,7 +1235,6 @@ export default function App() {
             projectsCount={userProjects.length}
             authUser={authUser}
             onSignOut={handleSignOut}
-            developerMode={developerMode}
             enableKnowledgeGrounding={enableKnowledgeGrounding}
             tokensUsed={userSettings.monthlyTokensUsed}
             tokensLimit={userSettings.monthlyTokensLimit}
@@ -1574,7 +1510,6 @@ export default function App() {
                         activeRole={activeRole}
                         activeModel={activeModel}
                         userName={authUser?.name || (isGuest ? 'Guest' : undefined)}
-                        developerMode={developerMode}
                       />
                       {/* বাংলা মন্তব্য: প্রো-অ্যাক্টিভ মর্নিং ব্রিফিং কার্ড — লগড-ইন ইউজারের মেমোরি ও টাস্ক সামারি */}
                       {!isGuest && (
@@ -1635,7 +1570,6 @@ export default function App() {
                           onOpenPromptLibrary={() =>
                             isGuest ? openAuthModal('Prompt Library') : setIsPromptModalOpen(true)
                           }
-                          developerMode={developerMode}
                           onOpenLiveVoice={() => handleToggleJarvis()}
                           isLiveVoiceOpen={isLiveVoiceOpen}
                           voiceStatus={liveVoice.status}
@@ -1656,7 +1590,6 @@ export default function App() {
                       onSendPrompt={handleSendMessageWrapper}
                       error={inferenceError}
                       userName={authUser?.name || (isGuest ? 'Guest' : undefined)}
-                      developerMode={developerMode}
                       onSpeakText={(txt) => liveVoice.speakFallbackText(txt)}
                       isSearchOpen={isChatSearchOpen}
                       onCloseSearch={() => setIsChatSearchOpen(false)}
@@ -1692,7 +1625,6 @@ export default function App() {
                       onOpenPromptLibrary={() =>
                         isGuest ? openAuthModal('Prompt Library') : setIsPromptModalOpen(true)
                       }
-                      developerMode={developerMode}
                       onOpenLiveVoice={() => handleToggleJarvis()}
                       isLiveVoiceOpen={isLiveVoiceOpen}
                       voiceStatus={liveVoice.status}
@@ -1720,7 +1652,7 @@ export default function App() {
 
               {(!isGuest || isSharedArtifactView || hasGeneratedWorkspace) && (
                 <Suspense fallback={null}>
-                  <WorkspaceDock developerMode={developerMode} isGuest={isGuest} />
+                  <WorkspaceDock isGuest={isGuest} />
                 </Suspense>
               )}
             </div>
@@ -1831,7 +1763,6 @@ export default function App() {
                           onBranchSession={branchSession}
                           onNewSession={createNewSession}
                           onOpenChat={() => setActiveTab('chat')}
-                          developerMode={developerMode}
                         />
                       )}
 
@@ -1878,7 +1809,6 @@ export default function App() {
                           onInviteMember={inviteTeamMember}
                           onUpdateRole={updateTeamRole}
                           onRemoveMember={removeTeamMember}
-                          developerMode={developerMode}
                           maxSeats={teamMaxSeats}
                           planTier={authUser?.plan || userSettings.plan}
                           onRefreshTeam={fetchTeamMembers}
@@ -1894,7 +1824,6 @@ export default function App() {
                           sessions={sessions}
                           darkMode={darkMode}
                           onTopUpTokens={topUpTokens}
-                          developerMode={developerMode}
                         />
                       )}
 
@@ -1904,9 +1833,6 @@ export default function App() {
                           onUpdateSettings={updateSettings}
                           isAdminEligible={isAuthorizedAdmin}
                           onOpenAdminConsole={() => setActiveTab('admin-overview')}
-                          isDeveloperEligible={isDeveloperEligible}
-                          effectiveDeveloperMode={developerMode}
-                          onToggleDeveloperMode={() => handleToggleDeveloperMode()}
                           trustedUntil={trustedBrowserUntil}
                           onRevokeTrustedBrowser={revokeTrustedBrowser}
                           onSignOut={logout}
@@ -2126,7 +2052,6 @@ export default function App() {
               isOpen={isPromptModalOpen}
               onClose={() => setIsPromptModalOpen(false)}
               onSelectTemplate={(text) => handleSendMessageWrapper(text)}
-              developerMode={developerMode}
             />
           )}
 
@@ -2148,7 +2073,6 @@ export default function App() {
           <WorkspaceMicroSurvey
             totalUserMessages={totalUserMessages}
             userEmail={authUser?.email}
-            developerMode={developerMode}
             forceOpen={isSurveyForceOpen}
             onCloseForceOpen={() => setIsSurveyForceOpen(false)}
           />
