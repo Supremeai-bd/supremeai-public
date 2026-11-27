@@ -110,7 +110,7 @@ describe('checkAdminConnections', () => {
 
   it('marks rejected tokens as errors', async () => {
     const fetchImpl = vi.fn(async (url: string) =>
-      url.includes('github.com') ? jsonRes({}, 401) : jsonRes({ ok: true })
+      new URL(url).hostname === 'api.github.com' ? jsonRes({}, 401) : jsonRes({ ok: true })
     );
     const list = await checkAdminConnections(
       { GITHUB_TOKEN: 'bad' },
