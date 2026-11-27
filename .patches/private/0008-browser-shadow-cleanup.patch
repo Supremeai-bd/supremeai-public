@@ -1,0 +1,3199 @@
+diff --git a/browser/pyproject.toml b/browser/pyproject.toml
+index 626bba4a1c2a3790d656594c2295f57c100d0f12..7340a2af55cf0ddcb9346a8c045d42d5bd6d122d 100644
+--- a/browser/pyproject.toml
++++ b/browser/pyproject.toml
+@@ -22,7 +22,7 @@ runtime = ["playwright>=1.40", "lxml>=4.9"]
+ dev = ["pytest>=7.4"]
+ 
+ [tool.setuptools.packages.find]
+-include = ["runtime*", "ghost_tower*", "routes*", "tools*", "gateway*"]
++include = ["runtime*", "ghost_tower*", "gateway*"]
+ 
+ [tool.pytest.ini_options]
+ testpaths = ["tests"]
+diff --git a/browser/routes/__init__.py b/browser/routes/__init__.py
+deleted file mode 100644
+index 0f4dcc61d9b5b24d018436e00fc25a6aaf6d4935..0000000000000000000000000000000000000000
+--- a/browser/routes/__init__.py
++++ /dev/null
+@@ -1,265 +0,0 @@
+-"""Browser router (``/api/browser``) — package layout.
+-
+-Formerly a single ~1,507-line module (api/routes/browser.py); now split into
+-cohesive submodules. The public contract is unchanged:
+-
+-* ``from api.routes.browser import router`` still yields one
+-  :class:`fastapi.APIRouter` with prefix ``/api/browser``, tag ``browser``
+-  and the same ``get_current_user_token`` router-level dependency;
+-* every route, Pydantic model, helper and module-level state singleton the
+-  old module exposed is still importable from this package (the
+-  ``from ._<module> import ...`` statements below double as re-exports);
+-* routes are registered on ``router`` in exactly the original order (the
+-  submodule imports below are intentionally ordered to reproduce the old
+-  file top-to-bottom), so OpenAPI output and route matching are identical;
+-* ``tests/core/test_browser_credentials.py`` clears
+-  ``CREDENTIALS`` / ``RECENT_ACTIVITIES`` / ``FINDINGS`` through
+-  this package namespace — the re-exported names are the SAME objects the
+-  endpoint modules use, so the in-place ``.clear()`` calls behave exactly
+-  as they did against the monolithic module.
+-
+-State-singleton placement note: singletons that are only ever mutated in
+-place (item assignment / append / pop / clear) live in ``_state.py`` or with
+-their endpoint group and are shared by import. The two singletons that are
+-REBOUND via ``global`` (``CREDENTIALS`` in ``delete_credential``,
+-``URL_PERMISSIONS`` in ``delete_url``) live in the same module as the
+-endpoints that rebind them, preserving old ``global`` semantics.
+-
+-Import cycle note: the ``_*.py`` submodules import ``router`` from this
+-package while it is still being initialised. That is safe because ``router``
+-is defined BEFORE the submodule imports run.
+-
+-Import-time side effects (scraper-service URL read + ``MultiLevelCache``
+-instantiation) live only in ``_scraping.py``, mirroring the monolithic
+-module where they ran once at import time."""
+-
+-import asyncio  # noqa: F401  (module-attr parity with pre-split module)
+-import hashlib  # noqa: F401  (module-attr parity with pre-split module)
+-import ipaddress  # noqa: F401  (module-attr parity with pre-split module)
+-import json  # noqa: F401  (module-attr parity with pre-split module)
+-import os  # noqa: F401  (module-attr parity with pre-split module)
+-import socket  # noqa: F401  (module-attr parity with pre-split module)
+-import urllib.error  # noqa: F401  (module-attr parity with pre-split module)
+-import urllib.request  # noqa: F401  (module-attr parity with pre-split module)
+-import uuid  # noqa: F401  (module-attr parity with pre-split module)
+-from datetime import UTC, datetime  # noqa: F401  (module-attr parity)
+-from typing import Any, Literal  # noqa: F401  (module-attr parity)
+-from urllib.parse import urlparse  # noqa: F401  (module-attr parity)
+-
+-import httpx  # noqa: F401  (module-attr parity with pre-split module)
+-from fastapi import APIRouter, Depends, HTTPException, Response  # noqa: F401  (module-attr parity)
+-from pydantic import BaseModel, Field  # noqa: F401  (module-attr parity)
+-
+-from api.deps import get_current_tenant, get_current_user_token  # noqa: F401  (module-attr parity)
+-from api.routes.admin_dashboard import require_admin_token  # noqa: F401  (module-attr parity)
+-from core.browser_compat_store import browser_compat_store  # noqa: F401  (module-attr parity)
+-from core.browser_session_catalog import (  # noqa: F401  (module-attr parity)
+-    SavedBrowserSession,
+-    browser_session_catalog,
+-)
+-from core.browser_session_manager import session_manager  # noqa: F401  (module-attr parity)
+-from core.cache.redis_manager import MultiLevelCache  # noqa: F401  (module-attr parity)
+-from core.config import settings  # noqa: F401  (module-attr parity with pre-split module)
+-from core.effective_policy import get_effective_policy, policy_store  # noqa: F401  (parity)
+-from core.errors.error_bus import with_error_bus  # noqa: F401  (module-attr parity)
+-from core.kernel.audit_logger import AuditLogger  # noqa: F401  (module-attr parity)
+-from core.logging_config import logger  # noqa: F401  (module-attr parity)
+-from core.neon_repository import (  # noqa: F401  (module-attr parity)
+-    create_task as create_neon_task,
+-)
+-from core.neon_repository import (  # noqa: F401  (module-attr parity)
+-    delete_task as delete_neon_task,
+-)
+-from core.neon_repository import (  # noqa: F401  (module-attr parity)
+-    list_tasks as list_neon_tasks,
+-)
+-from core.neon_repository import (  # noqa: F401  (module-attr parity)
+-    load_policy as load_neon_policy,
+-)
+-from core.neon_repository import (  # noqa: F401  (module-attr parity)
+-    save_policy as save_neon_policy,
+-)
+-from core.neon_repository import (  # noqa: F401  (module-attr parity)
+-    update_task_status as update_neon_task_status,
+-)
+-from core.security.secure_credential_store import (  # noqa: F401  (module-attr parity)
+-    SecureCredentialStore,
+-)
+-from core.task_policy import evaluate_goal  # noqa: F401  (module-attr parity)
+-from tools.ai_agents.browser_agent import BrowseRequest  # noqa: F401  (module-attr parity)
+-
+-router = APIRouter(
+-    prefix="/api/browser", tags=["browser"], dependencies=[Depends(get_current_user_token)]
+-)
+-
+-# ── Submodule imports below register routes on ``router`` in EXACTLY the
+-#    original single-file order. Do not reorder. ────────────────────────────
+-
+-from . import (
+-    _automation,  # noqa: F401,E402  (route registration + re-exports)
+-    _cognitive,  # noqa: F401,E402  (route registration + re-exports)
+-    _credentials,  # noqa: F401,E402  (route registration + re-exports)
+-    _crown_jewel,  # noqa: F401,E402  (route registration + re-exports)
+-    _learning,  # noqa: F401,E402  (route registration + re-exports)
+-    _legacy_status,  # noqa: F401,E402  (route registration + re-exports)
+-    _policy,  # noqa: F401,E402  (route registration + re-exports)
+-    _render_proxy,  # noqa: F401,E402  (route registration + re-exports)
+-    _scraping,  # noqa: F401,E402  (route registration + re-exports)
+-    _session_store,  # noqa: F401,E402  (route registration + re-exports)
+-    _state,  # noqa: F401,E402  (shared in-place-mutation state)
+-    _surf_actions,  # noqa: F401,E402  (route registration + re-exports)
+-    _surf_controls,  # noqa: F401,E402  (route registration + re-exports)
+-    _tasks,  # noqa: F401,E402  (route registration + re-exports)
+-    _url_permissions,  # noqa: F401,E402  (route registration + re-exports)
+-)
+-from ._automation import (  # noqa: F401,E402  (re-exports)
+-    AutomationSessionRequest,
+-    BrowserActionRequest,
+-    BrowserSessionResponse,
+-    SavedSessionRequest,
+-    close_automation_session,
+-    create_automation_session,
+-    execute_automation_action,
+-    list_automation_sessions,
+-    list_saved_sessions,
+-    pause_automation,
+-    resume_automation,
+-    revoke_saved_session,
+-    save_session,
+-)
+-from ._cognitive import (  # noqa: F401,E402  (re-exports)
+-    SemanticClickRequest,
+-    run_autonomous_goal,
+-    semantic_click,
+-    smart_click,
+-)
+-from ._credentials import (  # noqa: F401,E402  (re-exports)
+-    CREDENTIALS,
+-    CredentialRequest,
+-    CredentialUseRequest,
+-    delete_credential,
+-    get_audit,
+-    get_credential_store,
+-    get_credentials,
+-    revoke_credential,
+-    save_credential,
+-    use_credential,
+-)
+-from ._crown_jewel import (  # noqa: F401,E402  (re-exports)
+-    AIActionRequest,
+-    BrowseSessionRequest,
+-    ScreenshotRequest,
+-    SecurityScanRequest,
+-    ai_action,
+-    browse_session,
+-    capture_screenshot,
+-    execute_step,
+-    save_screenshot_to_gallery,
+-    security_scan,
+-)
+-from ._health import (  # noqa: F401,E402  (re-exports)
+-    browser_service_health,
+-    public_router,  # dependency-free /health probe (#1490 contract, #2258 port)
+-)
+-from ._learning import (  # noqa: F401,E402  (re-exports)
+-    SYSTEM_LEARNING,
+-    ToggleLearningRequest,
+-    get_system_learning,
+-    toggle_learning,
+-)
+-from ._legacy_status import (  # noqa: F401,E402  (re-exports)
+-    get_recent_activity,
+-    get_status,
+-    start_surf,
+-    stop_surf,
+-)
+-from ._policy import (  # noqa: F401,E402  (re-exports)
+-    PolicyUpdateRequest,
+-    UserPolicyUpdateRequest,
+-    get_policy,
+-    get_tasks,
+-    update_admin_policy,
+-    update_user_policy,
+-)
+-from ._render_proxy import (  # noqa: F401,E402  (re-exports)
+-    _BLOCKED_NETS,
+-    _frame_ancestors_sources,
+-    _host_is_blocked,
+-    render_proxy,
+-)
+-from ._scraping import (  # noqa: F401,E402  (re-exports)
+-    _SCRAPE_CACHE_TTL,
+-    _SCRAPER_URL,
+-    ScrapeRequest,
+-    _cached_scrape,
+-    _proxy_to_scraper,
+-    _scrape_cache,
+-    _scrape_cache_key,
+-    browse,
+-    extract,
+-    scrape,
+-)
+-from ._session_store import (  # noqa: F401,E402  (re-exports)
+-    SESSIONS,
+-    SessionIn,
+-    SessionMessageIn,
+-    create_session,
+-    delete_session,
+-    get_session,
+-    list_sessions,
+-    update_session,
+-)
+-from ._state import BROWSER_STATUS, RECENT_ACTIVITIES  # noqa: F401,E402  (re-exports)
+-from ._surf_actions import (  # noqa: F401,E402  (re-exports)
+-    ClickAtRequest,
+-    ClickRequest,
+-    FillRequest,
+-    KeyRequest,
+-    NavigateRequest,
+-    SimulateActivityRequest,
+-    click,
+-    click_at,
+-    fill,
+-    get_accessibility_tree,
+-    get_screenshot,
+-    navigate,
+-    simulate_activity,
+-    type_key,
+-)
+-from ._surf_controls import (  # noqa: F401,E402  (re-exports)
+-    PAUSED_STATE,
+-    SurfControlRequest,
+-    get_paused_state,
+-    pause_manual,
+-    resume_surf,
+-    skip_auth,
+-)
+-from ._tasks import (  # noqa: F401,E402  (re-exports)
+-    EXECUTION_CAP_MS,
+-    FINDINGS,
+-    GoalRequest,
+-    TaskPreviewRequest,
+-    _set_task_status,
+-    add_finding,
+-    create_task,
+-    delete_task,
+-    get_findings,
+-    preview_task,
+-    set_task_circuit_open,
+-    set_task_complete,
+-    set_task_failed,
+-)
+-from ._url_permissions import (  # noqa: F401,E402  (re-exports)
+-    PERMISSION_REQUESTS,
+-    URL_PERMISSIONS,
+-    DecisionRequest,
+-    UrlPermissionRequest,
+-    add_allowed_url,
+-    add_denied_url,
+-    allow_all_urls,
+-    decision,
+-    delete_url,
+-    get_allowed_urls,
+-    get_denied_urls,
+-    get_requests,
+-)
+diff --git a/browser/routes/_cognitive.py b/browser/routes/_cognitive.py
+deleted file mode 100644
+index 8fb95ed3603606b59222a1f9823699535d34e73c..0000000000000000000000000000000000000000
+--- a/browser/routes/_cognitive.py
++++ /dev/null
+@@ -1,80 +0,0 @@
+-"""SupremeBrowser advanced cognitive suite endpoints (L4 semantic click,
+-L4 cascade, L5 autonomous goal).
+-
+-Split out of the former single-module api/routes/browser.py verbatim.
+-Heavy browser/ dependencies are imported lazily inside the handlers,
+-exactly as before.
+-"""
+-
+-import asyncio
+-
+-from pydantic import BaseModel
+-
+-from api.routes.browser import router
+-from api.routes.browser._tasks import GoalRequest
+-
+-
+-class SemanticClickRequest(BaseModel):
+-    target: str
+-    context: str = ""
+-
+-
+-@router.post("/semantic-click")
+-async def semantic_click(req: SemanticClickRequest):
+-    """L4: Click by meaning — matches natural language intent to dynamic DOM embeddings."""
+-    from browser.semantic_dom import SemanticDOM
+-
+-    sdom = SemanticDOM(page=None)
+-    await sdom.build_index()
+-    el = await sdom.query(req.target)
+-    return {
+-        "status": "clicked",
+-        "matched_text": el.get("text"),
+-        "xpath": el.get("xpath"),
+-        "confidence": el.get("semantic_confidence"),
+-    }
+-
+-
+-@router.post("/smart-click")
+-async def smart_click(req: SemanticClickRequest):
+-    """L4 Cascade: Semantic DOM → Vision Grounding Fallback → HITL Takeover."""
+-    from browser.semantic_dom import SemanticDOM
+-    from browser.vision_grounding import VisionGrounding
+-
+-    # 1. Semantic DOM
+-    try:
+-        sdom = SemanticDOM(page=None)
+-        await sdom.build_index()
+-        el = await sdom.query(req.target)
+-        return {"status": "clicked", "method": "semantic_dom", "element": el}
+-    except asyncio.CancelledError:
+-        raise
+-    except Exception as e:
+-        import logging
+-
+-        logging.getLogger(__name__).exception(f"Silenced error: {e}")
+-
+-    # 2. Vision Grounding
+-    try:
+-        vg = VisionGrounding(page=None)
+-        click_res = await vg.click(req.target)
+-        return {"status": "clicked", "method": "vision_grounding", "coordinates": click_res}
+-    except asyncio.CancelledError:
+-        raise
+-    except Exception as e:
+-        import logging
+-
+-        logging.getLogger(__name__).exception(f"Silenced error: {e}")
+-
+-    # 3. HITL Takeover Escalation
+-    return {"status": "escalated_to_hitl", "method": "hitl", "target": req.target}
+-
+-
+-@router.post("/autonomous/run")
+-async def run_autonomous_goal(req: GoalRequest):
+-    """L5: Execute natural language browsing goal with reasoning, replanning, and memory."""
+-    from browser.autonomous_browser import AutonomousBrowserAgent
+-
+-    agent = AutonomousBrowserAgent(session=None)
+-    result = await agent.achieve(req.goal)
+-    return result
+diff --git a/browser/routes/_crown_jewel.py b/browser/routes/_crown_jewel.py
+deleted file mode 100644
+index e024610480a8e066b9cc7a2a4a5c9d74607f30de..0000000000000000000000000000000000000000
+--- a/browser/routes/_crown_jewel.py
++++ /dev/null
+@@ -1,461 +0,0 @@
+-"""Crown Jewel browser endpoints (REAL implementations) + legacy step route.
+-
+-FIXED 2026-09-15 (audit ERR-G03/G05/G06/G11 + ERR-D02/D03):
+-This module previously shipped fabricated responses while reporting
+-``success: True`` — a URL-hash "session id" that never existed, a canned AI
+-summary, a hardcoded 1x1 blank PNG "screenshot", a constant security score of
+-100, and a task-step executor that always claimed "Autonomous step succeeded".
+-That was false assurance (Class G): the system reporting success while doing
+-no work. Every endpoint here now either performs REAL work or fails loudly
+-with an explicit HTTP error. See docs/audits/SYSTEM_DEFECT_REGISTER_2026-09-15.md.
+-
+-NOTE: ``execute_step`` (POST /tasks/{id}/step) stays registered at this exact
+-position because route registration order determines which handler wins for
+-``/tasks/{id}/...`` paths (see _tasks.py docstring).
+-"""
+-
+-import importlib.util
+-import re
+-import uuid
+-from datetime import UTC, datetime
+-from typing import Any, Literal
+-from urllib.parse import urlparse
+-
+-import httpx
+-from fastapi import HTTPException, Response
+-from pydantic import BaseModel, ConfigDict, field_validator
+-
+-from core.api.routes.browser import router
+-from core.api.routes.browser._render_proxy import _host_is_blocked
+-
+-# বাংলা মন্তব্য: #2511 SSRF ফিক্স — crown-jewel fetch/render surface গুলো এখন canonical
+-# guard (`_render_proxy._host_is_blocked`) reuse করে: DNS resolve fail-closed, loopback /
+-# private / reserved / link-local / 169.254.169.254 (metadata) সব ব্লকড। scheme-check
+-# একাই যথেষ্ট ছিল না — http://127.0.0.1 বা public→metadata redirect এর মতো আক্রমণ
+-# আটকাতে private-IP gating বাধ্যতামূলক।
+-
+-# Page-context limits: keep prompts bounded (no unbounded context bloat).
+-_MAX_CONTEXT_CHARS = 6000
+-_MAX_LINKS = 50
+-
+-_LINK_RE = re.compile(r"https?://[^\s<>\"')\]]+", re.IGNORECASE)
+-
+-# ──────────────────────────────────────────────
+-# Security header checks used by /security-scan (real passive analysis)
+-# ──────────────────────────────────────────────
+-_SECURITY_HEADERS = (
+-    # (header, issue_text, weight)
+-    ("content-security-policy", "Missing Content-Security-Policy header", 25),
+-    ("x-frame-options", "Missing X-Frame-Options header (clickjacking risk)", 10),
+-    ("strict-transport-security", "Missing Strict-Transport-Security (HSTS) header", 15),
+-    ("x-content-type-options", "Missing X-Content-Type-Options header", 10),
+-    ("referrer-policy", "Missing Referrer-Policy header", 5),
+-    ("permissions-policy", "Missing Permissions-Policy header", 5),
+-)
+-
+-
+-def _scan_headers(url: str, headers: httpx.Headers) -> dict[str, Any]:
+-    """Evaluate real HTTP response headers and return {score, issues, criticalIssues}."""
+-    issues: list[str] = []
+-    critical: list[str] = []
+-    score = 100
+-
+-    parsed = urlparse(url)
+-    if parsed.scheme != "https":
+-        critical.append("Page is served over plain HTTP (no TLS).")
+-        score -= 40
+-
+-    for header, issue_text, weight in _SECURITY_HEADERS:
+-        value = headers.get(header)
+-        if not value:
+-            issues.append(issue_text)
+-            score -= weight
+-        elif header == "content-security-policy" and "unsafe-inline" in value.lower():
+-            issues.append("CSP contains 'unsafe-inline', weakening script/style protection.")
+-            score -= 10
+-
+-    # Server software disclosure (informational)
+-    server = headers.get("server")
+-    if server and any(k in server.lower() for k in ("nginx/", "apache/", "express")):
+-        issues.append(f"Server header discloses software version: {server}")
+-
+-    # Cookie security flags (Set-Cookie rows)
+-    try:
+-        raw_cookies = headers.get_list("set-cookie")
+-    except Exception:  # noqa: BLE001 — httpx version differences
+-        raw_cookies = []
+-    for raw_cookie in raw_cookies:
+-        low = raw_cookie.lower()
+-        if parsed.scheme == "https" and "secure" not in low:
+-            issues.append("Cookie set without the Secure flag over HTTPS.")
+-            score -= 10
+-        if "httponly" not in low:
+-            issues.append("Cookie set without HttpOnly (readable by scripts).")
+-            score -= 5
+-
+-    score = max(0, min(100, score))
+-    return {"success": True, "score": score, "issues": issues, "criticalIssues": critical}
+-
+-
+-def _require_context(context: str) -> str:
+-    """Return trimmed page context or raise 422 — an AI action with no page
+-    context cannot be answered honestly."""
+-    trimmed = str(context or "").strip()
+-    if not trimmed:
+-        raise HTTPException(
+-            status_code=422,
+-            detail=(
+-                "No page context provided. The AI action needs the visible page "
+-                "text ('context') or at least a reachable URL to be useful."
+-            ),
+-        )
+-    return trimmed[:_MAX_CONTEXT_CHARS]
+-
+-
+-# ──────────────────────────────────────────────
+-# Issue #1657 (P1 security audit): typed request models. These four
+-# endpoints previously accepted ``body: dict[str, Any]`` — unvalidated,
+-# arbitrary payloads. Models below pin the exact contract, validate URLs at
+-# the edge and keep ``extra`` permissive ONLY where real clients send extra
+-# keys (browse-session callers add ``timestamp``/``tabId``).
+-# ──────────────────────────────────────────────
+-
+-
+-def _reject_non_http_url(value: str) -> str:
+-    """Shared field validator: require an absolute http(s) URL.
+-
+-    Mirrors the handler-level scheme checks (which stay as defense in depth)
+-    so malformed URLs now fail at the Pydantic validation layer with 422.
+-    """
+-    if not value.startswith(("http://", "https://")):
+-        raise ValueError(f"Invalid URL: {value!r} — must be an absolute http(s) URL")
+-    return value
+-
+-
+-class BrowseSessionRequest(BaseModel):
+-    """Body for POST /browse-session (create a real session record).
+-
+-    Frontend callers (CrownJewelBrowser.tsx) also send ``timestamp`` and
+-    ``tabId`` which the server never persisted, so extras stay ignored
+-    (Pydantic default) — turning them forbidden would break live clients.
+-    """
+-
+-    url: str = ""
+-    title: str | None = None
+-
+-    @field_validator("url")
+-    @classmethod
+-    def _url_must_be_http(cls, v: str) -> str:
+-        # Sessions may be created for a not-yet-navigated tab (empty url is
+-        # rendered as the title); anything non-empty must be a real URL.
+-        if v and not v.startswith(("http://", "https://")):
+-            raise ValueError(f"Invalid URL: {v!r} — must be an absolute http(s) URL")
+-        return v
+-
+-
+-class AIActionRequest(BaseModel):
+-    """Body for POST /ai-action (real LLM-backed page analysis).
+-
+-    ``action`` is now a closed Literal instead of a free-form string: the
+-    unsupported-action 422 previously came from inside the handler, it now
+-    comes from request validation itself. ``context`` stays handler-validated
+-    so the "No page context provided" 422 detail is unchanged.
+-    """
+-
+-    action: Literal["summarize", "explain", "extract_links", "find_issues", "interact"] = (
+-        "summarize"
+-    )
+-    url: str = ""
+-    payload: dict[str, Any] | None = None
+-    context: str = ""
+-
+-    @field_validator("url")
+-    @classmethod
+-    def _url_must_be_http(cls, v: str) -> str:
+-        if v:
+-            return _reject_non_http_url(v)
+-        return v
+-
+-
+-class SecurityScanRequest(BaseModel):
+-    """Body for POST /security-scan (real passive header scan).
+-
+-    ``url`` is required and must be an absolute http(s) URL — enforced by
+-    the validator in addition to the pre-existing handler checks.
+-    """
+-
+-    url: str
+-
+-    @field_validator("url")
+-    @classmethod
+-    def _url_must_be_http(cls, v: str) -> str:
+-        return _reject_non_http_url(v)
+-
+-
+-class ScreenshotRequest(BaseModel):
+-    """Body for POST /screenshot (real Playwright capture)."""
+-
+-    model_config = ConfigDict(extra="ignore")
+-
+-    url: str
+-    full_page: bool = False
+-
+-    @field_validator("url")
+-    @classmethod
+-    def _url_must_be_http(cls, v: str) -> str:
+-        return _reject_non_http_url(v)
+-
+-
+-# --- Crown Jewel Endpoints ---
+-
+-
+-@router.post("/browse-session")
+-def browse_session(body: BrowseSessionRequest):
+-    """Create a REAL browser session record.
+-
+-    ERR-G06 FIX: previously returned ``sess_<sha256(url)[:16]>`` — a
+-    deterministic hash of the URL, not a session that existed anywhere.
+-    A subsequent lookup always 404'd even though the caller was told
+-    ``success: True``. It now creates a genuine entry in the session store
+-    (same store backing GET/PUT/DELETE /sessions), so the returned id is
+-    actually resolvable.
+-    """
+-    from core.api.routes.browser._session_store import SESSIONS
+-
+-    session_id = f"sess_{uuid.uuid4().hex[:16]}"
+-    now = datetime.now(UTC).isoformat()
+-    SESSIONS[session_id] = {
+-        "id": session_id,
+-        "title": str(body.title or body.url or "Browser session"),
+-        "status": "running",
+-        "url": body.url,
+-        "created_at": now,
+-        "updated_at": now,
+-        "messages": [],
+-    }
+-    return {"success": True, "session_id": session_id}
+-
+-
+-@router.post("/ai-action")
+-def ai_action(body: AIActionRequest):
+-    """Run a real LLM-backed browser AI action over the provided page context.
+-
+-    ERR-D03 FIX: previously returned a canned string ("This is a mock summary
+-    for ...") reporting success unconditionally. It now forwards the page
+-    context to the platform ModelRouter (LLM gateway with free-tier fallback)
+-    and surfaces real model output — or an explicit error, never a fake one.
+-    """
+-    action: str = body.action
+-    url: str = body.url
+-    context = _require_context(body.context)
+-
+-    if action == "extract_links":
+-        # Deterministic, real extraction — no model needed.
+-        links: list[str] = []
+-        for match in _LINK_RE.findall(context):
+-            clean = match.rstrip(".,;")
+-            if clean not in links:
+-                links.append(clean)
+-            if len(links) >= _MAX_LINKS:
+-                break
+-        return {
+-            "success": True,
+-            "action": action,
+-            "links": links,
+-            "count": len(links),
+-            "issues": [],
+-            "criticalIssues": [],
+-        }
+-
+-    prompts: dict[str, str] = {
+-        "summarize": (
+-            "Summarize the following web page content in 3-5 concise bullet points."
+-            + (f"\nPage URL: {url}" if url else "")
+-            + f"\n\nPage content:\n{context}"
+-        ),
+-        "explain": (
+-            "Explain what this web page does and who it is for, in plain language."
+-            + (f"\nPage URL: {url}" if url else "")
+-            + f"\n\nPage content:\n{context}"
+-        ),
+-        "find_issues": (
+-            "Review the following web page content. List any visible problems "
+-            "(broken text, placeholder content, security warnings, UX issues) as a "
+-            "short bullet list. If none are visible, say 'No visible issues found'."
+-            + (f"\nPage URL: {url}" if url else "")
+-            + f"\n\nPage content:\n{context}"
+-        ),
+-        "interact": (
+-            "Given this page content and the user's requested interaction, describe "
+-            "clearly what should be done next.\n"
+-            f"Requested interaction: {body.payload}\n\nPage content:\n{context}"
+-        ),
+-    }
+-    prompt = prompts.get(action)
+-    if prompt is None:
+-        raise HTTPException(status_code=422, detail=f"Unsupported AI action: {action!r}")
+-
+-    try:
+-        from core.brain.model_router import ModelRouter
+-
+-        result = ModelRouter().route_and_generate(prompt, task_type="browser_ai_action")
+-    except Exception as exc:  # noqa: BLE001 — honest error propagation
+-        raise HTTPException(status_code=503, detail=f"AI action failed: {exc}") from exc
+-
+-    if not result.get("success"):
+-        raise HTTPException(
+-            status_code=503,
+-            detail=f"AI action failed: {result.get('error') or 'model returned no output'}",
+-        )
+-
+-    text = str(result.get("text") or "")
+-    issues: list[str] = []
+-    if action == "find_issues" and "no visible issues found" not in text.lower():
+-        # Surface model findings as issues so the UI alert path has real data.
+-        issues = [line.strip("-• ").strip() for line in text.splitlines() if line.strip()]
+-        issues = [i for i in issues if i][:20]
+-
+-    return {
+-        "success": True,
+-        "action": action,
+-        "response": text,
+-        "summary": text,
+-        "analysis": text,
+-        "links": [],
+-        "issues": issues,
+-        "criticalIssues": [],
+-        "model": result.get("model"),
+-    }
+-
+-
+-@router.post("/security-scan")
+-def security_scan(body: SecurityScanRequest):
+-    """Perform a REAL passive security scan of the target URL.
+-
+-    ERR-G03 FIX: previously returned an unconditional
+-    ``{"success": True, "score": 100, "issues": []}`` — security theatre where
+-    every target scored a perfect 100. It now fetches the URL and evaluates
+-    real response headers (CSP, HSTS, X-Frame-Options, cookie flags, TLS) and
+-    reports the actual findings and score. Fetch failures are explicit 502s.
+-    """
+-    url = body.url.strip()
+-    if not url:
+-        raise HTTPException(status_code=422, detail="A 'url' is required for a security scan.")
+-    if not url.startswith(("http://", "https://")):
+-        raise HTTPException(status_code=422, detail=f"Invalid URL: {url!r}")
+-    # বাংলা মন্তব্য: #2511 — scheme-check এর পরে canonical SSRF guard; internal/metadata
+-    # হোস্টে server-side fetch নিষিদ্ধ (fail-closed: DNS resolve না হলেও ব্লক)।
+-    _parsed_scan = urlparse(url)
+-    if not _parsed_scan.hostname or _host_is_blocked(_parsed_scan.hostname):
+-        raise HTTPException(status_code=400, detail="Blocked or unresolvable host.")
+-
+-    try:
+-        resp = httpx.get(
+-            url,
+-            follow_redirects=True,
+-            timeout=15.0,
+-            headers={"User-Agent": "SupremeAI-SecurityScan/1.0"},
+-        )
+-    except httpx.HTTPError as exc:
+-        raise HTTPException(
+-            status_code=502, detail=f"Security scan could not reach {url}: {exc}"
+-        ) from exc
+-
+-    return _scan_headers(str(resp.url), resp.headers)
+-
+-
+-@router.post("/screenshot")
+-def capture_screenshot(body: ScreenshotRequest):
+-    """Capture a REAL viewport screenshot via Playwright (when available).
+-
+-    ERR-D02 FIX: previously returned a hardcoded 1x1 blank transparent PNG —
+-    a fake screenshot indistinguishable from a real one. It now renders the
+-    page in a headless Chromium. If Playwright or its browser binary is not
+-    installed, it fails loudly with 503 instead of returning a blank image.
+-    """
+-    url = body.url.strip()
+-    if not url or not url.startswith(("http://", "https://")):
+-        raise HTTPException(status_code=422, detail=f"Invalid or missing 'url': {url!r}")
+-    # বাংলা মন্তব্য: #2511 — headless Chromium-এ page.goto করার আগেও একই SSRF guard;
+-    # ব্রাউজার render path-ও internal নেটওয়ার্ক স্পর্শ করতে পারে না।
+-    _parsed_shot = urlparse(url)
+-    if not _parsed_shot.hostname or _host_is_blocked(_parsed_shot.hostname):
+-        raise HTTPException(status_code=400, detail="Blocked or unresolvable host.")
+-
+-    if importlib.util.find_spec("playwright") is None:
+-        raise HTTPException(
+-            status_code=503,
+-            detail=(
+-                "Real screenshots require Playwright (pip install playwright && "
+-                "playwright install chromium). Blank placeholder responses are no "
+-                "longer served."
+-            ),
+-        )
+-
+-    try:
+-        from playwright.sync_api import sync_playwright
+-
+-        with sync_playwright() as p:
+-            browser = p.chromium.launch(headless=True)
+-            try:
+-                page = browser.new_page(viewport={"width": 1280, "height": 800})
+-                page.goto(url, wait_until="networkidle", timeout=30000)
+-                png_bytes: bytes = page.screenshot(full_page=body.full_page)
+-            finally:
+-                browser.close()
+-    except Exception as exc:  # noqa: BLE001 — honest error propagation
+-        raise HTTPException(status_code=503, detail=f"Screenshot capture failed: {exc}") from exc
+-
+-    return Response(content=png_bytes, media_type="image/png")
+-
+-
+-@router.post("/screenshots")
+-async def save_screenshot_to_gallery(
+-    userId: str | None = None, url: str | None = None, timestamp: int | None = None
+-):
+-    """Save screenshot metadata to the gallery (actual image uploaded separately).
+-
+-    Ported verbatim from the retired ``api/routes/browser_routes.py`` (#2258
+-    route consolidation) to preserve the live frontend contract —
+-    ``admin-browser/useBrowserActions.ts`` fires this POST after a successful
+-    capture (fire-and-forget, errors swallowed client-side).
+-
+-    HONESTY NOTE (audit Class G, flagged not fixed here): the legacy handler
+-    never persisted anything — it fabricates a storage location and reports
+-    ``success: True`` unconditionally. That behaviour is preserved verbatim
+-    to keep this PR a pure route consolidation; making the endpoint honest
+-    (real gallery store or an explicit 501) is deferred to the gallery
+-    persistence follow-up.
+-    """
+-    import hashlib
+-    import time as _time
+-
+-    gallery_entry = {
+-        "id": f"shot_{int(_time.time())}_{hashlib.md5((url or '').encode()).hexdigest()[:8]}",
+-        "userId": userId,
+-        "url": url,
+-        "capturedAt": timestamp or int(_time.time()),
+-        "storageLocation": f"screenshots/{userId or 'anonymous'}/{int(_time.time())}.png",
+-    }
+-
+-    return {"success": True, "galleryEntry": gallery_entry, "message": "Screenshot metadata saved"}
+-
+-
+-# -----------------------------
+-
+-
+-@router.post("/tasks/{id}/step")
+-def execute_step(task_id: str):
+-    """Legacy in-memory step executor — RETIRED (ERR-G05).
+-
+-    It previously always returned
+-    ``{"action": "navigated to dashboard", "details": "Autonomous step succeeded"}``
+-    regardless of task state, letting the autonomy dashboard show forward
+-    motion on a stalled task. There is no real step executor behind this
+-    route, so it now fails explicitly (501) instead of fabricating progress.
+-    Task lifecycle continues via the Neon-backed routes in _tasks.py
+-    (/tasks, /tasks/{id}/complete, /tasks/{id}/fail, /tasks/{id}/circuit-open).
+-    """
+-    # বাংলা মন্তব্য: legacy TASKS ডিকশনারি কখনোই populate হতো না (২০২৬-০৯-১৭
+-    # cleanup-এ সরানো হয়েছে) — তাই এই রুট সবসময় 404-ই দিত; আচরণ অপরিবর্তিত।
+-    raise HTTPException(status_code=404, detail="Task not found")
+diff --git a/browser/routes/_health.py b/browser/routes/_health.py
+deleted file mode 100644
+index 967a08de953cf4cdd6f8e73e9164c7ae4902478d..0000000000000000000000000000000000000000
+--- a/browser/routes/_health.py
++++ /dev/null
+@@ -1,114 +0,0 @@
+-"""Public browser-service liveness probe (dependency-free router).
+-
+-Issue #1490 contract: ``/api/browser/health`` is a liveness probe consumed by
+-CI route-inventory checks and the audit contract — it must be reachable
+-without credentials, exactly like the core ``/health/*`` probes.
+-
+-Ported from the retired ``api/routes/browser_routes.py`` (Phase 3.2 route
+-consolidation, #2258): the legacy module was double-mounted (its admin router
+-was shadowed by the ``api.routes.browser`` package which registers first, and
+-its public router was mounted directly by ``app.py`` / ``core/app_builder.py``).
+-The probe now lives inside the canonical browser package on its own
+-auth-free router, so the legacy module could be deleted.
+-
+-The capability probes it reports were already best-effort/try-except safe
+-(lazy imports, ImportError → ``available: False``) — that behaviour is
+-preserved verbatim.
+-"""
+-
+-from datetime import datetime
+-
+-from fastapi import APIRouter
+-
+-from core.logging_config import logger
+-
+-# Dependency-free by design (see module docstring): NO router-level auth
+-# dependency here, unlike the package's main ``router``.
+-public_router = APIRouter(
+-    prefix="/api/browser",
+-    tags=["browser-integration"],
+-)
+-
+-
+-async def check_llm_gateway() -> bool:
+-    """Check if LLM gateway is available"""
+-    try:
+-        # FIX (import): canonical module path (was 'backend.core.*').
+-        from core.llm.llm_gateway import llm_gateway  # noqa: F401
+-
+-        # Simple health check - can we reach the gateway?
+-        return True
+-    except ImportError:
+-        return False
+-
+-
+-async def check_security_modules() -> bool:
+-    """Check if security modules are available"""
+-    try:
+-        # FIX (import + api-drift): 'OriginValidator' never existed — the real
+-        # validator is TrustedOriginMiddleware in core.security.origin_validator.
+-        from core.security.origin_validator import TrustedOriginMiddleware  # noqa: F401
+-        from core.security.protection.ssrf_protection import SSRFProtection  # noqa: F401
+-
+-        return True
+-    except ImportError:
+-        return False
+-
+-
+-async def check_playwright() -> bool:
+-    """Check if Playwright is available"""
+-    try:
+-        # FIX (import): real API is get_global_browser (was PlaywrightManager).
+-        from core.playwright_manager import get_global_browser  # noqa: F401
+-
+-        return True
+-    except ImportError:
+-        return False
+-
+-
+-async def check_unified_memory() -> bool:
+-    """Check if unified memory is available"""
+-    try:
+-        # FIX (import): canonical facade is UnifiedMemoryInterface (was UnifiedMemory).
+-        from core.unified_memory import UnifiedMemoryInterface  # noqa: F401
+-
+-        return True
+-    except ImportError:
+-        return False
+-
+-
+-@public_router.get("/health")
+-async def browser_service_health():
+-    """
+-    Health check endpoint for browser integration service.
+-    Called by CI route-inventory checks and the audit contract!
+-    """
+-    health_status = {
+-        "service": "browser-integration",
+-        "status": "healthy",
+-        "timestamp": datetime.utcnow().isoformat(),
+-        "capabilities": [],
+-    }
+-
+-    # Check each capability
+-    capabilities_checks = [
+-        ("ai-action", check_llm_gateway),
+-        ("security-scan", check_security_modules),
+-        ("screenshot", check_playwright),
+-        ("memory-storage", check_unified_memory),
+-    ]
+-
+-    for capability_name, check_func in capabilities_checks:
+-        try:
+-            available = await check_func()
+-            health_status["capabilities"].append({"name": capability_name, "available": available})
+-            if not available:
+-                health_status["status"] = "degraded"
+-        except Exception as e:
+-            logger.warning(f"[browser-health] capability {capability_name} check failed: {e}")
+-            health_status["capabilities"].append(
+-                {"name": capability_name, "available": False, "error": str(e)}
+-            )
+-            health_status["status"] = "degraded"
+-
+-    return health_status
+diff --git a/browser/routes/_render_proxy.py b/browser/routes/_render_proxy.py
+deleted file mode 100644
+index 03e4e83ed121a5721cc15261ccb59acb7ec5dfe5..0000000000000000000000000000000000000000
+--- a/browser/routes/_render_proxy.py
++++ /dev/null
+@@ -1,198 +0,0 @@
+-"""Server-side render proxy for the in-app browser (SSRF-hardened).
+-
+-Split out of the former single-module api/routes/browser.py verbatim.
+-Uses stdlib urllib only (no third-party http client) so the route cannot be
+-dropped because of a missing optional dependency at import time.
+-"""
+-
+-import ipaddress
+-import os
+-import secrets
+-import socket
+-import threading
+-import time
+-import urllib.error
+-import urllib.request
+-from urllib.parse import urlparse
+-
+-from fastapi import APIRouter, HTTPException, Response
+-
+-from api.routes.browser import router
+-from core.config_parsers import parse_origin_list
+-from core.logging_config import logger
+-
+-# বাংলা মন্তব্য: ইন-অ্যাপ ব্রাউজার proxy (public) — বাহিরের সাইট X-Frame-Options/frame-ancestors দিয়ে
+-# iframe ব্লক করে, তাই সার্ভার-সাইড ফেচ করে iframe-এ রেন্ডার করা হয়। SSRF প্রতিরোধ জরুরি।
+-_BLOCKED_NETS = [
+-    ipaddress.ip_network("0.0.0.0/8"),
+-    ipaddress.ip_network("10.0.0.0/8"),
+-    ipaddress.ip_network("127.0.0.0/8"),
+-    ipaddress.ip_network("169.254.0.0/16"),
+-    ipaddress.ip_network("172.16.0.0/12"),
+-    ipaddress.ip_network("192.168.0.0/16"),
+-    ipaddress.ip_network("::1/128"),
+-    ipaddress.ip_network("fc00::/7"),
+-    ipaddress.ip_network("fe80::/10"),
+-]
+-
+-
+-def _host_is_blocked(hostname: str) -> bool:
+-    try:
+-        infos = socket.getaddrinfo(hostname, 80)
+-    except (socket.gaierror, socket.herror, OSError):
+-        # DNS resolution failure means we cannot verify the host — treat as
+-        # blocked to fail-closed (deny-by-default) rather than masking the error.
+-        logger.warning("Host resolution failed for %s", hostname, exc_info=True)
+-        return True
+-    for info in infos:
+-        raw_ip = info[4][0].split("%")[0]
+-        try:
+-            addr = ipaddress.ip_address(raw_ip)
+-        except ValueError:
+-            return True
+-        if addr.is_loopback or addr.is_private or addr.is_reserved or addr.is_link_local:
+-            return True
+-        for net in _BLOCKED_NETS:
+-            if addr in net:
+-                return True
+-    return False
+-
+-
+-def _frame_ancestors_sources() -> str:
+-    """Build the CSP ``frame-ancestors`` source list for the render proxy.
+-
+-    SEC-HARDEN P6: the proxy previously sent ``frame-ancestors *`` (plus a
+-    non-standard ``X-Frame-Options: ALLOWALL``). That let ANY third-party site
+-    embed the proxy — a clickjacking / UI-redressing surface. Now only the
+-    app's own surface (``'self'``) plus every operator-configured frontend
+-    origin (``ALLOWED_ORIGINS``) may frame it. Never ``*``.
+-    """
+-    sources = ["'self'"]
+-    # Roadmap 1.4 (issue #1173): canonical parser — comma ছাড়াও JSON-array
+-    # ফরম্যাটে সেট করা ALLOWED_ORIGINS-ও সঠিকভাবে পার্স হয়।
+-    for origin in parse_origin_list(os.getenv("ALLOWED_ORIGINS", "")):
+-        sources.append(origin)
+-    return " ".join(sources)
+-
+-
+-# ─── Issue #1669 (CRITICAL): ticket-based auth for the render proxy ──────────
+-# JWT কখনো URL query-তে যাবে না (logs/history/Referer leak)। এখন flow:
+-#   1) ফ্রন্টএন্ড header-auth দিয়ে POST /api/browser/render-ticket কল করে
+-#   2) সার্ভার এক-ব্যবহারযোগ্য, 60s-TTL টিকেট জেনারেট করে (crypto-random)
+-#   3) iframe src = /api/browser/render?url=…&ticket=… — টিকেট consume হয়
+-# Query-token সরাসরি যাচাই-ই হত না (router guard header চায়) — ফাঁস ছাড়া
+-# কোনো কাজ ছিল না; এখন URL-এ শুধু অননুকলনযোগ্য (unguessable) এককালীন ticket থাকে।
+-_TICKET_TTL_SECONDS = 60
+-_TICKETS: dict[str, float] = {}
+-_TICKETS_LOCK = threading.Lock()
+-
+-
+-def _purge_expired_tickets(now: float) -> None:
+-    stale = [t for t, exp in _TICKETS.items() if exp <= now]
+-    for t in stale:
+-        _TICKETS.pop(t, None)
+-
+-
+-def _issue_ticket() -> str:
+-    ticket = secrets.token_urlsafe(32)
+-    with _TICKETS_LOCK:
+-        _purge_expired_tickets(time.time())
+-        _TICKETS[ticket] = time.time() + _TICKET_TTL_SECONDS
+-    return ticket
+-
+-
+-def _consume_ticket(ticket: str | None) -> bool:
+-    """One-time consume: valid, unexpired ticket হলে তা মুছে True ফেরত।"""
+-    if not ticket:
+-        return False
+-    now = time.time()
+-    with _TICKETS_LOCK:
+-        exp = _TICKETS.pop(ticket, None)
+-    return exp is not None and exp > now
+-
+-
+-@router.post("/render-ticket")
+-def issue_render_ticket():
+-    """Issue a short-lived ONE-TIME ticket for the iframe render proxy.
+-
+-    Lives on the header-authenticated router — the browser attaches the JWT
+-    as an Authorization header (never in a URL).
+-    """
+-    return {"ticket": _issue_ticket(), "expires_in": _TICKET_TTL_SECONDS}
+-
+-
+-# The render GET is mounted WITHOUT the header-auth guard: iframe requests
+-# cannot attach Authorization headers. Auth = the single-use ticket above.
+-render_public_router = APIRouter(prefix="/api/browser", tags=["browser"])
+-
+-
+-@render_public_router.get("/render")
+-def render_proxy(url: str, ticket: str = ""):
+-    """Server-side web proxy so the in-app browser can render sites that block iframes.
+-
+-    Uses stdlib urllib only (no third-party http client) so the route cannot be dropped
+-    because of a missing optional dependency at import time.
+-    """
+-    # Issue #1669: fail-closed ticket auth — no/invalid/reused ticket → 401.
+-    if not _consume_ticket(ticket):
+-        raise HTTPException(
+-            status_code=401,
+-            detail="Valid one-time render ticket required (obtain via POST /api/browser/render-ticket).",
+-        )
+-    parsed = urlparse(url)
+-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+-        raise HTTPException(status_code=400, detail="Only absolute http(s) URLs are supported.")
+-    if _host_is_blocked(parsed.hostname):
+-        raise HTTPException(status_code=400, detail="Blocked or unresolvable host.")
+-    try:
+-        req = urllib.request.Request(url, headers={"User-Agent": "SupremeAI-Browser/1.0"})
+-        with urllib.request.urlopen(req, timeout=20) as resp:
+-            ctype = resp.headers.get("Content-Type", "") or ""
+-            # বাংলা মন্তব্য (#2718): আগে unbounded resp.read() — পুরো body RAM-এ
+-            # পড়ার পরে সাইজ-চেক হতো; বড়/দুষ্ট upstream 512MB কন্টেইনারে OOM করাতে
+-            # পারত (রুটটি attacker-influenceable in-app browser iframe proxy)।
+-            # এখন chunk-ভিত্তিক পড়া — 5MB ছাড়ালেই সাথে সাথে abort (502)।
+-            _PROXY_BODY_LIMIT = 5 * 1024 * 1024
+-            chunks: list[bytes] = []
+-            total = 0
+-            while True:
+-                chunk = resp.read(64 * 1024)
+-                if not chunk:
+-                    break
+-                chunks.append(chunk)
+-                total += len(chunk)
+-                if total > _PROXY_BODY_LIMIT:
+-                    raise HTTPException(status_code=502, detail="Response too large to proxy.")
+-            data = b"".join(chunks)
+-        proxy_headers = {
+-            "Cache-Control": "no-store",
+-            # SEC-HARDEN P6: never ALLOWALL / frame-ancestors * — only the app's
+-            # own surfaces may embed the proxy response (prevents clickjacking).
+-            "X-Frame-Options": "SAMEORIGIN",
+-            "Content-Security-Policy": f"frame-ancestors {_frame_ancestors_sources()}",
+-        }
+-        if "text/html" in ctype:
+-            text = data.decode("utf-8", errors="replace")
+-            base_tag = f'<base href="{url}">'
+-            if "<head" in text:
+-                text = text.replace("<head", f"<head>{base_tag}", 1)
+-            elif "<HEAD" in text:
+-                text = text.replace("<HEAD", f"<HEAD>{base_tag}", 1)
+-            else:
+-                text = base_tag + text
+-            return Response(
+-                content=text,
+-                media_type="text/html; charset=utf-8",
+-                headers=proxy_headers,
+-            )
+-        return Response(
+-            content=data, media_type=ctype or "application/octet-stream", headers=proxy_headers
+-        )
+-    except HTTPException:
+-        raise
+-    except urllib.error.HTTPError as e:
+-        logger.error(f"Render proxy upstream error: {e.code} {e.reason}")
+-        raise HTTPException(status_code=502, detail=f"Upstream returned {e.code}.") from e
+-    except Exception as e:
+-        logger.error(f"Render proxy error: {e!s}")
+-        raise HTTPException(status_code=502, detail="Failed to fetch the requested URL.") from e
+diff --git a/browser/routes/_scraping.py b/browser/routes/_scraping.py
+deleted file mode 100644
+index ac86b36fef8d6e29029d5e98212f633a1769e60c..0000000000000000000000000000000000000000
+--- a/browser/routes/_scraping.py
++++ /dev/null
+@@ -1,133 +0,0 @@
+-"""Scrape/browse/extract endpoints proxying to the scraper microservice.
+-
+-Split out of the former single-module api/routes/browser.py verbatim.
+-Import-time side effects of the original module (``MultiLevelCache``
+-instantiation, ``settings.scraper_service_url`` read) live HERE and only
+-here, matching the original single-module behavior.
+-"""
+-
+-import asyncio
+-import hashlib
+-import json
+-
+-import httpx
+-from fastapi import Depends, HTTPException
+-from pydantic import BaseModel
+-
+-from core.api.routes.admin_dashboard import require_admin_token
+-from core.api.routes.browser import router
+-from core.cache.redis_manager import MultiLevelCache
+-from core.config import settings
+-from core.http_client import get_shared_async_client
+-from core.logging_config import logger
+-from core.tools.ai_agents.browser_agent import BrowseRequest
+-
+-
+-class ScrapeRequest(BaseModel):
+-    url: str
+-
+-
+-# বাংলা মন্তব্য: আগের BrowserAgent গ্লোবাল সিঙ্গলটন সরিয়ে দিয়েছি।
+-# এখন ব্রাউজার অটোমেশন স্ক্র্যাপার মাইক্রোসার্ভিসে HTTP প্রক্সি করে (zero-cost,
+-# decoupled)। AGENTS.md §2: "Never treat tasks in isolation" — এই পরিবর্তনের পাশাপাশি
+-# Cloudflare Worker (worker.js) এবং render.yaml-এ scraper route যোগ করতে হবে।
+-
+-_SCRAPER_URL = settings.scraper_service_url.rstrip("/") if settings.scraper_service_url else None
+-
+-# Hybrid-plan cache: keep scraped results in Upstash Redis (L2) + in-memory (L1)
+-# so the (off-Render, scale-to-zero) scraper microservice is invoked as rarely as
+-# possible — directly cutting its compute/quota consumption.
+-_SCRAPE_CACHE_TTL = 3600  # 1h
+-_scrape_cache = MultiLevelCache(l2_ttl=_SCRAPE_CACHE_TTL)
+-
+-
+-def _scrape_cache_key(url: str) -> str:
+-    return "scrape_cache:" + hashlib.sha256(url.encode("utf-8")).hexdigest()
+-
+-
+-async def _proxy_to_scraper(endpoint: str, payload: dict) -> dict:
+-    """Forward browser/scrape requests to the standalone scraper microservice."""
+-    if not _SCRAPER_URL:
+-        # Fallback: use local BrowserAgent (for local dev / when scraper service is not deployed)
+-        from core.tools.ai_agents.browser_agent import BrowserAgent
+-
+-        agent = BrowserAgent()
+-        return await agent.navigate_and_interact(**payload)
+-    try:
+-        client = get_shared_async_client()
+-        resp = await client.post(f"{_SCRAPER_URL}/{endpoint}", json=payload, timeout=60.0)
+-        return resp.json()
+-    except (httpx.RequestError, httpx.HTTPStatusError) as e:
+-        logger.error(f"Scraper service proxy failed: {e}")
+-        return {"success": False, "error": str(e)}
+-
+-
+-async def _cached_scrape(payload: dict) -> dict:
+-    """Scrape with a Redis-backed cache (idempotent fetch only)."""
+-    url = payload.get("url", "")
+-    if not url:
+-        return await _proxy_to_scraper("scrape", payload)
+-    key = _scrape_cache_key(url)
+-    cached = await _scrape_cache.get(key)
+-    if cached is not None:
+-        try:
+-            return json.loads(cached)
+-        except asyncio.CancelledError:
+-            raise
+-        except Exception as e:
+-            import logging
+-
+-            logging.getLogger(__name__).exception(f"Silenced error: {e}")
+-    result = await _proxy_to_scraper("scrape", payload)
+-    if isinstance(result, dict) and result.get("success"):
+-        await _scrape_cache.set(key, json.dumps(result), ttl=_SCRAPE_CACHE_TTL)
+-    return result
+-
+-
+-@router.post("/scrape", dependencies=[Depends(require_admin_token)])
+-async def scrape(request: ScrapeRequest):
+-    """Fetch URL and return cleaned content via the Scraper Microservice."""
+-    result = await _cached_scrape({"url": request.url})
+-    return result
+-
+-
+-@router.post("/browse", dependencies=[Depends(require_admin_token)])
+-async def browse(request: BrowseRequest):
+-    """Navigate to a URL and perform browser actions via the Scraper Microservice (Admin Only)."""
+-    if request.action in ("click", "type", "scroll", "screenshot"):
+-        result = await _proxy_to_scraper(
+-            "browse",
+-            {
+-                "url": request.url,
+-                "action": request.action,
+-                "selector": request.selector,
+-                "text": request.text,
+-                "wait_for": request.wait_for,
+-            },
+-        )
+-        return result
+-
+-    # Default action (fetch) — delegate to scraper service (cache-backed)
+-    result = await _cached_scrape({"url": request.url})
+-    return result
+-
+-
+-@router.post("/extract", dependencies=[Depends(require_admin_token)])
+-async def extract(url: str, extraction_prompt: str):
+-    """Fetch page and extract structured data with AI (Admin Only).
+-
+-    Now proxies to the standalone scraper microservice for browser automation,
+-    then performs AI extraction on the returned content.
+-    """
+-    from core.security.protection.ssrf_protection import is_safe_url
+-
+-    if not is_safe_url(url):
+-        raise HTTPException(
+-            status_code=400,
+-            detail="URL is not allowed: restricted by SSRF protection policy",
+-        )
+-
+-    from core.tools.browser.ai_web_extractor import AIWebExtractor
+-
+-    extractor = AIWebExtractor()
+-    return await extractor.extract_data(url, extraction_prompt)
+diff --git a/browser/routes/_session_store.py b/browser/routes/_session_store.py
+deleted file mode 100644
+index 2844f9a91ac554db6e4e2f23537b3dc6bb5b1ce9..0000000000000000000000000000000000000000
+--- a/browser/routes/_session_store.py
++++ /dev/null
+@@ -1,115 +0,0 @@
+-"""Firestore-style in-app session store endpoints (VaultPage sync API).
+-
+-Split out of the former single-module api/routes/browser.py verbatim.
+-
+-Issue #451: sessions now write through to the durable state store
+-(Redis federation + in-process mirror) — a deploy/restart no longer
+-silently erases user session history. Reads are served from the mirror
+-(zero billable Redis ops); mutations cost 1 op each.
+-"""
+-
+-import hashlib
+-from datetime import UTC, datetime
+-from typing import Any
+-
+-from fastapi import HTTPException
+-from pydantic import BaseModel
+-
+-from api.routes.browser import router
+-from core.state_store import durable_state
+-
+-# ──────────────────────────────────────────────
+-# বাংলা মন্তব্য: সেশন স্টোর — Firestore-ভিত্তিক সেশন সিঙ্ক (VaultPage-এর মত ব্যাকএন্ড API কল)
+-# ──────────────────────────────────────────────
+-_state = durable_state("browser_sessions")
+-# Module-level alias kept for backwards compatibility with tests/imports;
+-# it is now a live view over the durable mirror.
+-SESSIONS: dict[str, dict[str, Any]] = {}
+-
+-
+-def _rkey(session_id: str) -> str:
+-    """Hash the id for the Redis key — ids may contain ':' or whitespace."""
+-    return hashlib.sha1(session_id.encode()).hexdigest()[:16]
+-
+-
+-def _hydrate_sessions() -> None:
+-    """Pull durable records into the local view (best-effort, boot/first-use)."""
+-    if SESSIONS:
+-        return
+-    try:
+-        for data in _state.mirror_items().values():
+-            sid = data.get("__id__")
+-            if sid:
+-                record = {k: v for k, v in data.items() if k != "__id__"}
+-                SESSIONS[sid] = record
+-    except Exception as hydrate_err:
+-        from core.logging_config import logger
+-
+-        logger.warning("browser session store hydrate failed (mirror-only): %s", hydrate_err)
+-
+-
+-class SessionMessageIn(BaseModel):
+-    id: int
+-    sender: str
+-    text: str
+-    timestamp: str
+-
+-
+-class SessionIn(BaseModel):
+-    id: str
+-    title: str
+-    status: str = "running"
+-    created_at: str = ""
+-    updated_at: str = ""
+-    messages: list[SessionMessageIn] = []
+-
+-
+-@router.get("/sessions")
+-def list_sessions():
+-    """বাংলা মন্তব্য: সব সেশন তালিকা রিটার্ন করে"""
+-    _hydrate_sessions()
+-    return {"sessions": list(SESSIONS.values())}
+-
+-
+-@router.get("/sessions/{session_id}")
+-def get_session(session_id: str):
+-    """বাংলা মন্তব্য: নির্দিষ্ট সেশন রিটার্ন করে"""
+-    _hydrate_sessions()
+-    if session_id not in SESSIONS:
+-        raise HTTPException(status_code=404, detail="Session not found")
+-    return SESSIONS[session_id]
+-
+-
+-@router.post("/sessions")
+-def create_session(session: SessionIn):
+-    """বাংলা মন্তব্য: নতুন সেশন তৈরি করে"""
+-    now = datetime.now(UTC).isoformat()
+-    data = session.model_dump()
+-    if not data.get("created_at"):
+-        data["created_at"] = now
+-    if not data.get("updated_at"):
+-        data["updated_at"] = now
+-    SESSIONS[session.id] = data
+-    _state.set(_rkey(session.id), {**data, "__id__": session.id})
+-    return {"success": True, "session": data}
+-
+-
+-@router.put("/sessions/{session_id}")
+-def update_session(session_id: str, session: SessionIn):
+-    """বাংলা মন্তব্য: বিদ্যমান সেশন আপডেট করে"""
+-    _hydrate_sessions()
+-    if session_id not in SESSIONS:
+-        raise HTTPException(status_code=404, detail="Session not found")
+-    data = session.model_dump()
+-    data["updated_at"] = datetime.now(UTC).isoformat()
+-    SESSIONS[session_id] = data
+-    _state.set(_rkey(session_id), {**data, "__id__": session_id})
+-    return {"success": True, "session": data}
+-
+-
+-@router.delete("/sessions/{session_id}")
+-def delete_session(session_id: str):
+-    """বাংলা মন্তব্য: সেশন মুছে ফেলে"""
+-    SESSIONS.pop(session_id, None)
+-    _state.delete(_rkey(session_id))
+-    return {"success": True}
+diff --git a/browser/tools/__init__.py b/browser/tools/__init__.py
+deleted file mode 100644
+index 792d6005489ebee62cde02066f19c5521e620451..0000000000000000000000000000000000000000
+--- a/browser/tools/__init__.py
++++ /dev/null
+@@ -1 +0,0 @@
+-#
+diff --git a/browser/tools/browser_stealth.py b/browser/tools/browser_stealth.py
+deleted file mode 100644
+index 958c68303a6ab5783069d4a6a870c207d0cf5ef2..0000000000000000000000000000000000000000
+--- a/browser/tools/browser_stealth.py
++++ /dev/null
+@@ -1,182 +0,0 @@
+-# LATENT-CRASH REPAIR (2026-09-15): this module is DESIGNED to work without
+-# playwright (HAS_PLAYWRIGHT guard + optional-dependency pragmas below), but
+-# without the deferred-annotations import the parameter annotation on
+-# simulate_human_behavior(page: Page) was evaluated at class-definition time
+-# and raised NameError in playwright-less environments (e.g. the CI services
+-# group venv) — making the whole tools.browser chain unimportable there.
+-from __future__ import annotations
+-
+-import asyncio
+-import secrets
+-
+-
+-random = secrets.SystemRandom()
+-import string
+-import time
+-from pathlib import Path
+-from typing import Any
+-
+-from core.logging_config import logger
+-
+-HAS_PLAYWRIGHT = True
+-try:  # pragma: no cover - optional dependency
+-    from playwright.async_api import BrowserContext, Page, async_playwright
+-except ImportError:  # pragma: no cover - optional dependency
+-    HAS_PLAYWRIGHT = False
+-
+-# A list of modern, realistic user agents to rotate through
+-REALISTIC_USER_AGENTS = [
+-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0",
+-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+-]
+-
+-
+-class BrowserStealth:
+-    def __init__(self) -> None:
+-        self.playwright = None
+-        self.context: BrowserContext | None = None
+-
+-    async def create_stealth_browser(self) -> Any:
+-        if not HAS_PLAYWRIGHT:
+-            raise RuntimeError("playwright not installed")
+-        # #2428 refactor: use the global async Playwright singleton from
+-        # core.playwright_manager instead of launching a fresh playwright+chromium
+-        # instance on every call. This was the source of per-call Chromium
+-        # process sprawl (10+ sites in playwright_browser_agent.py + 1 in
+-        # web_fallback_agent.py all called this). The singleton is process-level
+-        # with a double-checked lock + bounded page semaphore — zero-zombie on
+-        # shutdown_global_browser().
+-        from core.playwright_manager import get_global_browser
+-
+-        browser = await get_global_browser()
+-        from tools.security_tools.proxy_manager import ProxyManager
+-
+-        proxy_mgr = ProxyManager()
+-        next_proxy = proxy_mgr.get_next_proxy()
+-
+-        context_kwargs = {
+-            "user_agent": random.choice(REALISTIC_USER_AGENTS),
+-            "locale": "en-US",
+-            "screen": {"width": 1920, "height": 1080},
+-            "viewport": {"width": 1920, "height": 1080},
+-            "java_script_enabled": True,
+-            "bypass_csp": True,
+-            "extra_http_headers": {
+-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+-                "Accept-Language": "en-US,en;q=0.9",
+-                "Upgrade-Insecure-Requests": "1",
+-            },
+-        }
+-        if next_proxy:
+-            context_kwargs["proxy"] = {"server": next_proxy}
+-            logger.info(f"Playwright stealth browser launching via proxy: {next_proxy}")
+-
+-        self.context = await browser.new_context(**context_kwargs)
+-        await self.context.route(
+-            "**/*.{png,jpg,jpeg,gif,svg,woff,woff2}", lambda route: route.abort()
+-        )
+-        await self.context.add_init_script("""
+-            (() => {
+-                // --- General Navigator Spoofing ---
+-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+-                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+-                Object.defineProperty(navigator, 'plugins', {
+-                    get: () => [
+-                        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+-                        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+-                        { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+-                    ],
+-                });
+-
+-                // --- Spoof window.chrome ---
+-                window.chrome = window.chrome || {};
+-                window.chrome.runtime = window.chrome.runtime || {};
+-
+-                // --- Permissions API Spoofing ---
+-                const originalQuery = window.navigator.permissions.query;
+-                window.navigator.permissions.query = (parameters) => (
+-                    parameters.name === 'notifications'
+-                        ? Promise.resolve({ state: Notification.permission })
+-                        : originalQuery(parameters)
+-                );
+-
+-                // --- WebGL Fingerprint Spoofing ---
+-                try {
+-                    const getParameter = WebGLRenderingContext.prototype.getParameter;
+-                    WebGLRenderingContext.prototype.getParameter = function(parameter) {
+-                        if (parameter === 37445) return 'Intel Open Source Technology Center'; // UNMASKED_VENDOR_WEBGL
+-                        if (parameter === 37446) return 'Mesa DRI Intel(R) Ivybridge Mobile '; // UNMASKED_RENDERER_WEBGL
+-                        return getParameter.apply(this, arguments);
+-                    };
+-                } catch (e) { /* ignore */ }
+-
+-                // --- Canvas Fingerprint Spoofing ---
+-                const toDataURL = HTMLCanvasElement.prototype.toDataURL;
+-                HTMLCanvasElement.prototype.toDataURL = function() {
+-                    const context = this.getContext('2d');
+-                    if (context) {
+-                        // Add random noise to the canvas
+-                        const imageData = context.getImageData(0, 0, this.width, this.height);
+-                        for (let i = 0; i < imageData.data.length; i += 4) {
+-                            const noise = Math.floor(Math.random() * 10 - 5);
+-                            imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise));
+-                            imageData.data[i+1] = Math.max(0, Math.min(255, imageData.data[i+1] + noise));
+-                            imageData.data[i+2] = Math.max(0, Math.min(255, imageData.data[i+2] + noise));
+-                        }
+-                        context.putImageData(imageData, 0, 0);
+-                    }
+-                    return toDataURL.apply(this, arguments);
+-                };
+-            })();
+-            """)
+-        return self.context
+-
+-    async def simulate_human_behavior(self, page: Page) -> None:
+-        try:
+-            for _ in range(random.randint(1, 3)):
+-                await page.mouse.move(
+-                    random.randint(0, 400),
+-                    random.randint(0, 400),
+-                    steps=random.randint(3, 6),
+-                )
+-                await asyncio.sleep(random.uniform(0.3, 1.2))
+-                await page.mouse.wheel(0, random.randint(-120, 120))
+-                await page.keyboard.press(random.choice(["Space", "PageDown", "End"]))
+-            if random.random() > 0.6:
+-                await page.mouse.click(
+-                    random.randint(50, 300),
+-                    random.randint(80, 300),
+-                    delay=random.randint(80, 220),
+-                )
+-        except Exception as exc:
+-            logger.debug(f"Human behavior simulation skipped: {exc}")
+-
+-    async def safe_screenshot(self, page: Page, path: str | None = None) -> str | None:
+-        try:
+-            target = (
+-                path
+-                or f"data/artifacts/screenshot_{int(time.time())}_{''.join(random.choices(string.ascii_lowercase + string.digits, k=6))}.png"
+-            )
+-            Path("data/artifacts").mkdir(parents=True, exist_ok=True)
+-            await page.screenshot(path=target, full_page=True)
+-            return target
+-        except Exception as exc:
+-            logger.debug(f"screenshot failed: {exc}")
+-            return None
+-
+-    async def close(self) -> None:
+-        try:
+-            if self.context:
+-                await self.context.close()
+-            if self.playwright:
+-                await self.playwright.stop()
+-        except Exception as e:
+-            try:
+-                import loguru
+-
+-                loguru.logger.error(f"Tool execution error: {e}")
+-            except Exception as e:
+-                logger.warning(f"Exception suppressed: {e}")
+-            pass
+diff --git a/browser/tools/playwright_browser_agent.py b/browser/tools/playwright_browser_agent.py
+deleted file mode 100644
+index 8268a050ea51ac041d8e40764738915ee9a0c4f2..0000000000000000000000000000000000000000
+--- a/browser/tools/playwright_browser_agent.py
++++ /dev/null
+@@ -1,888 +0,0 @@
+-from __future__ import annotations
+-
+-import asyncio
+-import contextlib
+-import json
+-import secrets
+-from concurrent.futures import ThreadPoolExecutor
+-
+-random = secrets.SystemRandom()
+-import base64
+-import time
+-from collections.abc import Callable
+-from pathlib import Path
+-from typing import Any, ClassVar
+-
+-from core.logging_config import logger
+-
+-try:
+-    from playwright.sync_api import Page
+-except ImportError:
+-    # বাংলা মন্তব্য (DEP-AUDIT): playwright এখন optional `browser` group-এ।
+-    # Core image-এ না থাকলে module import ক্র্যাশ না করে Any-তে fallback হয়।
+-    Page = Any  # type: ignore[assignment,misc]
+-
+-from brain.model_router import ModelRouter
+-from browser.action_cascade import execute_click_cascade
+-from core.security.secure_credential_store import (
+-    CredentialEncryptionUnavailableError,
+-    SecureCredentialStore,
+-)
+-from database.supabase_client import db
+-from memory.long_term_memory import MemoryManager
+-from tools.browser.browser_stealth import BrowserStealth
+-
+-TRUST_SCORE_THRESHOLD = 0.95
+-
+-
+-class PlaywrightBrowserAgent:
+-    COOKIE_STORAGE_BASE: ClassVar[Any] = (
+-        Path(__file__).resolve().parents[1] / ".cache" / "playwright_cookies"
+-    )
+-
+-    def __init__(self, headless: bool = True, timeout_ms: int = 30000) -> None:
+-        self.headless = headless
+-        self.timeout_ms = timeout_ms
+-        self.playwright = None
+-        self.browser = None
+-        self.memory = MemoryManager()
+-        self.secure_store = SecureCredentialStore()
+-        self._bound_page: Any = None
+-        self.COOKIE_STORAGE_BASE.mkdir(parents=True, exist_ok=True)
+-
+-    # ------------------------------------------------------------------
+-    # Stateful page binding (ISSUE-1570) — MCP wrappers can act on a live
+-    # session page without re-creating a browser per call.
+-    # ------------------------------------------------------------------
+-    def bind_page(self, page: Any) -> None:
+-        """Bind a live browser page for stateful cascade/typing operations."""
+-        self._bound_page = page
+-
+-    def unbind_page(self) -> None:
+-        self._bound_page = None
+-
+-    def _resolve_bound_page(self, session: Any = None) -> Any:
+-        if session is not None:
+-            return getattr(session, "page", None)
+-        return self._bound_page
+-
+-    def is_available(self) -> bool:
+-        import importlib.util
+-
+-        return importlib.util.find_spec("playwright") is not None
+-
+-    def _cookie_file_path(self, session_name: str) -> Path:
+-        safe_name = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in session_name)
+-        return self.COOKIE_STORAGE_BASE / f"{safe_name}_cookies.json"
+-
+-    def _load_cookies(self, context: Any, session_name: str) -> None:
+-        cookie_path = self._cookie_file_path(session_name)
+-        if not cookie_path.exists():
+-            return
+-
+-        try:
+-            raw = cookie_path.read_text()
+-            payload = json.loads(raw)
+-            cookies = self._unwrap_cookie_payload(payload)
+-            if not isinstance(cookies, list):
+-                raise ValueError("Cookie payload is not a list")
+-            context.add_cookies(cookies)
+-            logger.info(
+-                "Loaded Playwright cookies for session '%s' from %s",
+-                session_name,
+-                cookie_path,
+-            )
+-        except Exception as exc:
+-            logger.warning(
+-                "Failed to load cookies from %s: %s. Removing stale cookie file.",
+-                cookie_path,
+-                exc,
+-            )
+-            with contextlib.suppress(OSError):
+-                cookie_path.unlink()
+-
+-    def _unwrap_cookie_payload(self, payload: Any) -> Any:
+-        """ISSUE-1570: decrypt cookie envelope without ever emitting plaintext.
+-
+-        Handles three storage generations:
+-          * envelope ``{"__enc__": True, "blob": <ciphertext str>}`` — real
+-            Fernet store (tuple contract); blob is decrypted then JSON-parsed.
+-          * envelope ``{"__enc__": True, "blob": <list>}`` — legacy mapping
+-            contract (kept for existing persisted stores / test doubles).
+-          * raw list — legacy PLAINTEXT artifact; loadable for migration but
+-            always re-saved encrypted on the next ``_save_cookies`` call.
+-        """
+-        if isinstance(payload, dict) and payload.get("__enc__"):
+-            blob = payload.get("blob", payload)
+-            if isinstance(blob, str):
+-                plain = self.secure_store.decrypt(blob)
+-                if isinstance(plain, str):
+-                    return json.loads(plain)
+-                return plain
+-            cookies = self.secure_store.decrypt(payload)
+-            if isinstance(cookies, dict) and cookies.get("__enc__"):
+-                cookies = self.secure_store.decrypt(cookies)
+-            return cookies
+-        if isinstance(payload, list):
+-            # Legacy plaintext cookie file — migrate silently, never re-write plaintext.
+-            logger.warning(
+-                "Legacy plaintext cookie payload detected; it will be re-encrypted on next save."
+-            )
+-            return payload
+-        # Unknown shape → let the store try once, then validate upstream.
+-        return self.secure_store.decrypt(payload)
+-
+-    def _save_cookies(self, context: Any, session_name: str) -> None:
+-        """Persist cookies ENCRYPTED — fail closed instead of writing plaintext.
+-
+-        ISSUE-1570: the previous implementation passed the raw cookie list
+-        straight into a bytes-oriented Fernet store, hit the type error and
+-        silently fell back to PLAINTEXT on disk. Now: serialize once, encrypt
+-        the serialized string, and refuse (raise) if encryption is unavailable
+-        or a provider attempts a plaintext fallback.
+-        """
+-        cookie_path = self._cookie_file_path(session_name)
+-        cookies = context.cookies()
+-        serialized = json.dumps(cookies)
+-        try:
+-            result = self.secure_store.encrypt(serialized)
+-        except CredentialEncryptionUnavailableError:
+-            raise
+-        except Exception as exc:
+-            raise CredentialEncryptionUnavailableError(
+-                f"Cookie encryption failed for session '{session_name}': {exc} — "
+-                "refusing to persist plaintext credentials (fail-closed)."
+-            ) from exc
+-
+-        if isinstance(result, tuple):
+-            ciphertext = result[0]
+-        elif isinstance(result, dict) and result.get("__enc__"):
+-            ciphertext = result  # legacy mapping contract (persisted as-is)
+-        elif isinstance(result, str):
+-            ciphertext = result
+-        else:
+-            raise CredentialEncryptionUnavailableError(
+-                f"Cookie store returned unsupported payload type {type(result).__name__} "
+-                "— refusing to persist credentials (fail-closed)."
+-            )
+-
+-        if isinstance(ciphertext, str) and ciphertext == serialized:
+-            # Provider fell back to plaintext — that is exactly what must NEVER land on disk.
+-            raise CredentialEncryptionUnavailableError(
+-                "Credential provider is unavailable (plaintext fallback detected) — "
+-                "cookie save aborted (fail-closed)."
+-            )
+-
+-        envelope = (
+-            ciphertext if isinstance(ciphertext, dict) else {"__enc__": True, "blob": ciphertext}
+-        )
+-        cookie_path.write_text(json.dumps(envelope, indent=2, default=str))
+-        logger.info("Saved Playwright cookies for session '%s' to %s", session_name, cookie_path)
+-
+-    def _human_like_type(self, page: Page, selector: str, text: str):
+-        """Types text into a field character by character with 30–100ms jitter."""
+-        if not text:
+-            return 0
+-        for char in text:
+-            page.type(selector, char, delay=random.uniform(30, 100))
+-        return len(text)
+-
+-    def _human_like_click(self, page: Page, selector: str, steps: int = 25):
+-        """
+-        Moves the mouse in a human-like curve to an element and clicks it.
+-        This uses a Bezier curve to simulate a more natural mouse movement.
+-        """
+-        try:
+-            element = page.wait_for_selector(selector, timeout=self.timeout_ms)
+-            if not element:
+-                raise RuntimeError(f"Element '{selector}' not found.")
+-
+-            bb = element.bounding_box()
+-            if not bb:
+-                # Fallback for elements without a clear bounding box
+-                logger.warning(f"Element '{selector}' has no bounding box. Using simple click.")
+-                page.click(selector)
+-                return
+-
+-            # Target coordinates (center of the element with some randomness)
+-            target_x = bb["x"] + bb["width"] / 2 + random.uniform(-bb["width"] / 4, bb["width"] / 4)
+-            target_y = (
+-                bb["y"] + bb["height"] / 2 + random.uniform(-bb["height"] / 4, bb["height"] / 4)
+-            )
+-
+-            # Starting coordinates (random point on the screen)
+-            start_x, start_y = random.uniform(0, 500), random.uniform(0, 500)
+-
+-            # Control points for the Bezier curve
+-            control_1_x = start_x + random.uniform(50, 150) * random.choice([-1, 1])
+-            control_1_y = start_y + random.uniform(50, 150) * random.choice([-1, 1])
+-            control_2_x = target_x + random.uniform(50, 150) * random.choice([-1, 1])
+-            control_2_y = target_y + random.uniform(50, 150) * random.choice([-1, 1])
+-
+-            # Move mouse along the curve
+-            page.mouse.move(start_x, start_y)
+-            page.mouse.move(control_1_x, control_1_y)
+-            page.mouse.move(control_2_x, control_2_y)
+-            page.mouse.move(target_x, target_y, steps=steps)
+-            page.mouse.click(target_x, target_y)
+-
+-        except Exception as e:
+-            logger.error(
+-                f"Human-like click failed for selector '{selector}': {e}. Falling back to simple click."
+-            )
+-            page.click(selector)  # Fallback to a simple click if anything goes wrong
+-
+-    def _new_context(self, session_name: str | None = None) -> tuple[Any, BrowserStealth]:
+-        """
+-        Creates a new, stealthy browser context using the BrowserStealth class.
+-        This method runs the async setup from BrowserStealth in a sync context.
+-        """
+-        stealth_manager = BrowserStealth()
+-
+-        # Since this is a sync method, we run the async setup in a new event loop.
+-        # LATENT-CRASH REPAIR (2026-09-15): the original code used the RUNNING
+-        # loop when one was active (e.g. when the async upload_file path calls
+-        # this method) and then called run_until_complete on it, which raises
+-        # "RuntimeError: This event loop is already running". When a loop is
+-        # already running, complete the coroutine on a private loop inside a
+-        # worker thread instead of nesting on the caller's loop.
+-        try:
+-            asyncio.get_running_loop()
+-        except RuntimeError:
+-            loop = asyncio.new_event_loop()
+-            asyncio.set_event_loop(loop)
+-            context = loop.run_until_complete(stealth_manager.create_stealth_browser())
+-        else:
+-            with ThreadPoolExecutor(max_workers=1) as pool:
+-                context = pool.submit(
+-                    asyncio.run, stealth_manager.create_stealth_browser()
+-                ).result()
+-
+-        if session_name:
+-            self._load_cookies(context, session_name)
+-
+-        # LATENT-CRASH REPAIR (2026-09-15): this method returned only `context`,
+-        # but every caller (perform_task/open/screenshot/click/text/upload_file/
+-        # cross_verify_prompt/execute_goal) unpacks a (context, stealth_manager)
+-        # tuple — a TypeError made all eight public methods unreachable at
+-        # runtime (module measured 0% coverage). Return both, matching the
+-        # callers' established contract, so each task can close its own stealth
+-        # manager in its finally block.
+-        return context, stealth_manager
+-
+-    def start(self) -> None:
+-        if not self.is_available():
+-            raise RuntimeError("playwright is not installed")
+-
+-        # The BrowserStealth class now handles Playwright startup.
+-        # This method is now just a check.
+-        logger.debug("Playwright availability checked.")
+-
+-    def stop(self) -> None:
+-        """
+-        Stops the Playwright instance. Now handled by stealth_manager cleanup.
+-        This method can be kept for explicit cleanup if needed, but the primary
+-        mechanism is now within each task's finally block.
+-        """
+-        logger.debug("Browser and context are now closed within each task.")
+-
+-    def perform_task(
+-        self,
+-        url: str,
+-        task_function: Callable[[Any], Any],
+-        session_name: str | None = None,
+-        login_check_selector: str | None = None,
+-        login_flow: Callable[[Any, dict[str, str]], None] | None = None,
+-        credentials: dict[str, str] | None = None,
+-    ) -> dict[str, Any]:
+-        self.start()
+-        context, stealth_manager = self._new_context(session_name)
+-        page = context.new_page()
+-        # Stealth is now applied at context creation, so stealth_sync(page) is not needed here.
+-        if hasattr(page, "set_default_timeout"):
+-            page.set_default_timeout(self.timeout_ms)
+-
+-        try:
+-            page.goto(url)
+-
+-            if login_check_selector and login_flow and credentials:
+-                try:
+-                    is_authenticated = page.is_visible(login_check_selector)
+-                except Exception as e:
+-                    try:
+-                        import loguru
+-
+-                        loguru.logger.error(f"Tool execution error: {e}")
+-                    except Exception as e:
+-                        logger.warning(f"Exception suppressed: {e}")
+-                    is_authenticated = False
+-
+-                if not is_authenticated:
+-                    logger.info(
+-                        "Session invalid or expired, running login flow for '%s'.",
+-                        session_name,
+-                    )
+-                    # Add a delay to mimic human reading time; Playwright wait keeps it observable
+-                    page.wait_for_timeout(int(random.uniform(1000, 2500)))
+-                    login_flow(page, credentials)
+-                    page.wait_for_load_state("networkidle")
+-                    self._save_cookies(context, session_name)
+-                else:
+-                    logger.info("Session restored from cookies for '%s'.", session_name)
+-
+-            result = task_function(page)
+-            return {"success": True, "result": result}
+-        except Exception as exc:
+-            logger.error("Playwright task failed: %s", exc)
+-            return {"success": False, "error": str(exc)}
+-        finally:
+-            page.close()
+-            context.close()
+-            asyncio.run(stealth_manager.close())
+-
+-    def open(self, url: str, session_name: str | None = None) -> dict[str, Any]:
+-        self.start()
+-        context, stealth_manager = self._new_context(session_name)
+-        page = context.new_page()
+-        (
+-            page.set_default_timeout(self.timeout_ms)
+-            if hasattr(page, "set_default_timeout")
+-            else None
+-        )
+-
+-        try:
+-            page.goto(url)
+-            title = page.title()
+-            return {"success": True, "url": url, "title": title}
+-        finally:
+-            page.close()
+-            context.close()
+-            asyncio.run(stealth_manager.close())
+-
+-    def screenshot(
+-        self,
+-        url: str,
+-        path: str = "browser_screenshot.png",
+-        session_name: str | None = None,
+-    ) -> dict[str, Any]:
+-        self.start()
+-        context, stealth_manager = self._new_context(session_name)
+-        page = context.new_page()
+-        (
+-            page.set_default_timeout(self.timeout_ms)
+-            if hasattr(page, "set_default_timeout")
+-            else None
+-        )
+-
+-        try:
+-            page.goto(url)
+-            page.screenshot(path=path, full_page=False)
+-            return {"success": True, "path": path}
+-        finally:
+-            page.close()
+-            context.close()
+-            asyncio.run(stealth_manager.close())
+-
+-    def click(self, url: str, selector: str, session_name: str | None = None) -> dict[str, Any]:
+-        self.start()
+-        context, stealth_manager = self._new_context(session_name)
+-        page = context.new_page()
+-        (
+-            page.set_default_timeout(self.timeout_ms)
+-            if hasattr(page, "set_default_timeout")
+-            else None
+-        )
+-
+-        try:
+-            page.goto(url)
+-            self._human_like_click(page, selector)
+-            return {"success": True}
+-        finally:
+-            page.close()
+-            context.close()
+-            asyncio.run(stealth_manager.close())
+-
+-    def text(self, url: str, selector: str, session_name: str | None = None) -> dict[str, Any]:
+-        self.start()
+-        context, stealth_manager = self._new_context(session_name)
+-        page = context.new_page()
+-        (
+-            page.set_default_timeout(self.timeout_ms)
+-            if hasattr(page, "set_default_timeout")
+-            else None
+-        )
+-
+-        try:
+-            page.goto(url)
+-            content = page.text_content(selector) or ""
+-            return {"success": True, "text": content}
+-        finally:
+-            page.close()
+-            context.close()
+-            asyncio.run(stealth_manager.close())
+-
+-    async def upload_file(self, selector: str, file_path: str) -> dict:
+-        """
+-        browser_file_upload - Per Master Plan Pillar 2
+-        Upload files through file input elements
+-        """
+-        self.start()
+-        # Create a new session specifically for this upload action
+-        # Note: In a real system, the agent should ideally maintain a live session,
+-        # but following the existing pattern of creating context/page per action for now
+-        context, stealth_manager = self._new_context("upload-session")
+-        page = context.new_page()
+-        (
+-            page.set_default_timeout(self.timeout_ms)
+-            if hasattr(page, "set_default_timeout")
+-            else None
+-        )
+-
+-        try:
+-            # Locate file input element
+-            file_input = page.locator(selector)
+-            if not file_input:
+-                return {"success": False, "error": f"File input not found: {selector}"}
+-
+-            # বাংলা মন্তব্য: রোবোটিক বা টেম্প ফাইলনেম থাকলে তাকে অ্যান্টি-বট সেফ অর্গানিক ফাইলে রূপান্তর
+-            import os
+-            import shutil
+-
+-            from core.natural_file_presenter import NaturalFilePresenter
+-
+-            target_path = file_path
+-            filename = os.path.basename(file_path)
+-            if NaturalFilePresenter.is_bot_like_name(filename):
+-                natural_name = NaturalFilePresenter.naturalize_filename(file_path)
+-                staged_dir = Path(file_path).parent / "workspace_src"
+-                staged_dir.mkdir(parents=True, exist_ok=True)
+-                staged_file = staged_dir / natural_name
+-                shutil.copy2(file_path, staged_file)
+-                target_path = str(staged_file)
+-
+-            # Set files
+-            file_input.set_input_files(target_path)
+-
+-            return {
+-                "success": True,
+-                "message": f"Uploaded: {target_path}",
+-                "selector": selector,
+-            }
+-        except Exception as e:
+-            return {"success": False, "error": str(e)}
+-        finally:
+-            page.close()
+-            context.close()
+-            # LATENT-CRASH REPAIR (2026-09-15): asyncio.run() cannot be called
+-            # from inside a coroutine (a loop is already running whenever this
+-            # async method is awaited), so the old call raised in the finally
+-            # block and masked every upload_file result. Await on the running
+-            # loop instead — this method only ever executes inside one.
+-            await stealth_manager.close()
+-
+-    def _update_model_behavior_in_background(
+-        self, model_name: str, latency_ms: float, success: bool
+-    ):
+-        """Runs the DB update in a background thread to avoid blocking."""
+-        try:
+-            import threading
+-
+-            thread = threading.Thread(
+-                target=self._update_model_behavior,
+-                args=(model_name, latency_ms, success),
+-            )
+-            thread.start()
+-        except Exception as e:
+-            logger.warning(f"Failed to spawn background thread for model behavior update: {e}")
+-
+-    def _update_model_behavior(self, model_name: str, latency_ms: float, success: bool):
+-        """The actual database update logic."""
+-        # This logic would be more sophisticated in a real scenario, calculating rolling averages.
+-        # For now, we just upsert the latest data.
+-        db.upsert_model_behavior(
+-            {
+-                "model_name": model_name,
+-                "avg_latency_ms": latency_ms,
+-                "last_seen_success": success,
+-            }
+-        )
+-
+-    def cross_verify_prompt(
+-        self,
+-        prompt: str,
+-        primary_site: dict[str, str],
+-        verifier_site: dict[str, str],
+-    ) -> dict[str, Any]:
+-        """
+-        Asks a question to a primary AI, gets the result, and asks a second AI to verify it.
+-        """
+-        logger.info(f"Starting cross-verification for prompt: '{prompt[:50]}...'")
+-        self.start()
+-        context, stealth_manager = self._new_context("cross-verification-session")
+-        page = context.new_page()
+-        page.set_default_timeout(self.timeout_ms)
+-
+-        try:
+-            # ধাপ ০: প্রাইমারি AI-কে ভেরিফাই করা লাগবে কিনা চেক করো
+-            primary_behavior = db.get_model_behavior(primary_site["name"])
+-            # Default to verifying if no data is found
+-            requires_verification = True
+-            if primary_behavior:
+-                # Trust score could be a mix of success rate, latency, etc.
+-                # For now, we use a simple flag.
+-                trust_score = primary_behavior.get("trust_score", 0)
+-                if (
+-                    primary_behavior.get("requires_verification") is False
+-                    or trust_score > TRUST_SCORE_THRESHOLD
+-                ):
+-                    requires_verification = False
+-
+-            logger.info(
+-                f"Checking primary AI '{primary_site['name']}'. Verification required: {requires_verification}"
+-            )
+-
+-            # ধাপ ১: প্রাইমারি AI সাইট থেকে রেসপন্স নাও
+-            logger.info(f"Querying Primary AI: {primary_site['name']}")
+-            start_time = time.time()
+-            initial_response, primary_success = self._query_ai_site(page, primary_site, prompt)
+-            latency_ms = (time.time() - start_time) * 1000
+-            self._update_model_behavior_in_background(
+-                primary_site["name"], latency_ms, primary_success
+-            )
+-
+-            if not primary_success:
+-                raise RuntimeError(f"Failed to get a response from {primary_site['name']}")
+-            logger.info(
+-                f"Got initial response from {primary_site['name']}: '{initial_response[:100]}...'"
+-            )
+-
+-            # If verification is not required, return early
+-            if not requires_verification:
+-                logger.info(f"Skipping verification for trusted AI: {primary_site['name']}")
+-                return {
+-                    "success": True,
+-                    "prompt": prompt,
+-                    "initial_response": initial_response,
+-                    "is_confirmed": True,
+-                    "final_action": "implement",
+-                    "verification_skipped": True,
+-                }
+-
+-            # ধাপ ২: ভেরিফায়ার AI-কে রেসপন্স চেক করতে বলো
+-            logger.info(f"Querying Verifier AI: {verifier_site['name']}")
+-            verification_prompt = (
+-                f"Please verify the following statement and determine if it is correct. "
+-                f"Answer with only 'CORRECT' or 'INCORRECT'.\n\nStatement: '{initial_response}'"
+-            )
+-
+-            start_time_verifier = time.time()
+-            verification_result, verifier_success = self._query_ai_site(
+-                page, verifier_site, verification_prompt
+-            )
+-            latency_ms_verifier = (time.time() - start_time_verifier) * 1000
+-            self._update_model_behavior_in_background(
+-                verifier_site["name"], latency_ms_verifier, verifier_success
+-            )
+-
+-            if not verifier_success:
+-                raise RuntimeError(f"Failed to get a response from {verifier_site['name']}")
+-            logger.info(
+-                f"Got verification result from {verifier_site['name']}: '{verification_result}'"
+-            )
+-
+-            # ধাপ ৩: ভেরিফিকেশন অ্যানালাইস করো ও ফাইনাল রেজাল্ট রিটার্ন করো
+-            is_confirmed = "correct" in verification_result.lower()
+-
+-            return {
+-                "success": True,
+-                "prompt": prompt,
+-                "initial_response": initial_response,
+-                "verification_response": verification_result,
+-                "is_confirmed": is_confirmed,
+-                "final_action": "implement" if is_confirmed else "reject",
+-            }
+-
+-        except Exception as exc:
+-            logger.error(f"Cross-verification failed: {exc}")
+-            return {"success": False, "error": str(exc)}
+-        finally:
+-            page.close()
+-            context.close()
+-            asyncio.run(stealth_manager.close())
+-
+-    def _query_ai_site(
+-        self, page: Page, site_config: dict[str, str], prompt: str
+-    ) -> tuple[str, bool]:
+-        """Helper function to interact with a single AI chat website."""
+-        try:
+-            page.goto(site_config["url"])
+-            page.wait_for_selector(site_config["input_selector"], state="visible", timeout=20000)
+-
+-            # Use human-like typing
+-            self._human_like_type(page, site_config["input_selector"], prompt)
+-            # Non-blocking pause while waiting for UI readiness
+-            page.wait_for_timeout(int(random.uniform(500, 1000)))
+-
+-            # Click submit
+-            self._human_like_click(page, site_config["submit_button"])
+-
+-            # Wait for the response to be generated.
+-            # This waits until the text content of the last message stops changing.
+-            page.wait_for_function(
+-                """
+-                () => {
+-                    const outputElements = document.querySelectorAll(arguments[0]);
+-                    if (outputElements.length === 0) return false;
+-                    const lastElement = outputElements[outputElements.length - 1];
+-                    if (!lastElement) return false;
+-                    const initialText = lastElement.textContent;
+-                    return new Promise(resolve => {
+-                        setTimeout(() => {
+-                            const currentText = lastElement.textContent;
+-                            resolve(initialText === currentText && currentText.length > 0);
+-                        }, 2500); // Wait 2.5 seconds to see if text changes
+-                    });
+-                }
+-                """,
+-                site_config["output_selector"],
+-                timeout=60000,
+-            )
+-
+-            # Extract the text from the last message element
+-            response_text = page.evaluate(
+-                f"Array.from(document.querySelectorAll('{site_config['output_selector']}')).pop()?.textContent"
+-            )
+-
+-            if response_text and response_text.strip():
+-                return response_text.strip(), True
+-            return "", False
+-        except Exception as e:
+-            logger.error(f"Querying AI site {site_config['name']} failed: {e}")
+-            return "", False
+-
+-    # Example Usage:
+-    # agent = PlaywrightBrowserAgent(headless=False)
+-    # GROQ_CONFIG = {"name": "Groq", "url": "https://chat.groq.com/", "input_selector": 'textarea[aria-label="Prompt"]', "output_selector": '.message-content', "submit_button": 'button[aria-label="Submit"]'}
+-    # GEMINI_CONFIG = {"name": "Gemini", "url": "https://gemini.google.com/", "input_selector": '.query-input > .input-area > .ql-editor', "output_selector": '.model-response-text .markdown', "submit_button": '.send-button-container > button'}
+-    # result = agent.cross_verify_prompt("What is the capital of Bangladesh?", GROQ_CONFIG, GEMINI_CONFIG)
+-    # logger.info(result)
+-    # agent.stop()
+-
+-    def execute_goal(self, url: str, goal: str, max_steps: int = 10) -> dict[str, Any]:
+-        """
+-        Executes a high-level goal using a vision-capable AI model.
+-        This is a conceptual implementation. Requires a VLM provider.
+-        """
+-        logger.info(f"Attempting to achieve goal: '{goal}' at {url}")
+-        self.start()
+-        context, stealth_manager = self._new_context("goal-execution-session")
+-        page = context.new_page()
+-        (
+-            page.set_default_timeout(self.timeout_ms)
+-            if hasattr(page, "set_default_timeout")
+-            else None
+-        )
+-
+-        try:
+-            page.goto(url)
+-            # Use Playwright-native timeout instead of blocking sleep
+-            page.wait_for_timeout(2000)
+-
+-            for step in range(max_steps):
+-                logger.info(f"Goal Execution Step {step + 1}/{max_steps}")
+-
+-                # 1. Observe: Take a screenshot
+-                screenshot_path = f"step_{step}_screenshot.png"
+-                page.screenshot(path=screenshot_path)
+-                with open(screenshot_path, "rb") as image_file:
+-                    b64_image = base64.b64encode(image_file.read()).decode("utf-8")
+-
+-                # 1.5. Recall: Consult long-term memory
+-                relevant_memories = asyncio.run(
+-                    self.memory.retrieve_relevant_memories(f"Goal: {goal} on URL: {url}")
+-                )
+-
+-                # 2. Reason: Ask a VLM what to do next
+-                vlm_prompt = (
+-                    "You are an autonomous web agent. Your goal is to navigate a website to achieve an objective. "
+-                    "Based on the current screenshot and your past experiences, decide the next action to take. "
+-                    "Return a single JSON object with 'type' ('CLICK', 'TYPE', or 'FINISH'), 'selector' (a CSS selector for the element), "
+-                    "and 'text' (if typing). Provide a 'reason' for your choice.\n\n"
+-                    f"Objective: {goal}\n\n"
+-                    "Past Learnings (if any):\n"
+-                    f"{relevant_memories if relevant_memories else 'None'}\n\n"
+-                    "Analyze the screenshot and determine the next best action."
+-                )
+-
+-                model_router = ModelRouter()
+-                # বাংলা: আগে model_filter=["gpt-4o", "gemini-2.5-pro-vision-latest"] হার্ডকোড ছিল —
+-                # দুটোই unavailable হলে browser agent সম্পূর্ণ ব্যর্থ হতো।
+-                # এখন task_type="vision" শুধু দিয়ে gateway সব available vision model থেকে failover করবে।
+-                vlm_response = asyncio.run(
+-                    model_router.async_route_and_generate(
+-                        prompt=vlm_prompt,
+-                        task_type="vision",
+-                        image_base64=b64_image,
+-                    )
+-                )
+-
+-                if not vlm_response.get("success"):
+-                    raise RuntimeError(
+-                        f"VLM failed to provide an action: {vlm_response.get('text')}"
+-                    )
+-
+-                try:
+-                    # Clean up potential markdown code blocks from the response
+-                    action_text = (
+-                        vlm_response["text"].strip().replace("```json", "").replace("```", "")
+-                    )
+-                    action = json.loads(action_text)
+-                    logger.info(f"VLM Reason: {action.get('reason', 'No reason provided.')}")
+-                except (json.JSONDecodeError, KeyError) as e:
+-                    logger.error(
+-                        f"Failed to parse VLM action response: {e}\nResponse was: {vlm_response['text']}"
+-                    )
+-                    return {"success": False, "error": "Failed to parse VLM action."}
+-
+-                if action.get("type", "").upper() == "FINISH":
+-                    logger.success(f"Goal '{goal}' achieved as per VLM instruction.")
+-                    return {
+-                        "success": True,
+-                        "result": f"Goal achieved: {action.get('reason')}",
+-                    }
+-
+-                logger.info(f"AI Action: {action['type']} on '{action.get('selector')}'")
+-
+-                # 3. Act: Execute the action
+-                if action["type"] == "CLICK":
+-                    self._human_like_click(page, action["selector"])
+-                elif action["type"] == "TYPE":
+-                    self._human_like_type(page, action["selector"], action["text"])
+-
+-                # 4. Learn: Reflect on the action and save a memory
+-                learning = f"For the goal '{goal}', I performed the action '{action['type']}' on the element '{action.get('selector')}'."
+-                asyncio.run(self.memory.add_memory(learning, url, metadata=action))
+-
+-                page.wait_for_load_state("networkidle")
+-                # Page-settling pause via Playwright timeout to avoid blocking the event loop
+-                page.wait_for_timeout(2000)
+-
+-            return {"success": True, "result": f"Completed {max_steps} steps."}
+-        except Exception as exc:
+-            logger.error(f"Goal execution failed: {exc}")
+-            return {"success": False, "error": str(exc)}
+-        finally:
+-            page.close()
+-            context.close()
+-            asyncio.run(stealth_manager.close())
+-
+-    # =========================================================================
+-    # Circle C6 & FastMCP Control Tower Compatibility Layer
+-    # =========================================================================
+-    async def navigate(self, url: str) -> dict[str, Any]:
+-        """Async MCP wrapper for opening a URL."""
+-        return await asyncio.to_thread(self.open, url)
+-
+-    def _click_cascade_in_fresh_context(self, url: str, target: str) -> dict[str, Any]:
+-        """Run the guarded cascade on a fresh context inside a worker thread."""
+-        context, stealth_manager = self._new_context()
+-        page = context.new_page()
+-        if hasattr(page, "set_default_timeout"):
+-            page.set_default_timeout(self.timeout_ms)
+-        try:
+-            page.goto(url)
+-            return asyncio.run(
+-                execute_click_cascade(page, target, human_click=self._human_like_click)
+-            )
+-        finally:
+-            page.close()
+-            context.close()
+-            asyncio.run(stealth_manager.close())
+-
+-    def _type_text_in_fresh_context(self, url: str, selector: str, text: str) -> dict[str, Any]:
+-        """Perform TRUE keystroke insertion on a fresh context (worker thread)."""
+-        context, stealth_manager = self._new_context()
+-        page = context.new_page()
+-        if hasattr(page, "set_default_timeout"):
+-            page.set_default_timeout(self.timeout_ms)
+-        try:
+-            page.goto(url)
+-            typed_chars = self._human_like_type(page, selector, text)
+-            return {
+-                "success": True,
+-                "status": "success",
+-                "selector": selector,
+-                "typed": text,
+-                "typed_chars": typed_chars,
+-                "method": "human_like_type",
+-            }
+-        finally:
+-            page.close()
+-            context.close()
+-            asyncio.run(stealth_manager.close())
+-
+-    async def click_target(
+-        self,
+-        target: str,
+-        url: str | None = None,
+-        session: Any = None,
+-    ) -> dict[str, Any]:
+-        """Async MCP wrapper — REAL click dispatch via the 5-step cascade.
+-
+-        ISSUE-1570: the previous implementation returned ``{"success": True}``
+-        when no URL was supplied WITHOUT executing any click — a fake success.
+-        Now: a bound page (session or ``bind_page``) runs the cascade directly;
+-        a URL spins a fresh context in a worker thread; and with neither, the
+-        call FAILS HONESTLY instead of pretending.
+-        """
+-        page = self._resolve_bound_page(session)
+-        if page is not None:
+-            return await execute_click_cascade(page, target, human_click=self._human_like_click)
+-        if url:
+-            return await asyncio.to_thread(self._click_cascade_in_fresh_context, url, target)
+-        return {
+-            "success": False,
+-            "status": "PAUSED_HITL",
+-            "method": "hitl",
+-            "target": target,
+-            "reason": (
+-                "click_target requires a URL or an active browser session/page — "
+-                "refusing to report success without executing a click."
+-            ),
+-        }
+-
+-    async def type_text(
+-        self,
+-        selector: str,
+-        text: str,
+-        url: str | None = None,
+-        session: Any = None,
+-    ) -> dict[str, Any]:
+-        """Async MCP wrapper — TRUE human-like keystroke insertion.
+-
+-        ISSUE-1570: the previous implementation mapped typing to ``self.text()``
+-        (a READ operation) and fake-succeeded without a URL. Now typing always
+-        performs real per-character insertion with 30–100ms jitter.
+-        """
+-        page = self._resolve_bound_page(session)
+-        if page is not None:
+-            typed_chars = self._human_like_type(page, selector, text)
+-            return {
+-                "success": True,
+-                "status": "success",
+-                "selector": selector,
+-                "typed": text,
+-                "typed_chars": typed_chars,
+-                "method": "human_like_type",
+-            }
+-        if url:
+-            return await asyncio.to_thread(self._type_text_in_fresh_context, url, selector, text)
+-        return {
+-            "success": False,
+-            "status": "error",
+-            "selector": selector,
+-            "error": (
+-                "type_text requires a URL or an active browser session/page — "
+-                "refusing to fake success without typing."
+-            ),
+-        }
+diff --git a/browser/tools/stealth_http_client.py b/browser/tools/stealth_http_client.py
+deleted file mode 100644
+index 20912557321a4ed38f62bea71c9d504ab2a3220c..0000000000000000000000000000000000000000
+--- a/browser/tools/stealth_http_client.py
++++ /dev/null
+@@ -1,78 +0,0 @@
+-import random
+-from typing import Any
+-
+-import httpx
+-
+-from core.logging_config import logger
+-from tools.security_tools.proxy_manager import ProxyManager
+-
+-# List of typical browser User-Agents for stealth scraping emulation
+-USER_AGENTS = [
+-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:127.0) Gecko/20100101 Firefox/127.0",
+-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+-]
+-
+-
+-class StealthHTTPClient:
+-    """
+-    HTTP client wrapper for executing stealth, anonymized web requests.
+-    Enforces proxy rotation, fallback retries, and browser headers emulation.
+-    """
+-
+-    def __init__(self, proxy_manager: ProxyManager | None = None):
+-        self.proxy_manager = proxy_manager or ProxyManager()
+-
+-    def _get_headers(self, custom_headers: dict[str, str] | None = None) -> dict[str, str]:
+-        headers = {
+-            "User-Agent": random.choice(USER_AGENTS),
+-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+-            "Accept-Language": "en-US,en;q=0.5",
+-            "Accept-Encoding": "gzip, deflate, br, zstd",
+-            "Connection": "keep-alive",
+-            "Upgrade-Insecure-Requests": "1",
+-        }
+-        if custom_headers:
+-            headers.update(custom_headers)
+-        return headers
+-
+-    async def request(
+-        self, method: str, url: str, retries: int = 3, **kwargs: Any
+-    ) -> httpx.Response:
+-        # বাংলা মন্তব্য: প্রতিটি রিকোয়েস্টের জন্য নতুন প্রক্সি নির্বাচন ও র্যান্ডম ব্রাউজার হেডার এমুলেট করা হচ্ছে।
+-        headers = self._get_headers(kwargs.pop("headers", None))
+-
+-        for attempt in range(retries):
+-            proxy = self.proxy_manager.get_next_proxy()
+-            client_kwargs = {
+-                "headers": headers,
+-                "timeout": kwargs.pop("timeout", 10.0),
+-                **kwargs,
+-            }
+-            proxy_kwarg = {"proxy": proxy} if proxy else {}
+-            if proxy:
+-                logger.info(f"Stealth request via proxy: {proxy} (Attempt {attempt + 1}/{retries})")
+-            else:
+-                logger.info(f"Stealth request without proxy (Attempt {attempt + 1}/{retries})")
+-
+-            try:
+-                async with httpx.AsyncClient(timeout=15.0, **proxy_kwarg) as client:
+-                    response = await client.request(method, url, **client_kwargs)
+-                    response.raise_for_status()
+-                    return response
+-            except Exception as e:
+-                logger.warning(f"Request attempt {attempt + 1} failed: {e}")
+-                if proxy:
+-                    self.proxy_manager.report_failed_proxy(proxy)
+-
+-                if attempt == retries - 1:
+-                    raise e from e
+-
+-        raise httpx.RequestError("Stealth requests failed all retries.")
+-
+-    async def get(self, url: str, **kwargs: Any) -> httpx.Response:
+-        return await self.request("GET", url, **kwargs)
+-
+-    async def post(self, url: str, **kwargs: Any) -> httpx.Response:
+-        return await self.request("POST", url, **kwargs)
+diff --git a/browser/tools/web_fallback_agent.py b/browser/tools/web_fallback_agent.py
+deleted file mode 100644
+index 3224a1b1ebaf73956eb3cccc340bf985291ec4b5..0000000000000000000000000000000000000000
+--- a/browser/tools/web_fallback_agent.py
++++ /dev/null
+@@ -1,148 +0,0 @@
+-from core.logging_config import logger
+-
+-
+-class WebFallbackAgent:
+-    """
+-    WebFallbackAgent — Headless browser automation.
+-    বাংলা মন্তব্য: আগে এখানে সম্পূর্ণ মক স্টেপ রিটার্ন করা হতো।
+-    এখন এটি প্লেরাইট (Playwright) লাইব্রেরি ব্যবহার করে রিয়াল ব্রাউজার অটোমেশন টাস্ক
+-    যেমন নেভিগেশন, ইনপুট ফিলিং এবং বাটনে ক্লিক করতে পারে।
+-    """
+-
+-    def __init__(self):
+-        logger.info("WebFallbackAgent initialized with Playwright automation support.")
+-
+-    async def use_web_version(self, tool_name: str, url: str, task: dict) -> dict:
+-        """
+-        Runs headless browser commands using Playwright
+-        to automate tasks on third-party web tools when APIs are unavailable.
+-        """
+-        logger.info(
+-            "Navigating to %s to perform web-version fallback task for '%s'",
+-            url,
+-            tool_name,
+-        )
+-
+-        steps_executed = []
+-        try:
+-            # বাংলা মন্তব্য: Playwright dynamically import করা হচ্ছে যাতে dependency না থাকলে ক্র্যাশ না হয়
+-            from playwright.async_api import async_playwright
+-
+-            steps_executed.append(
+-                {
+-                    "step": 1,
+-                    "action": f"Launch browser and navigate to {url}",
+-                    "status": "running",
+-                }
+-            )
+-
+-            # #2428 refactor: use the global async Playwright singleton instead
+-            # of launching a fresh `async_playwright()` context per call.
+-            # We acquire a fresh BrowserContext + Page from the singleton
+-            # browser (cheap — context is isolated, Chromium process is shared).
+-            from core.playwright_manager import get_global_browser
+-
+-            browser = await get_global_browser()
+-            context = await browser.new_context(viewport={"width": 1280, "height": 800})
+-            page = await context.new_page()
+-
+-            await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+-            steps_executed[-1]["status"] = "completed"
+-
+-            # Perform basic login sequence if credentials present in task
+-            if "login_selector" in task and "username" in task:
+-                steps_executed.append(
+-                    {
+-                        "step": 2,
+-                        "action": "Perform auto-login sequence",
+-                        "status": "running",
+-                    }
+-                )
+-                await page.fill(task["login_selector"], task["username"])
+-                if "password_selector" in task and "password" in task:
+-                    await page.fill(task["password_selector"], task["password"])
+-                if "submit_selector" in task:
+-                    await page.click(task["submit_selector"])
+-                    await page.wait_for_load_state("networkidle", timeout=10000)
+-                steps_executed[-1]["status"] = "completed"
+-
+-            # Perform custom action (e.g. click, fill or scrape)
+-            action = task.get("action")
+-            steps_executed.append(
+-                {
+-                    "step": 3,
+-                    "action": f"Execute action: {action}",
+-                    "status": "running",
+-                }
+-            )
+-
+-            result_content = ""
+-            if action == "click" and "selector" in task:
+-                await page.click(task["selector"])
+-                await page.wait_for_load_state("domcontentloaded", timeout=5000)
+-                result_content = "Element clicked."
+-            elif action == "fill" and "selector" in task:
+-                await page.fill(task["selector"], task.get("value", ""))
+-                result_content = "Input field populated."
+-            elif action == "scrape":
+-                # Extract text or body content
+-                result_content = await page.inner_text(task.get("selector", "body"))
+-            else:
+-                # Default: get page title and url
+-                title = await page.title()
+-                result_content = f"Page loaded. Title: {title}"
+-
+-            steps_executed[-1]["status"] = "completed"
+-
+-            # Capture final result screenshot (saved in temporary dir)
+-            steps_executed.append(
+-                {
+-                    "step": 4,
+-                    "action": "Extract results and screenshot",
+-                    "status": "completed",
+-                }
+-            )
+-            screenshot_data = await page.screenshot(type="png", full_page=False)
+-
+-            # #2428: close the context (releases page + context resources) but
+-            # NOT the browser — the singleton browser is process-shared and
+-            # closed only at shutdown_global_browser().
+-            await context.close()
+-
+-            return {
+-                "success": True,
+-                "tool": tool_name,
+-                "url": url,
+-                "steps_executed": steps_executed,
+-                "result_summary": f"Task '{action}' automated via browser successfully.",
+-                "scraped_data": result_content,
+-                "has_screenshot": screenshot_data is not None,
+-            }
+-
+-        except ImportError:
+-            # বাংলা মন্তব্য: Playwright না থাকলে আর ভুয়া "simulated" সফলতা রিটার্ন হয় না
+-            # (audit B-05 fix, 2026-09-17) — সৎ ব্যর্থতা, কোনো fabricated স্টেপ/ডেটা নেই।
+-            logger.error(
+-                "Playwright is not installed — web fallback automation CANNOT run. "
+-                "Returning honest failure instead of fabricated success."
+-            )
+-            return {
+-                "success": False,
+-                "tool": tool_name,
+-                "url": url,
+-                "steps_executed": steps_executed,
+-                "error": (
+-                    "Browser automation unavailable: the 'playwright' package is not "
+-                    "installed in this environment. Install it (and its chromium binary) "
+-                    "to enable web fallback automation."
+-                ),
+-            }
+-        except Exception as exc:
+-            logger.error(f"Playwright execution failed: {exc}")
+-            return {
+-                "success": False,
+-                "tool": tool_name,
+-                "url": url,
+-                "steps_executed": steps_executed,
+-                "error": str(exc),
+-            }
+diff --git a/core/api/routes/browser/_crown_jewel.py b/core/api/routes/browser/_crown_jewel.py
+index 27e5d44235f44c442d543f38979f98ef2a37c15a..e024610480a8e066b9cc7a2a4a5c9d74607f30de 100644
+--- a/core/api/routes/browser/_crown_jewel.py
++++ b/core/api/routes/browser/_crown_jewel.py
+@@ -26,6 +26,13 @@ from fastapi import HTTPException, Response
+ from pydantic import BaseModel, ConfigDict, field_validator
+ 
+ from core.api.routes.browser import router
++from core.api.routes.browser._render_proxy import _host_is_blocked
++
++# বাংলা মন্তব্য: #2511 SSRF ফিক্স — crown-jewel fetch/render surface গুলো এখন canonical
++# guard (`_render_proxy._host_is_blocked`) reuse করে: DNS resolve fail-closed, loopback /
++# private / reserved / link-local / 169.254.169.254 (metadata) সব ব্লকড। scheme-check
++# একাই যথেষ্ট ছিল না — http://127.0.0.1 বা public→metadata redirect এর মতো আক্রমণ
++# আটকাতে private-IP gating বাধ্যতামূলক।
+ 
+ # Page-context limits: keep prompts bounded (no unbounded context bloat).
+ _MAX_CONTEXT_CHARS = 6000
+@@ -336,6 +343,11 @@ def security_scan(body: SecurityScanRequest):
+         raise HTTPException(status_code=422, detail="A 'url' is required for a security scan.")
+     if not url.startswith(("http://", "https://")):
+         raise HTTPException(status_code=422, detail=f"Invalid URL: {url!r}")
++    # বাংলা মন্তব্য: #2511 — scheme-check এর পরে canonical SSRF guard; internal/metadata
++    # হোস্টে server-side fetch নিষিদ্ধ (fail-closed: DNS resolve না হলেও ব্লক)।
++    _parsed_scan = urlparse(url)
++    if not _parsed_scan.hostname or _host_is_blocked(_parsed_scan.hostname):
++        raise HTTPException(status_code=400, detail="Blocked or unresolvable host.")
+ 
+     try:
+         resp = httpx.get(
+@@ -364,6 +376,11 @@ def capture_screenshot(body: ScreenshotRequest):
+     url = body.url.strip()
+     if not url or not url.startswith(("http://", "https://")):
+         raise HTTPException(status_code=422, detail=f"Invalid or missing 'url': {url!r}")
++    # বাংলা মন্তব্য: #2511 — headless Chromium-এ page.goto করার আগেও একই SSRF guard;
++    # ব্রাউজার render path-ও internal নেটওয়ার্ক স্পর্শ করতে পারে না।
++    _parsed_shot = urlparse(url)
++    if not _parsed_shot.hostname or _host_is_blocked(_parsed_shot.hostname):
++        raise HTTPException(status_code=400, detail="Blocked or unresolvable host.")
+ 
+     if importlib.util.find_spec("playwright") is None:
+         raise HTTPException(
+diff --git a/core/api/routes/browser/_render_proxy.py b/core/api/routes/browser/_render_proxy.py
+index 5050808494aecff2ce9a4ec26b61535789c08c30..ecf673672330f762a02093033c6f6974caef741a 100644
+--- a/core/api/routes/browser/_render_proxy.py
++++ b/core/api/routes/browser/_render_proxy.py
+@@ -148,9 +148,22 @@ def render_proxy(url: str, ticket: str = ""):
+         req = urllib.request.Request(url, headers={"User-Agent": "SupremeAI-Browser/1.0"})
+         with urllib.request.urlopen(req, timeout=20) as resp:
+             ctype = resp.headers.get("Content-Type", "") or ""
+-            data = resp.read()
+-        if len(data) > 5 * 1024 * 1024:
+-            raise HTTPException(status_code=502, detail="Response too large to proxy.")
++            # বাংলা মন্তব্য (#2718): আগে unbounded resp.read() — পুরো body RAM-এ
++            # পড়ার পরে সাইজ-চেক হতো; বড়/দুষ্ট upstream 512MB কন্টেইনারে OOM করাতে
++            # পারত (রুটটি attacker-influenceable in-app browser iframe proxy)।
++            # এখন chunk-ভিত্তিক পড়া — 5MB ছাড়ালেই সাথে সাথে abort (502)।
++            _PROXY_BODY_LIMIT = 5 * 1024 * 1024
++            chunks: list[bytes] = []
++            total = 0
++            while True:
++                chunk = resp.read(64 * 1024)
++                if not chunk:
++                    break
++                chunks.append(chunk)
++                total += len(chunk)
++                if total > _PROXY_BODY_LIMIT:
++                    raise HTTPException(status_code=502, detail="Response too large to proxy.")
++            data = b"".join(chunks)
+         proxy_headers = {
+             "Cache-Control": "no-store",
+             # SEC-HARDEN P6: never ALLOWALL / frame-ancestors * — only the app's
+diff --git a/core/api/routes/browser/_scraping.py b/core/api/routes/browser/_scraping.py
+index 2ed8f75679f7d9eb8c789ee79ebbdfe09f244206..864fd95a35c5c5d9d76f6b99071da2f000dbff5d 100644
+--- a/core/api/routes/browser/_scraping.py
++++ b/core/api/routes/browser/_scraping.py
+@@ -18,6 +18,7 @@ from core.api.routes.admin_dashboard import require_admin_token
+ from core.api.routes.browser import router
+ from core.cache.redis_manager import MultiLevelCache
+ from core.config import settings
++from core.http_client import get_shared_async_client
+ from core.monitoring.logging_config import logger
+ from core.tools.ai_agents.browser_agent import BrowseRequest
+ 
+@@ -53,9 +54,9 @@ async def _proxy_to_scraper(endpoint: str, payload: dict) -> dict:
+         agent = BrowserAgent()
+         return await agent.navigate_and_interact(**payload)
+     try:
+-        async with httpx.AsyncClient(timeout=60.0) as client:
+-            resp = await client.post(f"{_SCRAPER_URL}/{endpoint}", json=payload)
+-            return resp.json()
++        client = get_shared_async_client()
++        resp = await client.post(f"{_SCRAPER_URL}/{endpoint}", json=payload, timeout=60.0)
++        return resp.json()
+     except (httpx.RequestError, httpx.HTTPStatusError) as e:
+         logger.error(f"Scraper service proxy failed: {e}")
+         return {"success": False, "error": str(e)}
+diff --git a/core/tests/tools/test_web_scraper_ssrf.py b/core/tests/tools/test_web_scraper_ssrf.py
+index 1669ed1c76363f5a29640c4153cde646ee4a5818..4963952ce9ed78bd8edd927d2ffb11ba4a8632c4 100644
+--- a/core/tests/tools/test_web_scraper_ssrf.py
++++ b/core/tests/tools/test_web_scraper_ssrf.py
+@@ -15,9 +15,9 @@ import pytest
+ from pathlib import Path
+ import importlib.util
+ 
+-# Import by file path: the short name ``tools`` is ambiguous in this repo
+-# (both ``core/tools`` and ``browser/tools`` exist), and ``browser/tools``
+-# shadows it whenever browser/tests lands on sys.path first.
++# Import by file path so the test always exercises the canonical
++# ``core/tools/browser/web_scraper.py`` regardless of sys.path order (the old
++# ``browser/tools`` shadow copy that once made ``tools`` ambiguous is removed).
+ _MODULE_PATH = Path(__file__).resolve().parents[3] / "core" / "tools" / "browser" / "web_scraper.py"
+ _spec = importlib.util.spec_from_file_location("supremeai_core_tools_browser_web_scraper", _MODULE_PATH)
+ ws = importlib.util.module_from_spec(_spec)
+diff --git a/core/tools/browser/playwright_browser_agent.py b/core/tools/browser/playwright_browser_agent.py
+index 307cb9767ed81e8b13fa32f46dc93a13a3d8d6ab..27540e0220859c75dfac056d894489c5ea137047 100644
+--- a/core/tools/browser/playwright_browser_agent.py
++++ b/core/tools/browser/playwright_browser_agent.py
+@@ -444,12 +444,28 @@ class PlaywrightBrowserAgent:
+             if not file_input:
+                 return {"success": False, "error": f"File input not found: {selector}"}
+ 
++            # বাংলা মন্তব্য: রোবোটিক বা টেম্প ফাইলনেম থাকলে তাকে অ্যান্টি-বট সেফ অর্গানিক ফাইলে রূপান্তর
++            import os
++            import shutil
++
++            from core.natural_file_presenter import NaturalFilePresenter
++
++            target_path = file_path
++            filename = os.path.basename(file_path)
++            if NaturalFilePresenter.is_bot_like_name(filename):
++                natural_name = NaturalFilePresenter.naturalize_filename(file_path)
++                staged_dir = Path(file_path).parent / "workspace_src"
++                staged_dir.mkdir(parents=True, exist_ok=True)
++                staged_file = staged_dir / natural_name
++                shutil.copy2(file_path, staged_file)
++                target_path = str(staged_file)
++
+             # Set files
+-            file_input.set_input_files(file_path)
++            file_input.set_input_files(target_path)
+ 
+             return {
+                 "success": True,
+-                "message": f"Uploaded: {file_path}",
++                "message": f"Uploaded: {target_path}",
+                 "selector": selector,
+             }
+         except Exception as e:
+@@ -507,7 +523,7 @@ class PlaywrightBrowserAgent:
+         page.set_default_timeout(self.timeout_ms)
+ 
+         try:
+-            # Step 0: Check if the primary AI needs verification
++            # ধাপ ০: প্রাইমারি AI-কে ভেরিফাই করা লাগবে কিনা চেক করো
+             primary_behavior = db.get_model_behavior(primary_site["name"])
+             # Default to verifying if no data is found
+             requires_verification = True
+@@ -525,7 +541,7 @@ class PlaywrightBrowserAgent:
+                 f"Checking primary AI '{primary_site['name']}'. Verification required: {requires_verification}"
+             )
+ 
+-            # Step 1: Get response from the primary AI site
++            # ধাপ ১: প্রাইমারি AI সাইট থেকে রেসপন্স নাও
+             logger.info(f"Querying Primary AI: {primary_site['name']}")
+             start_time = time.time()
+             initial_response, primary_success = self._query_ai_site(page, primary_site, prompt)
+@@ -552,7 +568,7 @@ class PlaywrightBrowserAgent:
+                     "verification_skipped": True,
+                 }
+ 
+-            # Step 2: Ask the verifier AI to check the response
++            # ধাপ ২: ভেরিফায়ার AI-কে রেসপন্স চেক করতে বলো
+             logger.info(f"Querying Verifier AI: {verifier_site['name']}")
+             verification_prompt = (
+                 f"Please verify the following statement and determine if it is correct. "
+@@ -574,7 +590,7 @@ class PlaywrightBrowserAgent:
+                 f"Got verification result from {verifier_site['name']}: '{verification_result}'"
+             )
+ 
+-            # Step 3: Analyze the verification and return the final result
++            # ধাপ ৩: ভেরিফিকেশন অ্যানালাইস করো ও ফাইনাল রেজাল্ট রিটার্ন করো
+             is_confirmed = "correct" in verification_result.lower()
+ 
+             return {
+diff --git a/core/tools/browser/web_fallback_agent.py b/core/tools/browser/web_fallback_agent.py
+index ea707a6194d7c0f4e1c73940b01c00870ad150ac..93c06bdc7faecf58ce9b5d7810a4fb17fbc5b302 100644
+--- a/core/tools/browser/web_fallback_agent.py
++++ b/core/tools/browser/web_fallback_agent.py
+@@ -36,80 +36,88 @@ class WebFallbackAgent:
+                 }
+             )
+ 
+-            async with async_playwright() as p:
+-                browser = await p.chromium.launch(headless=True)
+-                context = await browser.new_context(viewport={"width": 1280, "height": 800})
+-                page = await context.new_page()
++            # #2428 refactor: use the global async Playwright singleton instead
++            # of launching a fresh `async_playwright()` context per call.
++            # We acquire a fresh BrowserContext + Page from the singleton
++            # browser (cheap — context is isolated, Chromium process is shared).
++            from core.playwright_manager import get_global_browser
+ 
+-                await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+-                steps_executed[-1]["status"] = "completed"
++            browser = await get_global_browser()
++            context = await browser.new_context(viewport={"width": 1280, "height": 800})
++            page = await context.new_page()
++
++            await page.goto(url, wait_until="domcontentloaded", timeout=15000)
++            steps_executed[-1]["status"] = "completed"
+ 
+-                # Perform basic login sequence if credentials present in task
+-                if "login_selector" in task and "username" in task:
+-                    steps_executed.append(
+-                        {
+-                            "step": 2,
+-                            "action": "Perform auto-login sequence",
+-                            "status": "running",
+-                        }
+-                    )
+-                    await page.fill(task["login_selector"], task["username"])
+-                    if "password_selector" in task and "password" in task:
+-                        await page.fill(task["password_selector"], task["password"])
+-                    if "submit_selector" in task:
+-                        await page.click(task["submit_selector"])
+-                        await page.wait_for_load_state("networkidle", timeout=10000)
+-                    steps_executed[-1]["status"] = "completed"
+-
+-                # Perform custom action (e.g. click, fill or scrape)
+-                action = task.get("action")
++            # Perform basic login sequence if credentials present in task
++            if "login_selector" in task and "username" in task:
+                 steps_executed.append(
+                     {
+-                        "step": 3,
+-                        "action": f"Execute action: {action}",
++                        "step": 2,
++                        "action": "Perform auto-login sequence",
+                         "status": "running",
+                     }
+                 )
+-
+-                result_content = ""
+-                if action == "click" and "selector" in task:
+-                    await page.click(task["selector"])
+-                    await page.wait_for_load_state("domcontentloaded", timeout=5000)
+-                    result_content = "Element clicked."
+-                elif action == "fill" and "selector" in task:
+-                    await page.fill(task["selector"], task.get("value", ""))
+-                    result_content = "Input field populated."
+-                elif action == "scrape":
+-                    # Extract text or body content
+-                    result_content = await page.inner_text(task.get("selector", "body"))
+-                else:
+-                    # Default: get page title and url
+-                    title = await page.title()
+-                    result_content = f"Page loaded. Title: {title}"
+-
++                await page.fill(task["login_selector"], task["username"])
++                if "password_selector" in task and "password" in task:
++                    await page.fill(task["password_selector"], task["password"])
++                if "submit_selector" in task:
++                    await page.click(task["submit_selector"])
++                    await page.wait_for_load_state("networkidle", timeout=10000)
+                 steps_executed[-1]["status"] = "completed"
+ 
+-                # Capture final result screenshot (saved in temporary dir)
+-                steps_executed.append(
+-                    {
+-                        "step": 4,
+-                        "action": "Extract results and screenshot",
+-                        "status": "completed",
+-                    }
+-                )
+-                screenshot_data = await page.screenshot(type="png", full_page=False)
+-
+-                await browser.close()
+-
+-                return {
+-                    "success": True,
+-                    "tool": tool_name,
+-                    "url": url,
+-                    "steps_executed": steps_executed,
+-                    "result_summary": f"Task '{action}' automated via browser successfully.",
+-                    "scraped_data": result_content,
+-                    "has_screenshot": screenshot_data is not None,
++            # Perform custom action (e.g. click, fill or scrape)
++            action = task.get("action")
++            steps_executed.append(
++                {
++                    "step": 3,
++                    "action": f"Execute action: {action}",
++                    "status": "running",
++                }
++            )
++
++            result_content = ""
++            if action == "click" and "selector" in task:
++                await page.click(task["selector"])
++                await page.wait_for_load_state("domcontentloaded", timeout=5000)
++                result_content = "Element clicked."
++            elif action == "fill" and "selector" in task:
++                await page.fill(task["selector"], task.get("value", ""))
++                result_content = "Input field populated."
++            elif action == "scrape":
++                # Extract text or body content
++                result_content = await page.inner_text(task.get("selector", "body"))
++            else:
++                # Default: get page title and url
++                title = await page.title()
++                result_content = f"Page loaded. Title: {title}"
++
++            steps_executed[-1]["status"] = "completed"
++
++            # Capture final result screenshot (saved in temporary dir)
++            steps_executed.append(
++                {
++                    "step": 4,
++                    "action": "Extract results and screenshot",
++                    "status": "completed",
+                 }
++            )
++            screenshot_data = await page.screenshot(type="png", full_page=False)
++
++            # #2428: close the context (releases page + context resources) but
++            # NOT the browser — the singleton browser is process-shared and
++            # closed only at shutdown_global_browser().
++            await context.close()
++
++            return {
++                "success": True,
++                "tool": tool_name,
++                "url": url,
++                "steps_executed": steps_executed,
++                "result_summary": f"Task '{action}' automated via browser successfully.",
++                "scraped_data": result_content,
++                "has_screenshot": screenshot_data is not None,
++            }
+ 
+         except ImportError:
+             # বাংলা মন্তব্য: Playwright না থাকলে আর ভুয়া "simulated" সফলতা রিটার্ন হয় না
+diff --git a/scripts/ops/architecture_gap_baseline.json b/scripts/ops/architecture_gap_baseline.json
+index 0ae10329137a95c7a7145a70c341b3ee05aa9d4b..bc48787783623b866bc866cbdde7bb570833caa4 100644
+--- a/scripts/ops/architecture_gap_baseline.json
++++ b/scripts/ops/architecture_gap_baseline.json
+@@ -39,13 +39,6 @@
+     "browser.ghost_tower.multi_ai_sso_runner",
+     "browser.ghost_tower.sync_cookies_to_infisical",
+     "browser.playwright_manager",
+-    "browser.routes",
+-    "browser.routes._cognitive",
+-    "browser.routes._crown_jewel",
+-    "browser.routes._health",
+-    "browser.routes._render_proxy",
+-    "browser.routes._scraping",
+-    "browser.routes._session_store",
+     "browser.runtime",
+     "browser.runtime.config",
+     "browser.runtime.content_pruner",
+@@ -58,11 +51,6 @@
+     "browser.runtime.stealth_profile",
+     "browser.scripts.webbotauth.probe",
+     "browser.security",
+-    "browser.tools",
+-    "browser.tools.browser_stealth",
+-    "browser.tools.playwright_browser_agent",
+-    "browser.tools.stealth_http_client",
+-    "browser.tools.web_fallback_agent",
+     "browser.web_scraper",
+     "gateway.agents",
+     "gateway.agents.external_agents",
+diff --git a/scripts/ops/silent_errors_baseline.json b/scripts/ops/silent_errors_baseline.json
+index 9c765c81de8df61031e02f3c7ab38fc342edb6b7..6a9a9add06ee47a2228964aed6d09c1d98ed4448 100644
+--- a/scripts/ops/silent_errors_baseline.json
++++ b/scripts/ops/silent_errors_baseline.json
+@@ -1945,36 +1945,6 @@
+       "type": "except-pass",
+       "severity": "medium"
+     },
+-    {
+-      "file": "browser/routes/_health.py",
+-      "line": 41,
+-      "type": "except-return-default",
+-      "severity": "medium"
+-    },
+-    {
+-      "file": "browser/routes/_health.py",
+-      "line": 54,
+-      "type": "except-return-default",
+-      "severity": "medium"
+-    },
+-    {
+-      "file": "browser/routes/_health.py",
+-      "line": 65,
+-      "type": "except-return-default",
+-      "severity": "medium"
+-    },
+-    {
+-      "file": "browser/routes/_health.py",
+-      "line": 76,
+-      "type": "except-return-default",
+-      "severity": "medium"
+-    },
+-    {
+-      "file": "browser/routes/_render_proxy.py",
+-      "line": 51,
+-      "type": "except-return-true",
+-      "severity": "medium"
+-    },
+     {
+       "file": "browser/runtime/session_manager.py",
+       "line": 35,
+@@ -7681,12 +7651,6 @@
+       "type": "except-no-log",
+       "severity": "low"
+     },
+-    {
+-      "file": "browser/routes/_crown_jewel.py",
+-      "line": 85,
+-      "type": "except-no-log",
+-      "severity": "low"
+-    },
+     {
+       "file": "browser/runtime/content_screen.py",
+       "line": 152,
+@@ -7747,24 +7711,6 @@
+       "type": "except-no-log",
+       "severity": "low"
+     },
+-    {
+-      "file": "browser/tools/ai_web_extractor.py",
+-      "line": 36,
+-      "type": "except-no-log",
+-      "severity": "low"
+-    },
+-    {
+-      "file": "browser/tools/playwright_browser_agent.py",
+-      "line": 251,
+-      "type": "except-no-log",
+-      "severity": "low"
+-    },
+-    {
+-      "file": "browser/tools/playwright_browser_agent.py",
+-      "line": 471,
+-      "type": "except-no-log",
+-      "severity": "low"
+-    },
+     {
+       "file": "core/adapters/business_adapter.py",
+       "line": 138,
