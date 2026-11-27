@@ -1388,4 +1388,12 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   alAcknowledged: 'দেখা হয়েছে',
   alSaveError: 'সেভ করা যায়নি।',
   alLoadError: 'অ্যালার্ট পড়া যায়নি।',
+  inboxSourceLabel: 'ইনবক্সের উৎস',
+  inboxSourceAi: 'AI চ্যাট',
+  inboxSourceExternal: 'Gmail / বাইরের',
+  inboxAiSearch: 'আপনার AI চ্যাট খুঁজুন…',
+  inboxAiEmpty: 'এখনো কোনো AI চ্যাট নেই — চ্যাট বক্স থেকে শুরু করুন।',
+  inboxAiNoMatch: 'এই খোঁজার সাথে কোনো চ্যাট মেলেনি।',
+  inboxAiUntitled: 'শিরোনামহীন চ্যাট',
+  inboxAiMessages: '{n}টি বার্তা',
 };

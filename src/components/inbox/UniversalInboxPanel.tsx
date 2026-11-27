@@ -36,6 +36,8 @@ import {
 } from '../../services/gmailOAuthService';
 import { getInboxAdapter, listRegisteredChannels } from '../../adapters/inbox/registry';
 import { useI18n } from '../../utils/i18n';
+import { SegmentedControl } from '../ui/SegmentedControl';
+import { InboxAiChats } from './InboxAiChats';
 import type { InboxItem } from '../../../packages/contracts/inbox-adapter';
 
 export type ChannelType = 'gmail' | 'telegram' | 'whatsapp' | 'messenger' | 'instagram';
@@ -75,7 +77,12 @@ function getGatewayBase(): string {
   return (fromEnv || DEFAULT_GATEWAY_URL || '').replace(/\/+$/, '');
 }
 
-export const UniversalInboxPanel: React.FC = () => {
+export interface UniversalInboxPanelProps {
+  /** When given, the inbox also lists SupremeAI chats ("AI Chats" tab) and opens them with this. */
+  onOpenChat?: (sessionId: string) => void;
+}
+
+export const UniversalInboxPanel: React.FC<UniversalInboxPanelProps> = ({ onOpenChat }) => {
   // বাংলা মন্তব্য: পুরনো GmailInboxPanel-এর বাংলা/ইংরেজি স্ট্রিং (wsGmail*) এখানে পুনর্ব্যবহার।
   const { t } = useI18n();
   // বাংলা মন্তব্য: শুধু নিবন্ধিত adapter-এর চ্যানেল — কোনো ভুয়া ফিল্টার বাটন নয়।
@@ -83,6 +90,12 @@ export const UniversalInboxPanel: React.FC = () => {
   const [gmailToken, setGmailToken] = useState<string | null>(() => getGmailCachedToken());
   const [gmailEmail, setGmailEmail] = useState<string | null>(() => getGmailCachedEmail());
   const [isConnectingGmail, setIsConnectingGmail] = useState(false);
+  // বাংলা মন্তব্য: "AI Chats" (SupremeAI কথোপকথন) বনাম "Gmail / External"। Gmail যুক্ত থাকলে
+  // সেটাই আগে খোলে, নইলে AI Chats — যাতে ইনবক্স কখনো ফাঁকা না দেখায়।
+  const [source, setSource] = useState<'ai' | 'external'>(() =>
+    onOpenChat && !getGmailCachedToken() ? 'ai' : 'external'
+  );
+  const showAiChats = Boolean(onOpenChat) && source === 'ai';
 
   const [items, setItems] = useState<UnifiedInboxItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -363,7 +376,22 @@ export const UniversalInboxPanel: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        {onOpenChat && (
+          <SegmentedControl
+            label={t.inboxSourceLabel}
+            hideLabel
+            size="sm"
+            value={source}
+            onChange={setSource}
+            testId="inbox-source"
+            options={[
+              { value: 'ai', label: t.inboxSourceAi },
+              { value: 'external', label: t.inboxSourceExternal },
+            ]}
+          />
+        )}
+
+        <div className={`flex items-center gap-2 ${showAiChats ? 'hidden' : ''}`}>
           {gmailToken ? (
             <>
               <span
@@ -419,7 +447,8 @@ export const UniversalInboxPanel: React.FC = () => {
       )}
 
       {/* Split View */}
-      <div className="flex-1 flex flex-col md:flex-row min-h-0">
+      {showAiChats && onOpenChat && <InboxAiChats onOpenChat={onOpenChat} />}
+      <div className={`flex-1 flex flex-col md:flex-row min-h-0 ${showAiChats ? 'hidden' : ''}`}>
         {/* Left List */}
         <div className="w-full md:w-80 lg:w-96 border-r border-slate-200/80 dark:border-slate-800/80 flex flex-col bg-white/40 dark:bg-slate-900/40">
           <div className="p-3 border-b border-slate-200/60 dark:border-slate-800/60 space-y-2.5">
