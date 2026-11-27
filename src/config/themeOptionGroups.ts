@@ -12,7 +12,6 @@ import type {
   MotionSpeed,
   ScrimIntensity,
   SurfaceTone,
-  ThemeMode,
   ThemeSpecificOptions,
 } from '../data/themePresets';
 
@@ -235,12 +234,6 @@ export function readToggle(options: ThemeSpecificOptions, group: ThemeToggleGrou
   const raw = options[group.key];
   return typeof raw === 'boolean' ? raw : group.defaultValue;
 }
-
-export const THEME_MODE_CHOICES: ReadonlyArray<{ value: ThemeMode; labelKey: TranslationKeys }> = [
-  { value: 'system', labelKey: 'schemeAutoTitle' },
-  { value: 'light', labelKey: 'schemeLightTitle' },
-  { value: 'dark', labelKey: 'schemeDarkTitle' },
-];
 
 export const SURFACE_TONE_CHOICES: ReadonlyArray<{
   value: SurfaceTone;

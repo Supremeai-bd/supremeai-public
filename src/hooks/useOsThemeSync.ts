@@ -1,11 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useThemeStore, applyThemeToDom } from '../stores/useThemeStore';
 import { toast } from '../stores/useToastStore';
 
 /**
  * Watches the OS color scheme (`prefers-color-scheme: dark`) and reduced motion
  * preference (`prefers-reduced-motion: reduce`), automatically updating the app
- * theme whenever the system setting changes while `themeMode === 'system'`.
+ * theme whenever the system setting changes (smart Auto: only for themes that look good
+ * in both modes; dark-/light-only themes keep their best mode).
  */
 export function useOsThemeSync() {
   const themeMode = useThemeStore((s) => s.themeMode);
@@ -18,9 +19,6 @@ export function useOsThemeSync() {
   const prefersReducedMotion = useThemeStore((s) => s.prefersReducedMotion);
   const setOsPrefersDark = useThemeStore((s) => s.setOsPrefersDark);
   const setPrefersReducedMotion = useThemeStore((s) => s.setPrefersReducedMotion);
-
-  const themeModeRef = useRef(themeMode);
-  themeModeRef.current = themeMode;
 
   const isAnimating = liveMotion && (!prefersReducedMotion || overrideReducedMotion);
 
@@ -45,9 +43,11 @@ export function useOsThemeSync() {
 
     const handleColorChange = (e: MediaQueryListEvent) => {
       const nextIsDark = e.matches;
+      const before = useThemeStore.getState().resolvedScheme;
       setOsPrefersDark(nextIsDark, true);
 
-      if (themeModeRef.current === 'system') {
+      // Smart Auto: only themes good in both modes follow the OS — toast only on a real change.
+      if (useThemeStore.getState().resolvedScheme !== before) {
         toast.info(
           'OS Theme Synchronized',
           `Appearance automatically switched to ${nextIsDark ? 'Dark' : 'Light'} mode.`

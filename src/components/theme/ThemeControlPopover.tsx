@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Sun, Moon, Monitor, Palette } from 'lucide-react';
+import { Sun, Moon, Palette } from 'lucide-react';
 import { useThemeStore, LIVE_THEMES } from '../../stores/useThemeStore';
 import { useI18n } from '../../utils/i18n';
 import { ThemeAppearanceControls } from './ThemeAppearanceControls';
@@ -31,7 +31,6 @@ export const ThemeControlPopover: React.FC<ThemeControlPopoverProps> = ({
 
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
-  const themeMode = useThemeStore((s) => s.themeMode);
   const resolvedScheme = useThemeStore((s) => s.resolvedScheme);
   const liveTheme = useThemeStore((s) => s.liveTheme);
 
@@ -39,7 +38,8 @@ export const ThemeControlPopover: React.FC<ThemeControlPopoverProps> = ({
   const activeThemeMeta = LIVE_THEMES.find((t) => t.id === liveTheme) || LIVE_THEMES[0];
 
 
-  const TriggerIcon = themeMode === 'system' ? Monitor : resolvedScheme === 'dark' ? Moon : Sun;
+  // Smart Auto only — the icon shows the mode the current theme resolved to.
+  const TriggerIcon = resolvedScheme === 'dark' ? Moon : Sun;
 
   const updatePosition = () => {
     if (!triggerRef.current || typeof window === 'undefined') return;
@@ -132,7 +132,7 @@ export const ThemeControlPopover: React.FC<ThemeControlPopoverProps> = ({
         onClick={() => setIsOpen((prev) => !prev)}
         aria-label={t.themeControlBackdropAria}
         aria-expanded={isOpen}
-        title={`Theme: ${themeMode === 'system' ? `Auto (${resolvedScheme})` : themeMode} · ${activeThemeMeta.name} — Click to switch`}
+        title={`Theme: ${activeThemeMeta.name} · Auto (${resolvedScheme}) — Click to switch`}
         className={
           compact
             ? `p-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
@@ -152,7 +152,7 @@ export const ThemeControlPopover: React.FC<ThemeControlPopoverProps> = ({
           <span className="text-[11px] font-medium truncate max-w-[96px]">{triggerLabel}</span>
         ) : !compact ? (
           <span className="hidden sm:inline">
-            {themeMode === 'system' ? 'Auto' : resolvedScheme === 'dark' ? 'Dark' : 'Light'}
+            {t.themeModeAuto}
           </span>
         ) : null}
       </button>
