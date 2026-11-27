@@ -5,6 +5,7 @@ import { getPlanSpec } from '../../config/plans';
 import type { PlanTier } from '../../types';
 import { hashPassword, parseCookieHeader, verifyPassword } from '../../shared/serverSecurity';
 import { loginSchema, refreshSchema, signupSchema, parseBody } from '../validation';
+import type { RbacRole, ServerCustomerRecord, ServerUser } from '../userDirectory';
 
 /**
  * Core Auth — `POST /api/auth/*` + `POST /api/v1/auth/*` + `GET /api/auth/me` + `POST /api/v1/auth/logout`
@@ -28,56 +29,75 @@ import { loginSchema, refreshSchema, signupSchema, parseBody } from '../validati
  *     injected via ctx (closures over shared state).
  */
 
-type RbacRole = 'admin' | 'owner' | 'developer' | 'reviewer' | 'viewer' | 'user';
-interface ServerUser {
-  id: string;
-  name: string;
-  email: string;
-  passwordHash: string;
-  role: 'admin' | 'user';
-  rbacRole?: RbacRole;
+type CustomerEntry = ServerCustomerRecord;
+
+/** RBAC verdict returned by server.ts `resolveRbacUserProfile`. */
+interface RbacUserProfile {
   isAdminEligible: boolean;
+  adminEmailMatched: boolean;
+  rbacRole: RbacRole;
+  role: 'admin' | 'user';
   isDeveloperEligible: boolean;
   adminUserId?: string;
-  plan: PlanTier;
-  createdAt: string;
-  avatar?: string;
+  adminEmails: string[];
 }
 
-interface CustomerEntry {
+/** Public user shape returned by server.ts `buildSafeAuthUser` (never includes passwordHash). */
+interface SafeAuthUser extends RbacUserProfile {
   id: string;
+  user_id: string;
   name: string;
   email: string;
-  tier: PlanTier;
-  status?: string;
-  mrr?: number;
-  tokensUsed?: number;
-  tokenLimit?: number;
-  connectedRepos?: number;
-  joinedDate?: string;
-  lastActive?: string;
-  region?: string;
-  isDeveloperEligible?: boolean;
-  isAdminEligible?: boolean;
+  avatar: string;
+  plan: string;
+  createdAt: string;
+}
+
+/** Hints used to resolve RBAC for users not in the local directory (upstream-only accounts). */
+interface RbacUserHints {
   rbacRole?: string;
+  isAdminEligible?: boolean;
+  isDeveloperEligible?: boolean;
+  adminUserId?: string;
+}
+
+/** Untyped JSON from the upstream gateway; every field is narrowed where it is read. */
+type UpstreamJson = Record<string, unknown>;
+
+function asUpstreamJson(value: unknown): UpstreamJson | null {
+  return value && typeof value === 'object' ? (value as UpstreamJson) : null;
+}
+
+function upstreamString(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined;
+}
+
+function upstreamStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
 export interface AuthContext {
   get customerDirectory(): CustomerEntry[];
-  get usersDb(): any[];
+  get usersDb(): ServerUser[];
   activeAuthSessions: Map<string, string>;
   activeAdminSessions: Map<string, number>;
   activeRefreshTokens: Map<string, { userId: string; expiresAt: number }>;
   upstreamTokenAdminCache: Map<string, { email: string; isAdmin: boolean; tier: PlanTier; expiresAt: number }>;
   isIpBlocked: (req: Request) => boolean;
   platformConfig: { allowNewSignups: boolean };
-  buildSafeAuthUser: (user: any, customerRec?: any) => any;
+  buildSafeAuthUser: (user: ServerUser, customerRec?: CustomerEntry) => SafeAuthUser;
   signLocalSessionToken: (payload: { sub: string; email: string; iat: number; role: string }) => string;
   verifyLocalSessionToken: (token: string) => { sub?: string; email: string; iat?: number; role?: string } | null;
   issueLocalRefreshToken: (userId: string) => string;
   setRefreshTokenCookie: (req: Request, res: Response, token: string) => void;
   setAdminSessionCookie: (req: Request, res: Response, token: string) => void;
-  resolveRbacUserProfile: (email: string, matchedUser: any, matchedCustomer: any, adminEmails?: string[], rawRole?: string) => any;
+  resolveRbacUserProfile: (
+    email: string,
+    matchedUser?: ServerUser | RbacUserHints,
+    matchedCustomer?: CustomerEntry,
+    adminEmails?: string[],
+    rawRole?: string
+  ) => RbacUserProfile;
   recordAudit: (actor: string, action: string, resource: string, details: string, req: Request) => void;
 }
 
@@ -146,16 +166,18 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
           body: JSON.stringify({ username: cleanEmail, email: cleanEmail, password }),
         });
 
-        const upstreamData: any = await upstreamRes.json().catch(() => null);
+        const upstreamData = asUpstreamJson(await upstreamRes.json().catch(() => null));
         if (upstreamRes.ok && upstreamData && (upstreamData.access_token || upstreamData.token)) {
-          const remoteUser =
-            upstreamData.user && typeof upstreamData.user === 'object' ? upstreamData.user : upstreamData;
+          const remoteUser = asUpstreamJson(upstreamData.user) ?? upstreamData;
           const upstreamAdminEmails: string[] = [
-            ...(Array.isArray(upstreamData.adminEmails) ? upstreamData.adminEmails : []),
-            ...(Array.isArray(upstreamData.admin_emails) ? upstreamData.admin_emails : []),
+            ...upstreamStringList(upstreamData.adminEmails),
+            ...upstreamStringList(upstreamData.admin_emails),
           ];
           const upstreamRbac =
-            remoteUser.rbacRole || remoteUser.rbac_role || remoteUser.role || upstreamData.role;
+            upstreamString(remoteUser.rbacRole) ||
+            upstreamString(remoteUser.rbac_role) ||
+            upstreamString(remoteUser.role) ||
+            upstreamString(upstreamData.role);
           const upstreamIsAdmin = Boolean(
             remoteUser.isAdminEligible ??
             remoteUser.is_admin_eligible ??
@@ -172,7 +194,8 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
               isDeveloperEligible: Boolean(
                 remoteUser.isDeveloperEligible ?? remoteUser.is_developer_eligible
               ),
-              adminUserId: remoteUser.adminUserId || remoteUser.admin_user_id,
+              adminUserId:
+                upstreamString(remoteUser.adminUserId) || upstreamString(remoteUser.admin_user_id),
             },
             customerRec,
             upstreamAdminEmails,
@@ -197,7 +220,9 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
             isDeveloperEligible: rbac.isDeveloperEligible,
             adminUserId: rbac.adminUserId,
             plan:
-              customerRec?.tier || remoteUser.plan || (rbac.isAdminEligible ? 'Enterprise' : 'Pro'),
+              customerRec?.tier ||
+              upstreamString(remoteUser.plan) ||
+              (rbac.isAdminEligible ? 'Enterprise' : 'Pro'),
             createdAt: String(remoteUser.createdAt || new Date().toISOString().slice(0, 10)),
             adminEmails: rbac.adminEmails,
           };
@@ -318,14 +343,11 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
             password,
           }),
         });
-        const upstreamData: any = await upstreamRes.json().catch(() => null);
+        const upstreamData = asUpstreamJson(await upstreamRes.json().catch(() => null));
         if (upstreamRes.ok && upstreamData && (upstreamData.access_token || upstreamData.token)) {
-          const remoteUser =
-            upstreamData.user && typeof upstreamData.user === 'object'
-              ? upstreamData.user
-              : upstreamData;
+          const remoteUser = asUpstreamJson(upstreamData.user) ?? upstreamData;
           const rbac = ctx.resolveRbacUserProfile(cleanEmail, {
-            rbacRole: remoteUser.rbacRole || remoteUser.role,
+            rbacRole: upstreamString(remoteUser.rbacRole) || upstreamString(remoteUser.role),
             isAdminEligible: Boolean(remoteUser.isAdminEligible ?? remoteUser.is_admin_eligible),
           }, undefined);
           const token = String(upstreamData.access_token || upstreamData.token);
@@ -341,7 +363,7 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
             adminEmailMatched: rbac.adminEmailMatched,
             isDeveloperEligible: rbac.isDeveloperEligible,
             adminUserId: rbac.adminUserId,
-            plan: remoteUser.plan || 'Free',
+            plan: upstreamString(remoteUser.plan) || 'Free',
             createdAt: String(remoteUser.createdAt || new Date().toISOString().slice(0, 10)),
             adminEmails: rbac.adminEmails,
           };
@@ -520,10 +542,10 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
           signal: AbortSignal.timeout(9000),
         });
         if (upstreamRes.ok) {
-          const data: any = await upstreamRes.json().catch(() => null);
+          const data = asUpstreamJson(await upstreamRes.json().catch(() => null));
           if (data && typeof data === 'object') {
-            const raw =
-              data.user && typeof data.user === 'object' ? { ...data, ...data.user } : data;
+            const nestedUser = asUpstreamJson(data.user);
+            const raw: UpstreamJson = nestedUser ? { ...data, ...nestedUser } : data;
             const cleanEmail = String(raw.email || '').trim().toLowerCase();
             if (cleanEmail) {
               const matchedUser = ctx.usersDb.find((u) => u.email.toLowerCase() === cleanEmail);
@@ -531,10 +553,13 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
                 (c) => c.email.toLowerCase() === cleanEmail
               );
               const upstreamAdminEmails: string[] = [
-                ...(Array.isArray(data.adminEmails) ? data.adminEmails : []),
-                ...(Array.isArray(data.admin_emails) ? data.admin_emails : []),
+                ...upstreamStringList(data.adminEmails),
+                ...upstreamStringList(data.admin_emails),
               ];
-              const upstreamRbac = raw.rbacRole || raw.rbac_role || raw.role;
+              const upstreamRbac =
+                upstreamString(raw.rbacRole) ||
+                upstreamString(raw.rbac_role) ||
+                upstreamString(raw.role);
               const rbac = ctx.resolveRbacUserProfile(
                 cleanEmail,
                 matchedUser || {
@@ -545,7 +570,8 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
                   isDeveloperEligible: Boolean(
                     raw.isDeveloperEligible ?? raw.is_developer_eligible
                   ),
-                  adminUserId: raw.adminUserId || raw.admin_user_id,
+                  adminUserId:
+                    upstreamString(raw.adminUserId) || upstreamString(raw.admin_user_id),
                 },
                 customerRec,
                 upstreamAdminEmails,
@@ -565,7 +591,7 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
                 adminUserId: rbac.adminUserId,
                 plan:
                   customerRec?.tier ||
-                  raw.plan ||
+                  upstreamString(raw.plan) ||
                   matchedUser?.plan ||
                   (rbac.isAdminEligible ? 'Enterprise' : 'Pro'),
                 createdAt: String(
@@ -644,7 +670,7 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
           body: JSON.stringify({ refresh_token: presented }),
           signal: AbortSignal.timeout(9000),
         });
-        const upstreamData: any = await upstreamRes.json().catch(() => null);
+        const upstreamData = asUpstreamJson(await upstreamRes.json().catch(() => null));
         if (upstreamRes.ok && upstreamData && (upstreamData.access_token || upstreamData.token)) {
           const upstreamSetCookie = upstreamRes.headers.get('set-cookie');
           if (upstreamSetCookie) res.append('Set-Cookie', upstreamSetCookie);

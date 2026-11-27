@@ -380,7 +380,7 @@ async function startServer() {
 
   const resolveRbacUserProfile = (
     cleanEmail: string,
-    user?: Partial<ServerUser>,
+    user?: Partial<Omit<ServerUser, 'rbacRole'>> & { rbacRole?: string },
     customerRec?: Partial<ServerCustomerRecord>,
     extraAdminEmails: string[] = [],
     extraRbacRole?: string
