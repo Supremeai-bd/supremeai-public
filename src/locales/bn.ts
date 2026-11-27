@@ -111,7 +111,7 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   activeVoiceLabel: 'সক্রিয় ভয়েস',
   launchVoiceCompanion: 'ভয়েস কম্প্যানিয়ন চালু করুন',
   hologramAvatarTitle: '৩ডি হলোগ্রাম অবতার',
-  hologramAvatarSubtitle: 'প্রিসেট ৩ডি পোর্ট্রেট বেছে নিন অথবা আপনার যেকোনো ছবি হলোগ্রামে রূপান্তর করুন।',
+  hologramAvatarSubtitle: 'প্রিসেট ৩ডি অবতার বেছে নিন, অথবা নিজের ছবি দিন — সেটিই জীবন্ত ৩ডি পোর্ট্রেট হিসেবে দেখাবে।',
   voicePersonaTitle: 'ভয়েস পারসোনা ও দ্বিভাষিক স্পিচ',
   voicePersonaSubtitle: 'আপনার পছন্দের ভয়েস পারসোনা ও ডিফল্ট ভাষা বেছে নিন।',
   // Quick Switcher & Chat UI Strings
@@ -417,7 +417,7 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   staticScreenBtn: 'স্থির স্ক্রিন',
   themeSpecificOptionsSuffix: 'থিম-ভিত্তিক অপশন',
   uploadPortraitLabel: 'পোর্ট্রেট আপলোড',
-  faceMatched3dLabel: 'ফেস-ম্যাচড ৩ডি',
+  faceMatched3dLabel: 'আমার ছবি ৩ডি',
   changeBtn: 'পরিবর্তন',
   uploadBtn: 'আপলোড',
   security2StepTitle: 'নিরাপত্তা, ২-ধাপ যাচাই ও বিশ্বস্ত ডিভাইস',

@@ -26,7 +26,7 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { ChatSession, RolePersona, AuthUser } from '../types';
+import { ChatSession, AuthUser } from '../types';
 import { ThemeControlPopover } from './theme/ThemeControlPopover';
 import { PlatformDownloadsCard } from './common/PlatformDownloadsCard';
 import { useI18n } from '../utils/i18n';
@@ -42,8 +42,6 @@ interface SidebarProps {
   onRenameSession: (id: string, newTitle: string) => void;
   onTogglePinSession?: (id: string) => void;
   onNewSession: () => void;
-  activeRole: RolePersona;
-  onOpenRoleModal: () => void;
   isOpen: boolean;
   onToggleOpen: () => void;
   onSelectTab: (tab: string) => void;

@@ -76,13 +76,13 @@ function createPlaceholderTexture(fillHex: string): THREE.CanvasTexture {
   return tex;
 }
 
-// Upgraded Custom Photo Hologram Shaders: supports real-time lip/jaw displacement, eye blink & gaze glints
+// Custom photo portrait shaders. বাংলা মন্তব্য: ছবির ওপর কৃত্রিম চোখ/ঠোঁট/পলক আঁকা হয় না —
+// নির্দিষ্ট জায়গায় আঁকা ফিচার আসল মুখের সঙ্গে না মিললে অদ্ভুত দেখায়। ছবি অক্ষুণ্ণ থাকে; শুধু
+// মাথার নড়াচড়া, কথা বলার সময় হালকা ঢেউ, কিনারার আলো আর স্ক্যান-রেখা যোগ হয়।
 const HOLOGRAM_VERTEX_SHADER = /* glsl */ `
   uniform sampler2D uDepthMap;
   uniform float uTime;
   uniform float uSpeakEnergy;
-  uniform float uJawOpen;
-  uniform float uVisemeOh;
   uniform float uDepthScale;
 
   varying vec2 vUv;
@@ -98,13 +98,7 @@ const HOLOGRAM_VERTEX_SHADER = /* glsl */ `
     pos.z -= (pos.x * pos.x) * 0.24;
     pos.z += depth * uDepthScale;
 
-    // Lower jaw & lower lip vertex articulation when avatar speaks
-    float lowerLipMask = exp(-((uv.x - 0.5) * (uv.x - 0.5) / 0.012 + (uv.y - 0.34) * (uv.y - 0.34) / 0.005));
-    float chinMask = smoothstep(0.41, 0.27, uv.y) * smoothstep(0.28, 0.44, uv.x) * smoothstep(0.72, 0.56, uv.x);
-    pos.y -= (lowerLipMask * 0.055 + chinMask * 0.025) * uJawOpen;
-    pos.z += lowerLipMask * 0.018 * uVisemeOh;
-
-    float voiceWave = sin(uv.y * 22.0 - uTime * 8.5) * 0.007 * uSpeakEnergy * depth;
+    float voiceWave = sin(uv.y * 22.0 - uTime * 8.5) * 0.006 * uSpeakEnergy * depth;
     pos.z += voiceWave;
 
     vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
@@ -119,12 +113,7 @@ const HOLOGRAM_FRAGMENT_SHADER = /* glsl */ `
   uniform float uTime;
   uniform float uSpeakEnergy;
   uniform float uListenEnergy;
-  uniform float uJawOpen;
-  uniform float uBlink;
-  uniform float uLookX;
-  uniform float uLookY;
   uniform vec3 uAccentColor;
-  uniform float uIsDarkBg;
 
   varying vec2 vUv;
   varying float vDepth;
@@ -147,36 +136,13 @@ const HOLOGRAM_FRAGMENT_SHADER = /* glsl */ `
     float sweepY = fract(uTime * 0.19);
     float sweepBand = exp(-pow((vUv.y - sweepY) * 14.0, 2.0)) * (0.24 + uSpeakEnergy * 0.4);
 
-    // Eye regions for custom portrait blinking & living eye catchlight tracking
-    vec2 eyeL = vec2(0.425, 0.565);
-    vec2 eyeR = vec2(0.575, 0.565);
-    float eyeMaskL = exp(-((vUv.x - eyeL.x) * (vUv.x - eyeL.x) / 0.0014 + (vUv.y - eyeL.y) * (vUv.y - eyeL.y) / 0.0007));
-    float eyeMaskR = exp(-((vUv.x - eyeR.x) * (vUv.x - eyeR.x) / 0.0014 + (vUv.y - eyeR.y) * (vUv.y - eyeR.y) / 0.0007));
-    float eyesMask = clamp(eyeMaskL + eyeMaskR, 0.0, 1.0);
-
-    vec2 gazeShift = vec2(uLookX * 0.011, uLookY * 0.007);
-    float glintL = exp(-length((vUv - (eyeL + gazeShift)) * vec2(85.0, 110.0)));
-    float glintR = exp(-length((vUv - (eyeR + gazeShift)) * vec2(85.0, 110.0)));
-
-    // Mouth interior parting shadow during speech
-    float mouthOpenMask = exp(-((vUv.x - 0.5) * (vUv.x - 0.5) / 0.0055 + (vUv.y - 0.36) * (vUv.y - 0.36) / 0.0018));
-
     vec3 violetTint = vec3(0.56, 0.38, 1.0);
     vec3 rimGlow = mix(uAccentColor, violetTint, fresnel * 0.45) * (fresnel * (0.62 + uSpeakEnergy * 0.6));
 
     vec3 color = tex.rgb * fineScan;
-    // Blink darkens eye slit smoothly like descending eyelids
-    color = mix(color, color * 0.24 + vec3(0.05, 0.12, 0.22), eyesMask * uBlink * 0.85);
-    // Subtle living eye glint when eyes are open
-    color += vec3(0.65, 0.92, 1.0) * (glintL + glintR) * (1.0 - uBlink) * 0.42;
-    // Darken inner mouth gap & add subtle vocal pulse
-    color = mix(color, vec3(0.03, 0.07, 0.16), mouthOpenMask * uJawOpen * 0.72);
-    color += rimGlow;
-    color += uAccentColor * (sweepBand * 0.42 + uListenEnergy * 0.14);
+    color += rimGlow * 0.7;
+    color += uAccentColor * (sweepBand * 0.28 + uListenEnergy * 0.1);
 
-    if (uIsDarkBg < 0.5) {
-      color = mix(color * vec3(0.75, 0.9, 1.04), color, 0.55);
-    }
 
     float edgeX = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);
     float edgeY = smoothstep(0.0, 0.14, vUv.y) * smoothstep(1.0, 0.92, vUv.y);
@@ -237,7 +203,6 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
   const statusRef = useRef<LiveSessionStatus>(status);
   const voiceRef = useRef<LiveVoiceName>(voiceName);
   const presetRef = useRef<AvatarPresetId>(avatarPreset);
-  const customTraitsRef = useRef<CustomFaceTraits | undefined>(customTraits);
   const expressionRef = useRef<AvatarExpression>(expression);
   const expressionIntensityRef = useRef<number>(expressionIntensity);
   const isStreamingRef = useRef<boolean>(isStreaming);
@@ -247,7 +212,6 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
   statusRef.current = status;
   voiceRef.current = voiceName;
   presetRef.current = avatarPreset;
-  customTraitsRef.current = customTraits;
   expressionRef.current = expression;
   expressionIntensityRef.current = expressionIntensity;
   isStreamingRef.current = isStreaming;
@@ -386,14 +350,8 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
         uTime: { value: 0 },
         uSpeakEnergy: { value: 0 },
         uListenEnergy: { value: 0 },
-        uJawOpen: { value: 0 },
-        uVisemeOh: { value: 0 },
-        uBlink: { value: 0 },
-        uLookX: { value: 0 },
-        uLookY: { value: 0 },
-        uDepthScale: { value: 0.34 },
+        uDepthScale: { value: 0.16 },
         uAccentColor: { value: new THREE.Color(STATUS_ACCENT_COLORS.idle) },
-        uIsDarkBg: { value: isDarkRef.current ? 1.0 : 0.0 },
       },
       vertexShader: HOLOGRAM_VERTEX_SHADER,
       fragmentShader: HOLOGRAM_FRAGMENT_SHADER,
@@ -408,22 +366,17 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
     customBustMesh.visible = false;
     hologramGroup.add(customBustMesh);
 
-    // Always mount the articulated 3D avatar rig (custom faces project cleanly onto its 3D head)
+    // Female/Male presets mount their 3D rig immediately. The custom photo portrait (or its trait-rig
+    // fallback) is mounted by the swap effect below, so no mismatched rig flashes on first paint.
     const maxAnisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-    const initTraits = customTraitsRef.current;
-    const activeRig: ArticulatedAvatarRig | null = createArticulatedAvatarRig(
+    const activeRig: ArticulatedAvatarRig | null =
       presetRef.current === 'custom'
-        ? {
-            isFemale: initTraits?.genderCue === 'female',
-            maxAnisotropy,
-            customTraits: initTraits,
-          }
-        : {
+        ? null
+        : createArticulatedAvatarRig({
             isFemale: presetRef.current !== 'male',
             maxAnisotropy,
-          }
-    );
-    rigAnchor.add(activeRig.root);
+          });
+    if (activeRig) rigAnchor.add(activeRig.root);
 
     // Subtle Holographic Orbit Rings framing the lower bust cleanly (never crossing over the face)
     const ringConfigs = [
@@ -858,16 +811,13 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
         hologramMat.uniforms.uTime.value = elapsed;
         hologramMat.uniforms.uSpeakEnergy.value = speakEnergy;
         hologramMat.uniforms.uListenEnergy.value = listenEnergy;
-        hologramMat.uniforms.uJawOpen.value = smoothJaw;
-        hologramMat.uniforms.uVisemeOh.value = smoothOh;
-        hologramMat.uniforms.uBlink.value = blinkAmount;
-        hologramMat.uniforms.uLookX.value = smoothLookX;
-        hologramMat.uniforms.uLookY.value = smoothLookY;
         hologramMat.uniforms.uAccentColor.value.copy(currentAccent);
-        hologramMat.uniforms.uIsDarkBg.value = isDarkRef.current ? 1.0 : 0.0;
 
-        customBustMesh.rotation.y = smoothYaw * 0.72;
-        customBustMesh.rotation.x = smoothPitch * 0.68;
+        // বাংলা মন্তব্য: কথা বলার সময় হালকা মাথা নাড়া ও শ্বাসের মতো ছোট স্কেল — মুখ বিকৃত না করে প্রাণবন্ত।
+        customBustMesh.rotation.y = smoothYaw * 0.55;
+        customBustMesh.rotation.x = smoothPitch * 0.5 - smoothJaw * 0.04;
+        customBustMesh.rotation.z = smoothRoll * 0.4;
+        customBustMesh.scale.setScalar(1 + breath * 0.012 + speakEnergy * 0.015);
       }
 
       // Orbiting light rings & particles respond dynamically to speech & listening
@@ -948,22 +898,36 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
     };
   }, [levelsRef]);
 
-  // Swap cleanly between Female, Male, and Face-Matched Custom 3D rigs without recreating WebGLRenderer
+  // Swap cleanly between Female/Male 3D rigs and the uploaded photo portrait without recreating WebGLRenderer.
+  // বাংলা মন্তব্য: নিজের ছবি বাছলে আর কৃত্রিম 3D মাথার ওপর ছবি বসানো হয় না (চোখ/ঠোঁট/চুল দুবার
+  // দেখা যেত)। ছবিটাই নরম কিনারার 3D পোর্ট্রেট হিসেবে দেখায়; ছবি না থাকলে তবেই 3D রিগ।
   useEffect(() => {
     const refs = sceneRefs.current;
     if (!refs) return;
     let cancelled = false;
 
     const maxAnisotropy = Math.min(4, refs.renderer.capabilities.getMaxAnisotropy());
-    const mountRig = (nextRig: ArticulatedAvatarRig) => {
+    const unmountRig = () => {
       if (refs.activeRig) {
         refs.rigAnchor.remove(refs.activeRig.root);
         refs.activeRig.dispose();
+        refs.activeRig = null;
       }
+    };
+    const mountRig = (nextRig: ArticulatedAvatarRig) => {
+      unmountRig();
       refs.customBustMesh.visible = false;
       refs.rigAnchor.add(nextRig.root);
       refs.activeRig = nextRig;
     };
+    const mountTraitRig = () =>
+      mountRig(
+        createArticulatedAvatarRig({
+          isFemale: customTraits?.genderCue === 'female',
+          maxAnisotropy,
+          customTraits,
+        })
+      );
 
     if (avatarPreset !== 'custom') {
       mountRig(createArticulatedAvatarRig(avatarPreset !== 'male', maxAnisotropy));
@@ -971,35 +935,35 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
       return;
     }
 
-    // First mount matched trait skeleton immediately while cropped face image decodes
-    mountRig(
-      createArticulatedAvatarRig({
-        isFemale: customTraits?.genderCue === 'female',
-        maxAnisotropy,
-        customTraits,
-      })
-    );
-
-    if (avatarSrc) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        if (cancelled || !sceneRefs.current) return;
-        const facedRig = createArticulatedAvatarRig({
-          isFemale: customTraits?.genderCue === 'female',
-          maxAnisotropy: Math.min(4, sceneRefs.current.renderer.capabilities.getMaxAnisotropy()),
-          customFaceImg: img,
-          customTraits,
-        });
-        mountRig(facedRig);
-        sceneRefs.current.reactTrigger();
-      };
-      img.onerror = () => {
-        // Fallback keeps trait-matched 3D rig if image decode fails
-        void buildHologramTextures(avatarSrc, isPrestyledHologram).catch(() => {});
-      };
-      img.src = avatarSrc;
+    if (!avatarSrc) {
+      mountTraitRig();
+      return;
     }
+
+    buildHologramTextures(avatarSrc, isPrestyledHologram)
+      .then(({ colorCanvas, depthCanvas }) => {
+        if (cancelled || !sceneRefs.current) return;
+        const colorTex = new THREE.CanvasTexture(colorCanvas);
+        // ShaderMaterial writes raw values — keep the photo's sRGB bytes untouched for true colours
+        colorTex.colorSpace = THREE.NoColorSpace;
+        colorTex.anisotropy = maxAnisotropy;
+        const depthTex = new THREE.CanvasTexture(depthCanvas);
+        depthTex.colorSpace = THREE.NoColorSpace;
+
+        activeTexturesRef.current.color?.dispose();
+        activeTexturesRef.current.depth?.dispose();
+        activeTexturesRef.current = { color: colorTex, depth: depthTex };
+        refs.hologramMat.uniforms.uColorMap.value = colorTex;
+        refs.hologramMat.uniforms.uDepthMap.value = depthTex;
+
+        unmountRig();
+        refs.customBustMesh.visible = true;
+        refs.reactTrigger();
+      })
+      .catch(() => {
+        // Image decode failed → fall back to a trait-matched 3D rig (no photo projection)
+        if (!cancelled && sceneRefs.current) mountTraitRig();
+      });
 
     return () => {
       cancelled = true;

@@ -352,9 +352,57 @@ export interface HologramTexturePair {
 }
 
 /**
+ * বাংলা মন্তব্য: ইউজারের নিজের ছবি (আগেই মুখ ঘিরে টাইট করে ক্রপ করা) থেকে পরিষ্কার পোর্ট্রেট টেক্সচার।
+ * আগে ছবিটা কৃত্রিম 3D মাথার ওপর বসানো হতো, তার ওপরে আলাদা চোখ/ঠোঁট/চুল আঁকা হতো — দুটো
+ * মিশে অদ্ভুত দেখাত। এখন ছবির আসল রঙ ও মুখ অক্ষুণ্ণ থাকে; শুধু নরম ডিম্বাকৃতি কিনারা (alpha),
+ * হালকা ঠান্ডা টোন আর মসৃণ গম্বুজ-আকৃতির গভীরতা (depth) যোগ হয়। কোনো ফিচার নতুন করে আঁকা হয় না।
+ */
+export function computePhotoPortraitMaps(
+  src: Uint8ClampedArray,
+  size: number
+): { color: Uint8ClampedArray; depth: Uint8ClampedArray } {
+  const color = new Uint8ClampedArray(size * size * 4);
+  const depth = new Uint8ClampedArray(size * size * 4);
+  const denom = Math.max(1, size - 1);
+  for (let y = 0; y < size; y++) {
+    const ny = y / denom;
+    for (let x = 0; x < size; x++) {
+      const nx = x / denom;
+      const p = (y * size + x) * 4;
+      const r = src[p];
+      const g = src[p + 1];
+      const b = src[p + 2];
+
+      // Soft oval vignette that fits the tight face crop (forehead → chin)
+      const dx = (nx - 0.5) / 0.47;
+      const dy = (ny - 0.48) / 0.5;
+      const ovalR = Math.sqrt(dx * dx + dy * dy);
+      const alpha = 1 - smoothstep(0.8, 1.0, ovalR);
+
+      // Natural colours with a very light cool hologram grade
+      color[p] = Math.round(r * 0.95);
+      color[p + 1] = Math.min(255, Math.round(g * 0.98 + 4));
+      color[p + 2] = Math.min(255, Math.round(b * 1.02 + 10));
+      color[p + 3] = Math.round(alpha * 255);
+
+      // Smooth facial dome only (no luminance noise) so the photo never warps
+      const dome = Math.exp(
+        -(((nx - 0.5) * (nx - 0.5)) / 0.12 + ((ny - 0.47) * (ny - 0.47)) / 0.16)
+      );
+      const d = Math.round(clamp01(dome * alpha) * 255);
+      depth[p] = d;
+      depth[p + 1] = d;
+      depth[p + 2] = d;
+      depth[p + 3] = 255;
+    }
+  }
+  return { color, depth };
+}
+
+/**
  * Converts either a pre-styled holographic portrait OR a regular user-uploaded photo
  * into:
- * 1) A transparent-background RGBA luminous cyan-blue-violet hologram texture
+ * 1) A transparent-edged RGBA texture (pre-styled: keyed hologram; photo: natural colours)
  * 2) A grayscale 3D relief depth map for real-time WebGL vertex displacement
  */
 export function buildHologramTextures(
@@ -406,61 +454,27 @@ export function buildHologramTextures(
       const depthCtx = depthCanvas.getContext('2d')!;
       const depthOut = depthCtx.createImageData(size, size);
 
-      // Estimate background color along upper/side border for arbitrary user photos
-      let bgR = 0;
-      let bgG = 0;
-      let bgB = 0;
-      let bgSamples = 0;
       if (!isPrestyledHologram) {
-        for (let y = 0; y < size; y += 4) {
-          for (let x = 0; x < size; x += 4) {
-            const isTopBand = y < size * 0.1;
-            const isSideCorner = y < size * 0.62 && (x < size * 0.08 || x > size * 0.92);
-            if (!isTopBand && !isSideCorner) continue;
-            const idx = (y * size + x) * 4;
-            bgR += pixels[idx];
-            bgG += pixels[idx + 1];
-            bgB += pixels[idx + 2];
-            bgSamples++;
-          }
-        }
-        if (bgSamples > 0) {
-          bgR /= bgSamples * 255;
-          bgG /= bgSamples * 255;
-          bgB /= bgSamples * 255;
-        }
-      }
+        // বাংলা মন্তব্য: আপলোড করা ছবি আসল রঙেই থাকে — শুধু নরম ডিম্বাকৃতি কিনারা আর হালকা গভীরতা।
+        const maps = computePhotoPortraitMaps(pixels, size);
+        colorOut.data.set(maps.color);
+        depthOut.data.set(maps.depth);
+      } else {
+        for (let y = 0; y < size; y++) {
+          const ny = y / (size - 1);
+          for (let x = 0; x < size; x++) {
+            const nx = x / (size - 1);
+            const p = (y * size + x) * 4;
+            const maxCh = Math.max(pixels[p], pixels[p + 1], pixels[p + 2]) / 255;
 
-      // Precompute grayscale buffer for Sobel edge detection on custom photos
-      const gray = new Float32Array(size * size);
-      for (let i = 0; i < size * size; i++) {
-        const p = i * 4;
-        gray[i] = (0.2126 * pixels[p] + 0.7152 * pixels[p + 1] + 0.0722 * pixels[p + 2]) / 255;
-      }
+            // Portrait silhouette oval prior (narrower at head, wider at shoulders)
+            const shoulderFlare = ny > 0.62 ? (ny - 0.62) * 0.65 : 0;
+            const rx = 0.34 + shoulderFlare;
+            const dx = (nx - 0.5) / rx;
+            const dy = (ny - 0.48) / 0.45;
+            const ovalR = Math.sqrt(dx * dx + dy * dy);
+            const bottomFade = 1 - smoothstep(0.84, 0.99, ny);
 
-      for (let y = 0; y < size; y++) {
-        const ny = y / (size - 1);
-        for (let x = 0; x < size; x++) {
-          const nx = x / (size - 1);
-          const i = y * size + x;
-          const p = i * 4;
-
-          const r = pixels[p] / 255;
-          const g = pixels[p + 1] / 255;
-          const b = pixels[p + 2] / 255;
-          const lum = gray[i];
-          const maxCh = Math.max(r, g, b);
-
-          // Portrait silhouette oval prior (narrower at head, wider at shoulders)
-          const shoulderFlare = ny > 0.62 ? (ny - 0.62) * 0.65 : 0;
-          const rx = 0.34 + shoulderFlare;
-          const dx = (nx - 0.5) / rx;
-          const dy = (ny - 0.48) / 0.45;
-          const ovalR = Math.sqrt(dx * dx + dy * dy);
-          const bottomFade = 1 - smoothstep(0.84, 0.99, ny);
-          const topFade = 1 - smoothstep(0.95, 1.32, ovalR);
-
-          if (isPrestyledHologram) {
             // Key out dark background & outer bokeh while preserving crisp glowing hologram portrait
             const keyStrength = smoothstep(0.055, 0.34, maxCh);
             // Stronger core mask keeps face/shoulders sharp, fades distant corner bokeh
@@ -479,81 +493,6 @@ export function buildHologramTextures(
               -(((nx - 0.5) * (nx - 0.5)) / 0.085 + ((ny - 0.44) * (ny - 0.44)) / 0.11)
             );
             const depthVal = clamp01((0.55 * faceDome + 0.45 * maxCh) * (0.25 + 0.75 * alpha));
-            const dByte = Math.round(depthVal * 255);
-            depthOut.data[p] = dByte;
-            depthOut.data[p + 1] = dByte;
-            depthOut.data[p + 2] = dByte;
-            depthOut.data[p + 3] = 255;
-          } else {
-            // Custom user photo -> Luminous Cyan/Blue/Violet Hologram with Transparent Background
-            const xL = Math.max(0, x - 1);
-            const xR = Math.min(size - 1, x + 1);
-            const yU = Math.max(0, y - 1);
-            const yD = Math.min(size - 1, y + 1);
-
-            const gx =
-              -gray[yU * size + xL] +
-              gray[yU * size + xR] +
-              -2 * gray[y * size + xL] +
-              2 * gray[y * size + xR] +
-              -gray[yD * size + xL] +
-              gray[yD * size + xR];
-            const gy =
-              -gray[yU * size + xL] -
-              2 * gray[yU * size + x] -
-              gray[yU * size + xR] +
-              gray[yD * size + xL] +
-              2 * gray[yD * size + x] +
-              gray[yD * size + xR];
-            const edge = clamp01(Math.sqrt(gx * gx + gy * gy) * 1.45);
-
-            // Background subtraction + portrait silhouette prior
-            const dr = r - bgR;
-            const dg = g - bgG;
-            const db = b - bgB;
-            const bgDist = Math.sqrt(dr * dr + dg * dg + db * db) / 1.732;
-            const fgFromBg = smoothstep(0.08, 0.3, bgDist);
-
-            // Core portrait region stays intact even if clothing matches background
-            const innerCore = 1 - smoothstep(0.58, 0.96, ovalR);
-            const subjectMatte = clamp01(
-              Math.max(innerCore * 0.94, fgFromBg * topFade) * topFade * bottomFade
-            );
-
-            // Fine horizontal holographic scanline + edge-enhanced luminance
-            const scanline = 0.88 + 0.12 * Math.sin(y * 1.05);
-            const holoSignal = clamp01((lum * 0.72 + edge * 0.78) * scanline);
-
-            // Map into luminous cyan / electric blue / violet-white palette
-            let outR: number;
-            let outG: number;
-            let outB: number;
-            if (holoSignal < 0.45) {
-              const t = holoSignal / 0.45;
-              outR = 12 + t * 24 + edge * 55;
-              outG = 58 + t * 142;
-              outB = 185 + t * 70;
-            } else {
-              const t = (holoSignal - 0.45) / 0.55;
-              outR = 36 + t * 195 + edge * 35;
-              outG = 200 + t * 52;
-              outB = 255;
-            }
-
-            // Subtle holographic wireframe / grid shimmer along contours
-            const alpha = clamp01(
-              subjectMatte * (0.28 + 0.72 * smoothstep(0.06, 0.55, holoSignal))
-            );
-
-            colorOut.data[p] = Math.min(255, Math.round(outR));
-            colorOut.data[p + 1] = Math.min(255, Math.round(outG));
-            colorOut.data[p + 2] = Math.min(255, Math.round(outB));
-            colorOut.data[p + 3] = Math.round(alpha * 255);
-
-            const faceDome = Math.exp(
-              -(((nx - 0.5) * (nx - 0.5)) / 0.09 + ((ny - 0.44) * (ny - 0.44)) / 0.12)
-            );
-            const depthVal = clamp01((0.5 * faceDome + 0.35 * lum + 0.15 * edge) * subjectMatte);
             const dByte = Math.round(depthVal * 255);
             depthOut.data[p] = dByte;
             depthOut.data[p + 1] = dByte;

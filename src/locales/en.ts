@@ -112,7 +112,7 @@ export const EN_DICT = {
   launchVoiceCompanion: 'Launch Voice Companion',
   hologramAvatarTitle: '3D Hologram Avatar',
   hologramAvatarSubtitle:
-    'Choose a preset 3D portrait or upload any photo to convert it into a translucent hologram.',
+    'Choose a preset 3D avatar, or upload your photo to use it as a living 3D portrait.',
   voicePersonaTitle: 'Voice Persona & Bilingual Speech',
   voicePersonaSubtitle: 'Select your preferred voice persona and default speech language.',
   // Quick Switcher & Chat UI Strings
@@ -426,7 +426,7 @@ export const EN_DICT = {
   staticScreenBtn: 'Static Screen',
   themeSpecificOptionsSuffix: 'Theme-Specific Options',
   uploadPortraitLabel: 'Upload Portrait',
-  faceMatched3dLabel: 'Face-Matched 3D',
+  faceMatched3dLabel: 'My Photo 3D',
   changeBtn: 'Change',
   uploadBtn: 'Upload',
   security2StepTitle: 'Security, 2-Step Verification & Trusted Devices',

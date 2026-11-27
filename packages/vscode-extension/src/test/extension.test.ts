@@ -75,7 +75,7 @@ async function runTests(): Promise<void> {
   // Verify canonical models, aliases, roles, and themes match Web/Desktop/Mobile
   assert.strictEqual(FOUNDATION_MODELS.length, 6);
   assert.strictEqual(MODEL_TIERS.length, 7); // auto + 6 foundation models
-  assert.strictEqual(SYSTEM_ROLES.length, 5);
+  assert.strictEqual(SYSTEM_ROLES.length, 6);
   assert.strictEqual(LIVE_THEMES.length, 11);
   assert.strictEqual(tierToModel('auto'), 'auto');
   assert.strictEqual(tierToModel('supreme-core'), 'supreme-core');
@@ -96,7 +96,7 @@ async function runTests(): Promise<void> {
   assert.ok(bnPrompt.includes('SupremeAI Lead Architect'));
   assert.ok(bnPrompt.includes('Use clean diagrams'));
   assert.ok(bnPrompt.includes('বাংলা'));
-  console.log('  ✓ All 6 foundation models + Auto, 5 personas, and 11 themes match Web/Desktop/Mobile');
+  console.log('  ✓ All 6 foundation models + Auto, 6 personas, and 11 themes match Web/Desktop/Mobile');
 
   // Verify Gateway Chat + Bidirectional Real-Time Cross-Platform Sync over HTTP/SSE
   const postedSyncEnvelopes: VsCodeSyncEnvelope[] = [];

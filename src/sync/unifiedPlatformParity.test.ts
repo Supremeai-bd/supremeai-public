@@ -39,7 +39,7 @@ describe('4-Platform Canonical Feature & Real-Time Sync Parity', () => {
     expect(SUPREMEAI_MODELS).toHaveLength(6);
 
     expect(SYSTEM_ROLES.map((r) => r.id)).toEqual(rolesContract.roles.map((r) => r.id));
-    expect(SYSTEM_ROLES).toHaveLength(5);
+    expect(SYSTEM_ROLES).toHaveLength(6);
 
     expect(syncContract.platforms).toEqual(['web', 'desktop', 'android', 'ios', 'vsix']);
     expect(syncContract.domains).toContain('models');
