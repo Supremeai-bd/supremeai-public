@@ -88,8 +88,6 @@ import {
   createAdminIdentityConfig,
   createCustomerDirectorySeed,
   getSessionSigningSecret,
-  loadDevUsersDb as loadDevUsersFile,
-  persistDevUsersDb as persistDevUsersFile,
   type RbacRole,
   type ServerCustomerRecord,
   type ServerUser,
@@ -316,11 +314,9 @@ async function startServer() {
   ): { sub: string; email: string; iat: number; exp: number; role?: string } | null =>
     verifySessionToken(token, TOKEN_SIGNING_SECRET);
 
-  const loadDevUsersDb = (): ServerUser[] => loadDevUsersFile(isProduction);
-  const persistDevUsersDb = (users: ServerUser[]) => persistDevUsersFile(users, isProduction);
-
   // Seeded local user credentials removed; real accounts register or authenticate via upstream gateway.
-  let usersDb: ServerUser[] = loadDevUsersDb();
+  // Local sign-ups live in memory only (no tmp-file cache of password hashes).
+  let usersDb: ServerUser[] = [];
 
   let customerDirectory: ServerCustomerRecord[] = createCustomerDirectorySeed(isProduction);
 
@@ -501,7 +497,6 @@ async function startServer() {
     setAdminSessionCookie: (a, b, c) => setAdminSessionCookie(a, b, c),
     resolveRbacUserProfile: (...a) => resolveRbacUserProfile(...a),
     recordAudit: (a, b, c, d, e) => recordAudit(a, b, c, d, e),
-    persistDevUsersDb: (u) => persistDevUsersDb(u),
   });
 
   registerFeedbackRoutes(app, {

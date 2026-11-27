@@ -24,8 +24,8 @@ import { loginSchema, refreshSchema, signupSchema, parseBody } from '../validati
  *     `activeRefreshTokens`, `upstreamTokenAdminCache`) injected by reference.
  *   - `isIpBlocked`, `platformConfig`, `buildSafeAuthUser`, `signLocalSessionToken`,
  *     `verifyLocalSessionToken`, `issueLocalRefreshToken`, `setRefreshTokenCookie`,
- *     `setAdminSessionCookie`, `resolveRbacUserProfile`, `recordAudit`,
- *     `persistDevUsersDb` injected via ctx (closures over shared state).
+ *     `setAdminSessionCookie`, `resolveRbacUserProfile`, `recordAudit`
+ *     injected via ctx (closures over shared state).
  */
 
 type RbacRole = 'admin' | 'owner' | 'developer' | 'reviewer' | 'viewer' | 'user';
@@ -79,7 +79,6 @@ export interface AuthContext {
   setAdminSessionCookie: (req: Request, res: Response, token: string) => void;
   resolveRbacUserProfile: (email: string, matchedUser: any, matchedCustomer: any, adminEmails?: string[], rawRole?: string) => any;
   recordAudit: (actor: string, action: string, resource: string, details: string, req: Request) => void;
-  persistDevUsersDb: (users: any[]) => void;
 }
 
 export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
@@ -407,7 +406,6 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
     };
 
     ctx.usersDb.push(newUser);
-    ctx.persistDevUsersDb(ctx.usersDb);
 
     if (!existingCust) {
       const planSpec = getPlanSpec(assignedPlan);

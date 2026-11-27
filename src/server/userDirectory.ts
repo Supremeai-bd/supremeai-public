@@ -6,8 +6,8 @@ import type { PlanTier } from './platformState';
 
 /**
  * User & customer directory primitives for the Express bootstrap: admin identity
- * config (env-driven), user/customer record types, the session signing secret,
- * the dev-only users cache file and the dev-only demo customer seed. Moved
+ * config (env-driven), user/customer record types, the session signing secret
+ * and the dev-only demo customer seed. Moved
  * verbatim out of `server.ts` (docs/SERVER_TS_SPLIT_PLAN.md); the mutable
  * `usersDb` / `customerDirectory` arrays stay in `server.ts`.
  *
@@ -114,29 +114,6 @@ export const getSessionSigningSecret = (): string => {
       /* read-only tmp: in-memory secret for this process */
     }
     return generated;
-  }
-};
-
-export const DEV_USERS_FILE = path.join(os.tmpdir(), 'supremeai_dev_users.json');
-export const loadDevUsersDb = (isProduction: boolean): ServerUser[] => {
-  if (isProduction) return [];
-  try {
-    if (fs.existsSync(DEV_USERS_FILE)) {
-      const raw = fs.readFileSync(DEV_USERS_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {
-    // Ignore corrupt dev cache
-  }
-  return [];
-};
-export const persistDevUsersDb = (users: ServerUser[], isProduction: boolean) => {
-  if (isProduction) return;
-  try {
-    fs.writeFileSync(DEV_USERS_FILE, JSON.stringify(users, null, 2), { mode: 0o600 });
-  } catch {
-    // Non-fatal in read-only environments
   }
 };
 
