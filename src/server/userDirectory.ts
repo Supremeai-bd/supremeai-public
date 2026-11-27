@@ -80,16 +80,33 @@ export const getSessionSigningSecret = (): string => {
   const fromEnv = process.env.AUTH_TOKEN_SECRET?.trim() || process.env.SESSION_SECRET?.trim();
   if (fromEnv) return fromEnv;
   const keyFilePath = path.join(os.tmpdir(), 'supremeai_session_signing.key');
-  try {
-    if (fs.existsSync(keyFilePath)) {
+  // বাংলা মন্তব্য: exists→read/write (TOCTOU race) বাদ — সরাসরি পড়ি; না থাকলে exclusive
+  // ('wx') তৈরি করি, এর মধ্যে অন্য প্রসেস বানিয়ে ফেললে (EEXIST) সেটাই আবার পড়ি।
+  const readKey = (): string | null => {
+    try {
       const existing = fs.readFileSync(keyFilePath, 'utf8').trim();
-      if (existing.length >= 32) return existing;
+      return existing.length >= 32 ? existing : null;
+    } catch {
+      return null;
     }
-    const generated = crypto.randomBytes(32).toString('hex');
-    fs.writeFileSync(keyFilePath, generated, { mode: 0o600 });
+  };
+  const existing = readKey();
+  if (existing) return existing;
+  const generated = crypto.randomBytes(32).toString('hex');
+  try {
+    fs.writeFileSync(keyFilePath, generated, { mode: 0o600, flag: 'wx' });
     return generated;
-  } catch {
-    return crypto.randomBytes(32).toString('hex');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') return generated;
+    const raced = readKey();
+    if (raced) return raced;
+    // A too-short legacy key file exists: replace it (previous behaviour).
+    try {
+      fs.writeFileSync(keyFilePath, generated, { mode: 0o600 });
+    } catch {
+      /* read-only tmp: in-memory secret for this process */
+    }
+    return generated;
   }
 };
 

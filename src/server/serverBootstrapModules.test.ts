@@ -18,7 +18,11 @@ import {
 } from './platformState';
 import { createCustomerDirectorySeed } from './userDirectory';
 import { FEDERATION_PROXY_HOP_HEADERS, registerFederationProxy } from './federationProxy';
-import { registerErrorHandler } from './frontendServing';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { mountFrontend, registerErrorHandler } from './frontendServing';
+import { getSessionSigningSecret } from './userDirectory';
 
 describe('server.ts bootstrap modules (split from server.ts)', () => {
   afterEach(() => {
@@ -112,5 +116,38 @@ describe('server.ts bootstrap modules (split from server.ts)', () => {
     } finally {
       server.close();
     }
+  });
+
+  it('production SPA fallback serves index.html from memory; missing dist → 404', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'spa-'));
+    fs.mkdirSync(path.join(root, 'dist'));
+    fs.writeFileSync(path.join(root, 'dist', 'index.html'), '<!doctype html><title>SPA</title>');
+    const serve = async (rootDir: string, url: string) => {
+      const app = express();
+      mountFrontend(app, { isProduction: true, rootDir });
+      registerErrorHandler(app, true);
+      const server = app.listen(0);
+      try {
+        const { port } = server.address() as AddressInfo;
+        return await fetch(`http://127.0.0.1:${port}${url}`);
+      } finally {
+        server.close();
+      }
+    };
+    const ok = await serve(root, '/settings/appearance');
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get('content-type')).toContain('text/html');
+    expect(await ok.text()).toContain('<title>SPA</title>');
+    const missing = await serve(path.join(root, 'nope'), '/settings');
+    expect(missing.status).toBe(404);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('session signing secret is stable across calls (exclusive create, no TOCTOU)', () => {
+    vi.stubEnv('AUTH_TOKEN_SECRET', '');
+    vi.stubEnv('SESSION_SECRET', '');
+    const a = getSessionSigningSecret();
+    expect(a.length).toBeGreaterThanOrEqual(32);
+    expect(getSessionSigningSecret()).toBe(a);
   });
 });
