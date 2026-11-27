@@ -98,3 +98,6 @@ export function createRateLimiter() {
   };
   return makeRateLimit;
 }
+
+// express-rate-limit factory (recognised by CodeQL); re-exported so server.ts keeps one import.
+export { routeRateLimit } from './routeRateLimit';
