@@ -17,6 +17,7 @@ import { handleAdminModelRouterRoute } from '../../_lib/adminModelRouter';
 import { handleAdminBackupsRoute } from '../../_lib/adminBackups';
 import { handleAdminFinOpsRoute } from '../../_lib/adminFinOps';
 import { handleAdminSessionsRoute } from '../../_lib/adminSessions';
+import { handleAdminAlertsRoute } from '../../_lib/adminAlerts';
 import { runPullAction } from '../../_lib/githubPullActions';
 import {
   handleAdminAuditLogRoute,
@@ -513,6 +514,9 @@ async function handleAdminRequest(
 
   const sessions = await handleAdminSessionsRoute(path, request, env, audit);
   if (sessions) return sessions;
+
+  const alerts = await handleAdminAlertsRoute(path, request, env, audit);
+  if (alerts) return alerts;
 
   const realData = await handleAdminRealDataRoute(path, request, env, upstreamOrigin);
   if (realData) return realData;

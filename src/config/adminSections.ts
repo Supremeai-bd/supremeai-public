@@ -33,12 +33,13 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
   {
     id: 'services',
     label: 'Services & Health',
-    description: 'Live status, latency and resources of every service.',
+    description: 'Live status, latency, resources and where alerts are sent.',
     group: 'Monitor',
     tabs: [
       { id: 'health-monitor', label: 'Service Health' },
       { id: 'mcp-tower', label: 'MCP Tower' },
       { id: 'architecture-map', label: 'Topology' },
+      { id: 'alerts', label: 'Alerts' },
     ],
   },
   {
