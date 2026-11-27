@@ -7,8 +7,7 @@ import {
   resolveMcpTowerOrigin,
   fetchWithTimeout,
   callMcpTowerRpc,
-  timingSafeEqualStrings,
-  verifyUpstreamSession,
+  authorizeAdminRequest,
 } from '../../../_lib/edgeHelpers';
 import {
   categorizeTool,
@@ -17,6 +16,7 @@ import {
   FALLBACK_GITHUB_COMMIT,
   parseDeepDiagnoseResult,
   parseEcosystemDiagnosticsResult,
+  computeEvidenceFingerprint,
 } from '../../../../src/shared/controlPlaneShared';
 
 async function fetchGithubHead(env?: Record<string, string | undefined>) {
@@ -207,53 +207,18 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
   if (request.method === 'OPTIONS') return handleCorsPreflight(request);
 
-  const authHeader = (request.headers.get('Authorization') || '').trim();
-  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-  const adminToken = (request.headers.get('X-Admin-Token') || '').trim();
-  const effectiveToken = adminToken || bearerToken;
-
-  const configuredKeys = [
-    env?.ADMIN_KEY,
-    env?.SUPREMEAI_ADMIN_KEY,
-    env?.MCP_ADMIN_KEY,
-    env?.SUPERADMIN_KEY,
-  ]
-    .filter(Boolean)
-    .map((k: any) => String(k).trim());
-
-  let hasAdminCredential =
-    configuredKeys.length > 0 &&
-    Boolean(effectiveToken) &&
-    configuredKeys.some((configured) => timingSafeEqualStrings(effectiveToken, configured));
-
-  // বাংলা মন্তব্য: P0 নিরাপত্তা শক্তিশালীকরণ — ক্লায়েন্ট-কন্ট্রোলড X-Admin-Email হেডার এবং
-  // অস্বাক্ষরিত JWT পেলোড থেকে অ্যাডমিন এলিভেশন সম্পূর্ণ বন্ধ করা হয়েছে। 'adm_'/'sk-admin-'
-  // প্রিফিক্স ফলব্যাকও সরানো হয়েছে — সিক্রেট কনফিগার না থাকলে এখন fail-closed। হার্ডকোডেড
-  // অ্যাডমিন ইমেইল সরিয়ে শুধু ADMIN_EMAIL / ADMIN_EMAILS এনভায়রনমেন্ট ব্যবহার করা হচ্ছে।
-  const authorizedAdmins = [
-    ...(env?.ADMIN_EMAIL ? [String(env.ADMIN_EMAIL).trim().toLowerCase()] : []),
-    ...(env?.ADMIN_EMAILS
-      ? String(env.ADMIN_EMAILS)
-          .split(',')
-          .map((e: string) => e.trim().toLowerCase())
-      : []),
-  ].filter(Boolean);
-
-  if (!hasAdminCredential && effectiveToken) {
-    const upstreamOrigin = resolveUpstreamOrigin(env);
-    const session = await verifyUpstreamSession(request, upstreamOrigin).catch(() => ({ valid: false } as any));
-    if (
-      session.valid &&
-      ((session.email && authorizedAdmins.includes(session.email.toLowerCase())) ||
-        session.role === 'admin' ||
-        (Array.isArray(session.permissions) && session.permissions.includes('admin')))
-    ) {
-      hasAdminCredential = true;
-    }
-  }
-
-  if (!hasAdminCredential) {
-    return jsonEdgeResponse({ error: 'Administrator authentication is required.' }, 401, request);
+  // বাংলা মন্তব্য: একই অ্যাডমিন-যাচাই (আগে এখানে ADMIN_PASSKEY বাদ ছিল — পাসকি দিয়ে ঢোকা অ্যাডমিন 401 পেতেন)
+  const auth = await authorizeAdminRequest(request, env);
+  if (!auth.isAdmin) {
+    return jsonEdgeResponse(
+      {
+        error: auth.hasToken
+          ? 'Administrator elevation is required.'
+          : 'Administrator authentication is required.',
+      },
+      auth.hasToken ? 403 : 401,
+      request
+    );
   }
 
   const incomingUrl = new URL(request.url);
@@ -289,40 +254,49 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       fetchGithubHead(env),
       probeServiceMesh(incomingUrl.origin, env),
     ]);
+    const gatewaySvc = healthData.snapshot.services[0];
+    const towerSvc = healthData.snapshot.services[1];
+    const truthMatrix = [
+      {
+        dimension: 'health',
+        label: 'Gateway Health',
+        status: gatewaySvc?.status === 'healthy' ? 'pass' : 'warn',
+        latencyMs: gatewaySvc?.latencyMs || 0,
+        summary: gatewaySvc?.httpStatus
+          ? `Gateway responded with HTTP ${gatewaySvc.httpStatus}`
+          : 'Gateway did not answer',
+        evidence: `${upstreamOrigin}/health`,
+      },
+      {
+        dimension: 'dependencies',
+        label: 'MCP Control Tower',
+        status: towerSvc?.status === 'healthy' ? 'pass' : 'warn',
+        latencyMs: towerSvc?.latencyMs || 0,
+        summary: `MCP Tower status: ${towerSvc?.status || 'unknown'}`,
+        evidence: mcpEndpoint,
+      },
+    ];
+    const releaseGate = healthData.snapshot.summary.down === 0 ? 'GO' : 'DEGRADED';
+    const diagSummary = `Probed ${healthData.snapshot.summary.total} edge/cloud services · avg ${healthData.snapshot.summary.avgLatencyMs}ms`;
+    const latestDiagnose = {
+      id: `diag_${Date.now()}`,
+      service: 'api',
+      intent: 'is_healthy',
+      releaseGate,
+      // বাংলা মন্তব্য: সময় নয় — আসল প্রমাণ (truth matrix) থেকে কনটেন্ট-হ্যাশ
+      evidenceHash: computeEvidenceFingerprint({ releaseGate, summary: diagSummary, truthMatrix }),
+      checkedAt: new Date().toISOString(),
+      summary: diagSummary,
+      provenance: 'live-gateway',
+      truthMatrix,
+    };
     return jsonEdgeResponse(
       {
         safetyMode: 'dry-run-hitl',
         mcpEndpoint,
         backendGateway: upstreamOrigin,
         latestGithubCommit,
-        latestDiagnose: {
-          id: `diag_${Date.now()}`,
-          service: 'api',
-          intent: 'is_healthy',
-          releaseGate: healthData.snapshot.summary.down === 0 ? 'GO' : 'DEGRADED',
-          evidenceHash: Date.now().toString(16),
-          checkedAt: new Date().toISOString(),
-          summary: `Probed ${healthData.snapshot.summary.total} edge/cloud services · avg ${healthData.snapshot.summary.avgLatencyMs}ms`,
-          provenance: 'live-gateway',
-          truthMatrix: [
-            {
-              dimension: 'health',
-              label: 'Gateway Health',
-              status: healthData.snapshot.services[0]?.status === 'healthy' ? 'pass' : 'warn',
-              latencyMs: healthData.snapshot.services[0]?.latencyMs || 0,
-              summary: `Gateway responded with HTTP ${healthData.snapshot.services[0]?.httpStatus || 200}`,
-              evidence: `${upstreamOrigin}/health`,
-            },
-            {
-              dimension: 'dependencies',
-              label: 'MCP Control Tower',
-              status: healthData.snapshot.services[1]?.status === 'healthy' ? 'pass' : 'warn',
-              latencyMs: healthData.snapshot.services[1]?.latencyMs || 0,
-              summary: `MCP Tower status: ${healthData.snapshot.services[1]?.status || 'healthy'}`,
-              evidence: mcpEndpoint,
-            },
-          ],
-        },
+        latestDiagnose,
         pendingHitlCount: 0,
         activeTakeoversCount: 0,
         unclaimedBridgeCount: 0,
@@ -431,6 +405,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     const intent = body.intent || 'is_healthy';
 
     let mcpResult: any = null;
+    const diagStarted = Date.now();
     try {
       mcpResult = await callMcpTowerRpc(
         env,
@@ -445,7 +420,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       // Handled via parseDeepDiagnoseResult fallback
     }
 
-    const report = parseDeepDiagnoseResult(mcpResult, service, intent);
+    const report = parseDeepDiagnoseResult(mcpResult, service, intent, Date.now() - diagStarted);
     return jsonEdgeResponse({ report }, 200, request);
   }
 

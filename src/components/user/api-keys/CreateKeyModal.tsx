@@ -3,6 +3,7 @@ import { X, Key, Copy, Check, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { ApiKeyItem, AiProviderId } from '../../../types';
 import { AI_PROVIDER_DEFINITIONS } from '../../../constants/aiProviders';
 import { validateApiKeyForm } from '../../../utils/validation';
+import { secureRandomToken } from '../../../utils/secureRandom';
 
 interface CreateKeyModalProps {
   isOpen: boolean;
@@ -106,10 +107,10 @@ export const CreateKeyModal: React.FC<CreateKeyModalProps> = ({
       return;
     }
 
-    const randomSuffix = Math.random().toString(36).substring(2, 10);
+    // বাংলা মন্তব্য: নিরাপদ র‍্যান্ডম (Math.random অনুমানযোগ্য ছিল)
     const fullSecret =
       trimmedSecret ||
-      `sk-${provider === 'supremeai' ? 'supreme' : provider.slice(0, 4)}-live-${randomSuffix}${Math.random().toString(36).substring(2, 14)}`;
+      `sk-${provider === 'supremeai' ? 'supreme' : provider.slice(0, 4)}-live-${secureRandomToken(32)}`;
     const prefix = fullSecret.substring(0, Math.min(14, fullSecret.length));
     const masked =
       fullSecret.length > 10

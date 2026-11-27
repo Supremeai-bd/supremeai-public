@@ -6,7 +6,20 @@ import {
   resolveMcpTowerOrigin,
   fetchWithTimeout,
   callMcpTowerRpc,
+  authorizeAdminRequest,
 } from '../../_lib/edgeHelpers';
+
+/**
+ * বাংলা মন্তব্য: শুধু-পড়ার (GET) এই সাব-পাথগুলো সবার জন্য খোলা — Express ডেভ সার্ভারের মতোই।
+ * বাকি সব (probe, reboot, reboot-all, এবং টাওয়ারে ফরোয়ার্ড হওয়া অন্য যেকোনো পাথ) অ্যাডমিন ছাড়া চলবে না।
+ * আগে এই রাউটে কোনো যাচাই ছিল না — যে কেউ reboot/probe চালাতে বা টাওয়ারের যেকোনো পাথে
+ * যেকোনো মেথডে অনুরোধ পাঠাতে পারত।
+ */
+const PUBLIC_READ_ONLY = new Set(['health', 'services', 'deployments', 'stream', 'release']);
+
+export function isPublicTowerRequest(method: string, sub: string): boolean {
+  return (method === 'GET' || method === 'HEAD') && PUBLIC_READ_ONLY.has(sub);
+}
 
 async function probeTargetHealth(
   id: string,
@@ -31,10 +44,12 @@ async function probeTargetHealth(
       category,
       port: 443,
       status: ok ? (latencyMs > 2500 ? 'degraded' : 'healthy') : 'degraded',
-      uptime: ok ? '99.9%' : 'degraded',
+      // বাংলা মন্তব্য: edge থেকে রিমোট সার্ভিসের CPU/মেমরি/আপটাইম মাপা যায় না — আগে বানানো সংখ্যা
+      // (4.2%, 192MB, 99.9%) দেখাত; এখন সৎভাবে "মাপা হয়নি" (null / '—')।
+      uptime: '—',
       latencyMs,
-      cpuPercent: 4.2,
-      memoryMb: 192,
+      cpuPercent: null,
+      memoryMb: null,
       lastChecked: new Date().toISOString(),
       version: 'live',
       endpoint: url,
@@ -49,10 +64,10 @@ async function probeTargetHealth(
       category,
       port: 443,
       status: 'down',
-      uptime: '0%',
+      uptime: '—',
       latencyMs: Date.now() - started,
-      cpuPercent: 0,
-      memoryMb: 0,
+      cpuPercent: null,
+      memoryMb: null,
       lastChecked: new Date().toISOString(),
       version: 'unreachable',
       endpoint: url,
@@ -70,6 +85,21 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   const sub = incomingUrl.pathname.replace(/^\/api\/mcp-tower\/?/, '').trim();
   const upstreamOrigin = resolveUpstreamOrigin(env);
   const mcpOrigin = resolveMcpTowerOrigin(env);
+
+  if (!isPublicTowerRequest(request.method, sub)) {
+    const auth = await authorizeAdminRequest(request, env, upstreamOrigin);
+    if (!auth.isAdmin) {
+      return jsonEdgeResponse(
+        {
+          error: auth.hasToken
+            ? 'Administrator elevation is required.'
+            : 'Administrator authentication is required.',
+        },
+        auth.hasToken ? 403 : 401,
+        request
+      );
+    }
+  }
 
   if (sub === 'health') {
     const towerProbe = await probeTargetHealth(

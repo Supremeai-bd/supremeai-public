@@ -3,6 +3,7 @@ import {
   categorizeTool,
   transformMcpToolsList,
   parseDeepDiagnoseResult,
+  computeEvidenceFingerprint,
   parseEcosystemDiagnosticsResult,
   CONTROL_PLANE_ROUTE_SPECS,
   FALLBACK_MCP_TOOLS,
@@ -90,7 +91,41 @@ describe('controlPlaneShared', () => {
       };
       const report = parseDeepDiagnoseResult(mcpResult, 'mcp-tower', 'probe');
       expect(report.summary).toContain('Error in container spinup');
-      expect(report.releaseGate).toBe('GO');
+      // বাংলা মন্তব্য: রায় বোঝা না গেলে আর "GO" ধরে নেওয়া হয় না
+      expect(report.releaseGate).toBe('DEGRADED');
+    });
+
+    it('never reports GO when the tower did not answer', () => {
+      const report = parseDeepDiagnoseResult(null, 'api', 'is_healthy', 812);
+      expect(report.releaseGate).toBe('DEGRADED');
+      expect(report.provenance).toBe('local-snapshot');
+      expect(report.summary).toContain('did not answer');
+      expect(report.truthMatrix[0].status).toBe('warn');
+      expect(report.truthMatrix[0].latencyMs).toBe(812);
+    });
+
+    it('derives evidenceHash from the evidence, not the clock', () => {
+      const mcpResult = {
+        content: [{ type: 'text', text: JSON.stringify({ summary: 'ok', releaseGate: 'GO' }) }],
+      };
+      const a = parseDeepDiagnoseResult(mcpResult, 'api', 'is_healthy');
+      const b = parseDeepDiagnoseResult(mcpResult, 'api', 'is_healthy');
+      const c = parseDeepDiagnoseResult(
+        { content: [{ type: 'text', text: JSON.stringify({ summary: 'ok', releaseGate: 'NO_GO' }) }] },
+        'api',
+        'is_healthy'
+      );
+      expect(a.evidenceHash).toMatch(/^[0-9a-f]{16}$/);
+      expect(a.evidenceHash).toBe(b.evidenceHash);
+      expect(a.evidenceHash).not.toBe(c.evidenceHash);
+    });
+  });
+
+  describe('computeEvidenceFingerprint', () => {
+    it('is stable for equal input and changes with content', () => {
+      expect(computeEvidenceFingerprint({ a: 1 })).toBe(computeEvidenceFingerprint({ a: 1 }));
+      expect(computeEvidenceFingerprint({ a: 1 })).not.toBe(computeEvidenceFingerprint({ a: 2 }));
+      expect(computeEvidenceFingerprint(null)).toMatch(/^[0-9a-f]{16}$/);
     });
   });
 

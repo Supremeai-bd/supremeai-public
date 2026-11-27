@@ -8,7 +8,7 @@ import {
   forwardRawUpstream,
   fetchWithTimeout,
   timingSafeEqualStrings,
-  verifyUpstreamSession,
+  authorizeAdminRequest,
 } from '../../_lib/edgeHelpers';
 import { extractCiErrorSnippet } from '../../../src/utils/githubPipelineMetrics';
 import { handleAdminRealDataRoute } from '../../_lib/adminRealDataRoutes';
@@ -130,52 +130,10 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   const path = incomingUrl.pathname;
   const upstreamOrigin = resolveUpstreamOrigin(env);
 
-  const authHeader = (request.headers.get('Authorization') || '').trim();
-  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-  const adminToken = (request.headers.get('X-Admin-Token') || '').trim();
-  const effectiveToken = adminToken || bearerToken;
-
-  const configuredKeys = [
-    env?.ADMIN_KEY,
-    env?.ADMIN_PASSKEY,
-    env?.SUPREMEAI_ADMIN_KEY,
-    env?.MCP_ADMIN_KEY,
-    env?.SUPERADMIN_KEY,
-  ]
-    .filter(Boolean)
-    .map((k: any) => String(k).trim());
-
-  let hasAdminCredential =
-    configuredKeys.length > 0 &&
-    Boolean(effectiveToken) &&
-    configuredKeys.some((configured) => timingSafeEqualStrings(effectiveToken, configured));
-
-  // বাংলা মন্তব্য: P0 নিরাপত্তা শক্তিশালীকরণ — ক্লায়েন্ট-কন্ট্রোলড X-Admin-Email হেডার এবং
-  // অস্বাক্ষরিত JWT পেলোড থেকে অ্যাডমিন এলিভেশন সম্পূর্ণ বন্ধ করা হয়েছে (দুটোই যে কেউ
-  // অনুকরণ করতে পারত)। হার্ডকোডেড অ্যাডমিন ইমেইলও সরানো হয়েছে — অনুমোদিত ইমেইল শুধু
-  // ADMIN_EMAIL / ADMIN_EMAILS এনভায়রনমেন্ট ভেরিয়েবল থেকে আসবে। এখন অ্যাডমিন এলিভেশন
-  // শুধু দুইভাবে সম্ভব: (১) কনফিগার করা অ্যাডমিন কী, (২) আপস্ট্রিম গেটওয়ে দ্বারা
-  // সার্ভার-সাইডে যাচাইকৃত বৈধ সেশন।
-  const authorizedAdmins = [
-    ...(env?.ADMIN_EMAIL ? [String(env.ADMIN_EMAIL).trim().toLowerCase()] : []),
-    ...(env?.ADMIN_EMAILS
-      ? String(env.ADMIN_EMAILS)
-          .split(',')
-          .map((e: string) => e.trim().toLowerCase())
-      : []),
-  ].filter(Boolean);
-
-  if (!hasAdminCredential && effectiveToken) {
-    const session = await verifyUpstreamSession(request, upstreamOrigin).catch(() => ({ valid: false } as any));
-    if (
-      session.valid &&
-      ((session.email && authorizedAdmins.includes(session.email.toLowerCase())) ||
-        session.role === 'admin' ||
-        (Array.isArray(session.permissions) && session.permissions.includes('admin')))
-    ) {
-      hasAdminCredential = true;
-    }
-  }
+  // বাংলা মন্তব্য: অ্যাডমিন-যাচাই এখন edgeHelpers.authorizeAdminRequest-এ (control-plane ও mcp-tower একই নিয়ম)
+  const auth = await authorizeAdminRequest(request, env, upstreamOrigin);
+  const effectiveToken = auth.hasToken;
+  const hasAdminCredential = auth.isAdmin;
 
   if (path !== '/api/admin/auth/verify') {
     if (!effectiveToken) {

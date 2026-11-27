@@ -1032,3 +1032,61 @@ export async function extractLlmCompletionText(
 
   return collected.trim();
 }
+
+export interface AdminAuthorization {
+  /** কোনো টোকেন (X-Admin-Token বা Bearer) পাঠানো হয়েছে কিনা */
+  hasToken: boolean;
+  /** অ্যাডমিন হিসেবে যাচাই হয়েছে কিনা */
+  isAdmin: boolean;
+}
+
+/**
+ * বাংলা মন্তব্য: সব edge অ্যাডমিন রাউটের (admin, control-plane, mcp-tower) একটাই অ্যাডমিন-যাচাই।
+ * আগে তিন জায়গায় আলাদা কপি ছিল — control-plane-এ ADMIN_PASSKEY বাদ পড়েছিল, আর mcp-tower-এ
+ * কোনো যাচাইই ছিল না। এখন অ্যাডমিন হওয়ার দুটো পথ: (১) কনফিগার করা অ্যাডমিন কী/পাসকি
+ * (timing-safe তুলনা), (২) আপস্ট্রিম গেটওয়েতে যাচাই হওয়া সেশন যার ইমেইল ADMIN_EMAIL(S)-এ আছে
+ * বা role/permission 'admin'। ক্লায়েন্টের পাঠানো ইমেইল হেডার বা অস্বাক্ষরিত JWT কখনো বিশ্বাস করা হয় না।
+ */
+export async function authorizeAdminRequest(
+  request: Request,
+  env: Record<string, any> | undefined,
+  upstreamOrigin: string = resolveUpstreamOrigin(env)
+): Promise<AdminAuthorization> {
+  const authHeader = (request.headers.get('Authorization') || '').trim();
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  const adminToken = (request.headers.get('X-Admin-Token') || '').trim();
+  const effectiveToken = adminToken || bearerToken;
+  if (!effectiveToken) return { hasToken: false, isAdmin: false };
+
+  const configuredKeys = [
+    env?.ADMIN_KEY,
+    env?.ADMIN_PASSKEY,
+    env?.SUPREMEAI_ADMIN_KEY,
+    env?.MCP_ADMIN_KEY,
+    env?.SUPERADMIN_KEY,
+  ]
+    .filter(Boolean)
+    .map((k) => String(k).trim())
+    .filter(Boolean);
+  if (configuredKeys.some((configured) => timingSafeEqualStrings(effectiveToken, configured))) {
+    return { hasToken: true, isAdmin: true };
+  }
+
+  const authorizedAdmins = [
+    ...(env?.ADMIN_EMAIL ? [String(env.ADMIN_EMAIL)] : []),
+    ...(env?.ADMIN_EMAILS ? String(env.ADMIN_EMAILS).split(',') : []),
+  ]
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  const session = await verifyUpstreamSession(request, upstreamOrigin).catch(
+    () => ({ valid: false }) as UpstreamSessionVerification
+  );
+  const isAdmin = Boolean(
+    session.valid &&
+      ((session.email && authorizedAdmins.includes(session.email.toLowerCase())) ||
+        session.role === 'admin' ||
+        (Array.isArray(session.permissions) && session.permissions.includes('admin')))
+  );
+  return { hasToken: true, isAdmin };
+}

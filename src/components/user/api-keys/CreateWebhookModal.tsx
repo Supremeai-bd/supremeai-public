@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Radio, AlertCircle, Shield } from 'lucide-react';
 import { WebhookItem } from '../../../types';
 import { validateWebhookForm } from '../../../utils/validation';
+import { secureRandomToken } from '../../../utils/secureRandom';
 
 interface CreateWebhookModalProps {
   isOpen: boolean;
@@ -46,7 +47,7 @@ export const CreateWebhookModal: React.FC<CreateWebhookModalProps> = ({
 
     setFormErrors({});
 
-    const signingSecret = `whsec_${Math.random().toString(36).substring(2, 14)}`;
+    const signingSecret = `whsec_${secureRandomToken(32)}`;
 
     onAddWebhook({
       name: webhookName.trim(),

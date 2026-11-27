@@ -43,6 +43,7 @@ export interface ControlPlaneRouterDeps {
 }
 
 import {
+  computeEvidenceFingerprint,
   categorizeTool,
   transformMcpToolsList,
   FALLBACK_MCP_TOOLS,
@@ -1194,11 +1195,14 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
       intent,
       releaseGate,
       summary: liveSummary,
-      evidenceHash: crypto
-        .createHash('sha256')
-        .update(`${service}:${intent}:${Date.now()}`)
-        .digest('hex')
-        .slice(0, 16),
+      // বাংলা মন্তব্য: সময় নয়, আসল প্রমাণের কনটেন্ট থেকে হ্যাশ
+      evidenceHash: computeEvidenceFingerprint({
+        service,
+        intent,
+        releaseGate,
+        summary: liveSummary,
+        truthMatrix: latestDiagnose.truthMatrix,
+      }),
       checkedAt: new Date().toISOString(),
       provenance,
     };
