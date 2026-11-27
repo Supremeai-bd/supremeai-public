@@ -1947,7 +1947,14 @@ export default function App() {
                         </div>
                       )}
 
-                      {activeTab === 'universal-inbox' && <UniversalInboxPanel />}
+                      {activeTab === 'universal-inbox' && (
+                        <UniversalInboxPanel
+                          onOpenChat={(id) => {
+                            void selectSession(id);
+                            setActiveTab('chat');
+                          }}
+                        />
+                      )}
                     </Suspense>
                   </ErrorBoundary>
                   </div>

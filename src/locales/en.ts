@@ -1405,6 +1405,14 @@ export const EN_DICT = {
   alAcknowledged: 'Acknowledged',
   alSaveError: 'Could not save.',
   alLoadError: 'Could not read alerts.',
+  inboxSourceLabel: 'Inbox source',
+  inboxSourceAi: 'AI Chats',
+  inboxSourceExternal: 'Gmail / External',
+  inboxAiSearch: 'Search your AI chats…',
+  inboxAiEmpty: 'No AI chats yet — start one from the chat box.',
+  inboxAiNoMatch: 'No chat matches this search.',
+  inboxAiUntitled: 'Untitled chat',
+  inboxAiMessages: '{n} messages',
 };
 
 export type TranslationKeys = keyof typeof EN_DICT;
