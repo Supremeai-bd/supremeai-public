@@ -1,5 +1,14 @@
 name: 'SupremeAI Unified CI & Release Pipeline (Web + Desktop + Android + VSIX)'
 
+# বাংলা মন্তব্য (2026-11-27):
+#  • CodeQL Security Analysis আলাদা workflow (codeql.yml) ছিল — এখন এই পাইপলাইনের ভেতরে
+#    `codeql` job (চেকের নাম একই: "Analyze (javascript-typescript)"), সাপ্তাহিক স্ক্যানও এখানে।
+#  • নতুন `code-quality` job: ESLint + TypeScript + server budget + npm audit — সব warning
+#    Job Summary-তে টেবিলে দেখায় (rule/ফাইল/পুরো তালিকা) যাতে কোনো warning চাপা না পড়ে।
+#    error হলে merge আটকায়, warning শুধু দৃশ্যমান থাকে।
+#  • EXE (Windows) + APK (Android) বিল্ড ৫+ মিনিট করে নিত, প্রতিটা main পুশে — এখন শুধু
+#    ম্যানুয়াল রান (Actions → Run workflow) বা `v*` ট্যাগে চলে। Web deploy আগের মতোই প্রতি পুশে।
+
 on:
   pull_request:
     branches: [main]
@@ -26,8 +35,16 @@ on:
       - '.patches/private/**'
     tags:
       - 'v*'
+  schedule:
+    # Weekly CodeQL baseline scan (moved from codeql.yml) — only the `codeql` job runs.
+    - cron: '0 3 * * 1'
   workflow_dispatch:
     inputs:
+      build_native:
+        description: 'Build Windows EXE/MSI + Android APK (slow, ~5 min each)'
+        required: false
+        type: boolean
+        default: true
       release_version:
         description: "Release Version Tag (leave empty for rolling 'latest' build)"
         required: false
@@ -62,6 +79,8 @@ concurrency:
 jobs:
   smart-pr-guard:
     name: '0/4 Smart Intelligent PR Guard (<15s)'
+    # Weekly schedule runs only CodeQL; every job that needs this guard is skipped too.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
@@ -69,12 +88,12 @@ jobs:
       pr_guard_passed: ${{ steps.guard.outputs.pr_guard_passed }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
 
@@ -85,6 +104,82 @@ jobs:
           node scripts/smart-pr-guard.mjs
           # বাংলা মন্তব্য: dependency ছাড়াই sync lifecycle regression বিদ্যমান gate-এ চলবে।
           python3 -m unittest discover -s scripts/ci -p 'test_*.py'
+
+  code-quality:
+    name: 'Code Quality (ESLint + TypeScript warnings summary)'
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js 24 (npm cache)
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: ESLint + TypeScript + server budget + npm audit (collect, never hide)
+        shell: bash
+        run: |
+          set -uo pipefail
+          npx eslint . -f json -o eslint-report.json || true
+          npx tsc -p tsconfig.json --noEmit > tsc.log 2>&1 || true
+          npm audit --omit=dev --json > npm-audit.json 2>/dev/null || true
+          node scripts/check-server-budget.mjs
+          budget=$?
+          # বাংলা মন্তব্য: সব warning Job Summary-তে; ESLint/TS error থাকলে এই স্টেপ লাল।
+          python3 scripts/ci/quality_summary.py eslint eslint-report.json --tsc tsc.log --audit npm-audit.json
+          quality=$?
+          exit $(( budget || quality ))
+
+      - name: Upload quality reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: code-quality-reports
+          path: |
+            eslint-report.json
+            tsc.log
+            npm-audit.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  codeql:
+    # Same check name as the old standalone codeql.yml so branch protection keeps matching.
+    name: 'Analyze (javascript-typescript)'
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          # Default queries plus the security-extended pack for a public repo
+          queries: security-extended
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: '/language:javascript-typescript'
+          output: codeql-sarif
+
+      - name: CodeQL findings → Job Summary
+        if: always()
+        run: python3 scripts/ci/quality_summary.py sarif codeql-sarif
 
   build-web:
     name: '1/4 Build & Deploy Web Studio'
@@ -103,7 +198,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Node.js 24 (npm cache)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'npm'
@@ -133,14 +228,14 @@ jobs:
 
       - name: Deploy to Cloudflare Pages (if secrets configured)
         if: github.event_name != 'pull_request' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=${{ vars.CF_PAGES_PROJECT || 'supremeai-studio' }}
 
       - name: Upload Web Bundle Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-web-bundle
           path: supremeai-web-dist.tar.gz
@@ -152,9 +247,10 @@ jobs:
     concurrency:
       group: supremeai-build-desktop-windows-${{ github.ref }}
       cancel-in-progress: true
-    # বাংলা মন্তব্য: ভারী Windows নেটিভ বিল্ড শুধু main/tag পুশ বা ম্যানুয়াল রিলিজে চলবে;
-    # PR-এ শুধু ফাস্ট Web + VSIX + CodeQL চেক চালিয়ে ফিডব্যাক দ্রুত রাখা হয়েছে।
-    if: github.event_name != 'pull_request'
+    # বাংলা মন্তব্য: ভারী Windows নেটিভ বিল্ড (~৫ মিনিট) আর প্রতিটা main পুশে চলে না —
+    # শুধু ম্যানুয়াল রান (Actions → Run workflow, build_native=true) বা `v*` রিলিজ ট্যাগে।
+    # আবার প্রতি পুশে চালাতে চাইলে এই if-এ `github.event_name == 'push' ||` যোগ করুন।
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_native)
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -162,7 +258,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Node.js 24 (npm cache)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'npm'
@@ -192,7 +288,7 @@ jobs:
         run: npm run tauri -- build --config src-tauri/tauri.conf.json
 
       - name: Upload Desktop Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-desktop-windows
           path: |
@@ -206,8 +302,8 @@ jobs:
     concurrency:
       group: supremeai-build-android-tauri-apk-${{ github.ref }}
       cancel-in-progress: true
-    # বাংলা মন্তব্য: ভারী Android APK নেটিভ বিল্ড শুধু main/tag পুশ বা ম্যানুয়াল রিলিজে চলবে।
-    if: github.event_name != 'pull_request'
+    # বাংলা মন্তব্য: ভারী Android APK বিল্ড (~৫ মিনিট) — শুধু ম্যানুয়াল রান বা `v*` ট্যাগে।
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_native)
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -215,7 +311,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Node.js 24 (npm cache)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
           cache: 'npm'
@@ -227,7 +323,7 @@ jobs:
           java-version: '21'
 
       - name: Setup Gradle Cache
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       - name: Configure Pre-installed Android SDK, Licenses & NDK
         shell: bash
@@ -362,7 +458,7 @@ jobs:
           ls -lh release-apks/
 
       - name: Upload Android APK Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-android-apk
           path: release-apks/*.apk
@@ -382,7 +478,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Node.js 24 (npm cache)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
 
@@ -399,7 +495,7 @@ jobs:
           npx --yes @vscode/vsce package --no-git-tag-version --out "supremeai-vscode-${VER}.vsix"
 
       - name: Upload VS Code VSIX Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-vscode-vsix
           path: packages/vscode-extension/*.vsix
@@ -412,7 +508,9 @@ jobs:
       group: supremeai-publish-unified-release-${{ github.ref }}
       cancel-in-progress: true
     needs: [build-web, build-desktop-windows, build-android-tauri-apk, build-vscode-vsix]
-    if: github.event_name == 'push' || inputs.publish_release
+    # The manifest needs the EXE, so publish only when the native builds ran
+    # (tag push, or a manual run with build_native + publish_release).
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_native && inputs.publish_release)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -421,7 +519,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Download All 4 Platform Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: release-artifacts
 
@@ -456,7 +554,7 @@ jobs:
         run: node scripts/desktop-release-manifest.mjs
 
       - name: Publish Single Coordinated GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: ${{ steps.version.outputs.title }}
@@ -486,7 +584,7 @@ jobs:
     concurrency:
       group: supremeai-deploy-admin-redirect-${{ github.ref }}
       cancel-in-progress: true
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -494,7 +592,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 2
 
@@ -517,7 +615,7 @@ jobs:
   pr-landing-decision:
     name: 'PR Landing Decision (Auto-Merge vs HITL)'
     if: github.event_name == 'pull_request'
-    needs: [smart-pr-guard, build-web, build-vscode-vsix]
+    needs: [smart-pr-guard, code-quality, build-web, build-vscode-vsix]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -536,6 +634,7 @@ jobs:
           echo "Preflight Guard: $PASSED"
           echo "Web Studio Build: SUCCESS"
           echo "VS Code Extension Build: SUCCESS"
+          echo "Code Quality (ESLint + TypeScript): SUCCESS (warnings listed in its Job Summary)"
           echo "Risk Classification: $RISK"
           echo "=========================================="
           # বাংলা মন্তব্য: যদি প্রিফ্লাইট গার্ড পাস হয় এবং রিস্ক টিয়ার LOW বা MEDIUM (ভেরিফায়েড কোড) হয়, তবে পিআর অটো-মার্জ হবে
@@ -571,7 +670,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 2
       - uses: actions/setup-python@v7
@@ -607,7 +706,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Report server.ts line count and router count
         run: |
           LINES=$(wc -l < server.ts)
