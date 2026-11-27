@@ -22,6 +22,8 @@ export interface AdminAuditContext {
   actor: string;
   /** Set by the handler for public (non-admin) requests that should not be audited. */
   skip?: boolean;
+  /** Optional human summary set by the handler (e.g. "role user → admin for a@b.com"). No secrets. */
+  details?: string;
 }
 
 export interface AdminAuditEntry {
@@ -33,6 +35,7 @@ export interface AdminAuditEntry {
   ip?: string;
   errorMessage?: string;
   dryRun?: boolean;
+  details?: string;
 }
 
 export type AdminAuditStatus = 'success' | 'failure' | 'denied';
@@ -59,6 +62,7 @@ export function buildAuditRow(entry: AdminAuditEntry): Record<string, unknown> {
     error_message: entry.errorMessage ? entry.errorMessage.slice(0, MAX_ERROR_LENGTH) : null,
     latency_ms: Math.max(0, Math.round(entry.latencyMs)),
     ip_address: entry.ip || null,
+    details: entry.details ? entry.details.slice(0, MAX_ERROR_LENGTH) : null,
     metadata: {
       method,
       httpStatus: entry.httpStatus,
@@ -148,6 +152,7 @@ export async function withAdminAudit(
     ip: request.headers.get('CF-Connecting-IP') || undefined,
     errorMessage: await readErrorMessage(response),
     dryRun: isDryRunRequest(url, request),
+    details: audit.details,
   };
   const pending = recordAdminAudit(env, entry, fetchImpl);
   if (typeof context.waitUntil === 'function') context.waitUntil(pending);
@@ -165,6 +170,7 @@ export interface AdminAuditLogRow {
   error_message: string | null;
   latency_ms: number | null;
   ip_address: string | null;
+  details?: string | null;
   metadata: { httpStatus?: number; dryRun?: boolean } | null;
 }
 
@@ -184,6 +190,7 @@ export function toSystemAuditRecord(row: AdminAuditLogRow): EdgeSystemAuditRecor
   if (row.metadata?.httpStatus) parts.push(`HTTP ${row.metadata.httpStatus}`);
   if (typeof row.latency_ms === 'number') parts.push(`${row.latency_ms} ms`);
   if (row.metadata?.dryRun) parts.push('dry-run');
+  if (row.details) parts.push(row.details);
   const summary = parts.join(' · ');
   return {
     id: `audit_${row.id}`,
@@ -219,7 +226,7 @@ export async function handleAdminAuditLogRoute(
   const limitRaw = Number(new URL(request.url).searchParams.get('limit') || 100);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 200) : 100;
   const query =
-    `select=id,created_at,actor,action,resource,status,error_message,latency_ms,ip_address,metadata` +
+    `select=id,created_at,actor,action,resource,status,error_message,latency_ms,ip_address,details,metadata` +
     `&action_type=eq.${ADMIN_AUDIT_ACTION_TYPE}&order=created_at.desc&limit=${limit}`;
   try {
     const res = await fetchImpl(`${cfg.url}/rest/v1/audit_logs?${query}`, {

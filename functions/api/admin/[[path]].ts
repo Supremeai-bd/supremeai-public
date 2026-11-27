@@ -12,6 +12,7 @@ import {
 } from '../../_lib/edgeHelpers';
 import { extractCiErrorSnippet } from '../../../src/utils/githubPipelineMetrics';
 import { handleAdminRealDataRoute } from '../../_lib/adminRealDataRoutes';
+import { handleAdminTeamRoute } from '../../_lib/adminTeam';
 import {
   handleAdminAuditLogRoute,
   withAdminAudit,
@@ -476,6 +477,9 @@ async function handleAdminRequest(
   // সেগুলো edge-এ আসল উৎস (Infisical, Supabase Auth, লাইভ প্রোব) থেকে।
   const auditLog = await handleAdminAuditLogRoute(path, request, env);
   if (auditLog) return auditLog;
+
+  const team = await handleAdminTeamRoute(path, request, env, audit);
+  if (team) return team;
 
   const realData = await handleAdminRealDataRoute(path, request, env, upstreamOrigin);
   if (realData) return realData;

@@ -51,9 +51,12 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
   {
     id: 'users',
     label: 'Users',
-    description: 'Customers, plans, usage and account actions.',
+    description: 'Customers, team roles, plans, usage and account actions.',
     group: 'Manage',
-    tabs: [{ id: 'customers', label: 'Customers' }],
+    tabs: [
+      { id: 'customers', label: 'Customers' },
+      { id: 'team-access', label: 'Team & Access' },
+    ],
   },
   {
     id: 'ai',
