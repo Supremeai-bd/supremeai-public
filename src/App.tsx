@@ -42,10 +42,6 @@ import { ToastContainer } from './components/common/ToastContainer';
 import { PWAInstallButton } from './components/common/PWAInstallButton';
 import { OfflineIndicator } from './components/common/OfflineIndicator';
 import {
-  DangerConfirmModal,
-  type DangerConfirmState,
-} from './components/common/DangerConfirmModal';
-import {
   ADMIN_ONLY_TABS,
   getLocalizedSubviewTitle,
   isRoutableTab,
@@ -105,8 +101,18 @@ const PromptLibraryModal = React.lazy(() =>
 const AuthPage = React.lazy(() =>
   import('./components/auth/AuthPage').then((m) => ({ default: m.AuthPage }))
 );
-const AdminOverviewView = React.lazy(() =>
-  import('./components/admin/AdminOverviewView').then((m) => ({ default: m.AdminOverviewView }))
+const AdminMissionControlView = React.lazy(() =>
+  import('./components/admin/AdminMissionControlView').then((m) => ({
+    default: m.AdminMissionControlView,
+  }))
+);
+const AdminLogsView = React.lazy(() =>
+  import('./components/admin/AdminLogsView').then((m) => ({ default: m.AdminLogsView }))
+);
+const AdminPlatformSettingsView = React.lazy(() =>
+  import('./components/admin/AdminPlatformSettingsView').then((m) => ({
+    default: m.AdminPlatformSettingsView,
+  }))
 );
 const AdminArchitectureTopologyView = React.lazy(() =>
   import('./components/admin/AdminArchitectureTopologyView').then((m) => ({
@@ -210,13 +216,13 @@ import { useCustomerStore } from './stores/useCustomerStore';
 import { useWorkspaceStore } from './stores/useWorkspaceStore';
 import { useThemeStore, LIVE_THEMES, type LiveThemeId } from './stores/useThemeStore';
 import { usePlatformStore } from './stores/usePlatformStore';
-import { useControlCenterStore } from './stores/useControlCenterStore';
 import { useTabRouter } from './hooks/useTabRouter';
 import { useMcpTelemetry } from './hooks/useMcpTelemetry';
 import { useAutoUpdater } from './hooks/useAutoUpdater';
 import { useOsThemeSync } from './hooks/useOsThemeSync';
 import { LiveScreenBackdrop } from './components/theme/LiveScreenBackdrop';
 import { AdminConsoleNav } from './components/admin/AdminConsoleNav';
+import { AdminSectionTabs } from './components/admin/AdminSectionTabs';
 import { UserProject, ChatAttachment } from './types';
 import { useI18n } from './utils/i18n';
 import { executeScheduledTaskOnce, loadScheduledTasks } from './services/browserVaultService';
@@ -310,7 +316,6 @@ export default function App() {
     rebootService,
     rebootAllServices,
     probeCluster,
-    getMcpAlertCount,
     toggleSwarmWorker,
     scaleWorker,
     retryQueueJob,
@@ -370,8 +375,6 @@ export default function App() {
     fetchConfig,
     dismissBanner,
   } = usePlatformStore();
-
-  const healthAlertCount = useControlCenterStore((s) => s.healthSnapshot?.alerts?.length ?? 0);
 
   const { lang: appLanguage, t } = useI18n();
   const [sidebarOpen, setSidebarOpen] = useState(() =>
@@ -462,8 +465,6 @@ export default function App() {
     setShowChatMenu(false);
     setShowExportSubmenu(false);
   }, [activeSessionId]);
-  const [dangerConfirm, setDangerConfirm] = useState<DangerConfirmState | null>(null);
-  const [isDangerRunning, setIsDangerRunning] = useState(false);
 
   const {
     isDockOpen,
@@ -1072,22 +1073,6 @@ export default function App() {
     void handleSendMessageWrapper(originalPrompt, attachment, attachments, true);
   };
 
-  const handleExecuteDangerAction = async () => {
-    if (!dangerConfirm) return;
-    setIsDangerRunning(true);
-    try {
-      if (dangerConfirm.action === 'reboot-all') {
-        await rebootAllServices();
-      } else if (dangerConfirm.action === 'flush-dlq') {
-        retryAllDlq();
-      }
-      setDangerConfirm(null);
-    } finally {
-      setIsDangerRunning(false);
-    }
-  };
-
-  const mcpAlertCount = getMcpAlertCount();
   const isChatEmpty = (currentSession?.messages?.length || 0) === 0 && !isStreaming;
   const totalUserMessages = sessions.reduce(
     (sum, s) => sum + (s.messages?.filter((m) => m.role === 'user').length || 0),
@@ -1718,15 +1703,13 @@ export default function App() {
               <div className="flex-1 min-h-0 min-w-0 flex overflow-hidden">
                 {isProjectAdmin &&
                   ADMIN_ONLY_TABS.has(activeTab) && (
-                    <AdminConsoleNav
-                      activeTab={activeTab}
-                      onSelectTab={handleSelectTab}
-                      customersCount={customers.length}
-                      mcpAlertCount={mcpAlertCount}
-                      healthAlertCount={healthAlertCount || mcpAlertCount}
-                    />
+                    <AdminConsoleNav activeTab={activeTab} onSelectTab={handleSelectTab} />
                   )}
-                <div className="flex-1 min-h-0 min-w-0 flex overflow-hidden">
+                <div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+                  {isProjectAdmin && ADMIN_ONLY_TABS.has(activeTab) && (
+                    <AdminSectionTabs activeTab={activeTab} onSelectTab={handleSelectTab} />
+                  )}
+                  <div className="flex-1 min-h-0 min-w-0 flex overflow-hidden">
                   <ErrorBoundary
                     key={activeTab}
                     fallbackTitle={`${SUBVIEW_TITLES[activeTab] || t.workspaceFallbackTitle} · ${t.viewErrorSuffix}`}
@@ -1842,16 +1825,15 @@ export default function App() {
                       {isProjectAdmin && (
                         <>
                           {activeTab === 'admin-overview' && (
-                            <AdminOverviewView
-                              customers={customers}
-                              services={mcpServices}
-                              workers={swarmWorkers}
-                              jobs={queueJobs}
-                              onNavigateTab={setActiveTab}
-                              onOpenDangerConfirm={(action, title, description) =>
-                                setDangerConfirm({ action, title, description })
-                              }
-                            />
+                            <AdminMissionControlView onNavigateTab={handleSelectTab} />
+                          )}
+
+                          {activeTab === 'admin-logs' && (
+                            <AdminLogsView onNavigateTab={handleSelectTab} />
+                          )}
+
+                          {activeTab === 'platform-settings' && (
+                            <AdminPlatformSettingsView onNavigateTab={handleSelectTab} />
                           )}
 
                           {activeTab === 'hitl-policies' && <ControlCenterHitlPoliciesView />}
@@ -1973,18 +1955,12 @@ export default function App() {
                       {activeTab === 'universal-inbox' && <UniversalInboxPanel />}
                     </Suspense>
                   </ErrorBoundary>
+                  </div>
                 </div>
               </div>
             </div>
           )}
         </div>
-
-        <DangerConfirmModal
-          dangerConfirm={dangerConfirm}
-          isRunning={isDangerRunning}
-          onCancel={() => setDangerConfirm(null)}
-          onConfirm={handleExecuteDangerAction}
-        />
 
         {/* Modals & Dialogs */}
         <Suspense fallback={null}>
