@@ -6,6 +6,7 @@ import {
   GitBranch,
   LayoutDashboard,
   ScrollText,
+  Search,
   Settings2,
   ShieldCheck,
   Users,
@@ -13,6 +14,7 @@ import {
 import { useI18n } from '../../utils/i18n';
 import { ADMIN_SECTIONS, findAdminSection, type AdminSectionId } from '../../config/adminSections';
 import { useAdminAutoRefresh, useAdminHealthSummary } from '../../hooks/useAdminHealthSummary';
+import { openCommandPalette } from '../../utils/commandPalette';
 
 /**
  * বাংলা মন্তব্য: পরিষ্কার অ্যাডমিন মেনু — ১৯টা ছড়ানো ট্যাবের বদলে ৯টা সেকশন, ৪টা গ্রুপে।
@@ -61,6 +63,19 @@ export const AdminConsoleNav: React.FC<AdminConsoleNavProps> = ({ activeTab, onS
           <div className="text-[10.5px] font-mono text-[#8491a2] truncate">Production</div>
         </div>
       </div>
+
+      <button
+        type="button"
+        data-testid="admin-nav-search"
+        onClick={openCommandPalette}
+        className="flex items-center gap-2 px-2.5 py-2 mb-1 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[#8491a2] hover:text-[#e8edf5] hover:bg-white/[0.06] transition-colors cursor-pointer"
+      >
+        <Search className="w-3.5 h-3.5 shrink-0" />
+        <span className="flex-1 text-left">{t.cpSearchBtn}</span>
+        <kbd className="font-mono text-[10px] border border-white/[0.12] rounded px-1.5 py-0.5">
+          Ctrl K
+        </kbd>
+      </button>
 
       {GROUP_ORDER.map((group) => {
         const sections = ADMIN_SECTIONS.filter((s) => s.group === group);
