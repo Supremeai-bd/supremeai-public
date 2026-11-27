@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { WorkspaceMicroSurvey } from './components/chat/WorkspaceTipsAndSurvey';
 import { shareService } from './services/shareService';
+import { clearSavedMemoriesCache, userMemoryService } from './services/userMemoryService';
 import { decodeArtifactSharePayload } from './utils/previewShare';
 import { Sidebar } from './components/Sidebar';
 import { ChatThread } from './components/ChatThread';
@@ -85,6 +86,9 @@ const BoostLimitView = React.lazy(() =>
   import('./components/user/BoostLimitView').then((m) => ({
     default: m.BoostLimitView,
   }))
+);
+const AiMemoryView = React.lazy(() =>
+  import('./components/user/AiMemoryView').then((m) => ({ default: m.AiMemoryView }))
 );
 const UserTeamView = React.lazy(() =>
   import('./components/user/UserTeamView').then((m) => ({ default: m.UserTeamView }))
@@ -492,6 +496,16 @@ export default function App() {
   } = useWorkspaceStore();
   const hasGeneratedWorkspace = previewCode.trim().length > 0 || projectFiles.length > 0;
   const isGuest = !authUser;
+  const memoryAccountKey = authUser?.email || '';
+
+  // বাংলা মন্তব্য: সেভ করা AI মেমরি লগইনে একবার আনা হয় (চ্যাট প্রম্পটে লাগে), লগআউটে মুছে যায়।
+  useEffect(() => {
+    if (!memoryAccountKey) {
+      clearSavedMemoriesCache();
+      return;
+    }
+    void userMemoryService.list().catch(() => undefined);
+  }, [memoryAccountKey]);
   const isAuthorizedAdmin = Boolean(
     authUser && (authUser.isAdminEligible || isAuthorizedAdminEmail(authUser.email))
   );
@@ -1770,6 +1784,8 @@ export default function App() {
                           }
                         />
                       )}
+
+                      {activeTab === 'ai-memory' && <AiMemoryView isGuest={isGuest} />}
 
                       {activeTab === 'user-team' && (
                         <UserTeamView

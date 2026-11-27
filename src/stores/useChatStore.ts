@@ -78,6 +78,7 @@ import {
 } from '../shared/agentTypes';
 import { isAutoModelRoutingActive } from '../utils/modelRouting';
 import { dialectInstructionFor, toChatLanguage } from '../utils/appLanguage';
+import { buildSavedMemoriesPrompt, getCachedSavedMemories } from '../services/userMemoryService';
 
 const STORAGE_KEY = 'supremeai_studio_sessions_v1';
 const RUN_SETTINGS_STORAGE_KEY = 'supremeai_workbench_run_settings_v1';
@@ -879,7 +880,9 @@ export const useChatStore = create<ChatState>((set, get) => {
 
       const authState = authStateSnapshot;
       const customerSettings = customerSettingsSnapshot;
-      const userMemoryContext = buildMemoryContextPrompt(loadUserMemory());
+      const userMemoryContext =
+        buildMemoryContextPrompt(loadUserMemory()) +
+        buildSavedMemoriesPrompt(getCachedSavedMemories());
       const baseSystemInstruction = `${
         customInstruction.trim() ||
         customerSettings.customInstructions?.trim() ||

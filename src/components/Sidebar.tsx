@@ -531,7 +531,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </button>
 
 
-                <AiMemoryPanel />
+                <AiMemoryPanel
+                  onOpen={() => onSelectTab('ai-memory')}
+                  active={activeTab === 'ai-memory'}
+                />
               </div>
             )}
           </div>
