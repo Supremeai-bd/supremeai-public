@@ -19,6 +19,7 @@ import {
   saveVoicePitchPreference,
 } from '../utils/speechUtils';
 import { schedulePreferencesPatch } from './userPreferencesSyncBus';
+import { TTS_INTL_VOICES, normalizeTtsLanguage, sampleTtsPhrase } from '../shared/ttsLanguages';
 
 export type TtsLocale = 'en-US' | 'bn-BD' | 'bn-IN' | (string & {});
 
@@ -55,10 +56,9 @@ const VALID_VOICES: LiveVoiceName[] = ['Zephyr', 'Puck', 'Kore', 'Charon', 'Fenr
 
 // বাংলা মন্তব্য: TTS-এ শুধু বাংলা ও ইংরেজি ভয়েস আছে। আঞ্চলিক বাংলা (bn-ctg, bn-syl …)
 // আগে 'en'-এ পড়ে ইংরেজি ভয়েসে কথা বলত — এখন বাংলা ভয়েসেই বলবে।
+// hi/es/fr/ar/zh/ja/de/pt-ও এখন নিজের ভয়েসে বলে (আগে সব 'en'-এ নেমে যেত)।
 function normalizeAppLanguage(raw: unknown): AppLanguage {
-  return typeof raw === 'string' && (raw === 'bn' || raw.toLowerCase().startsWith('bn-'))
-    ? 'bn'
-    : 'en';
+  return normalizeTtsLanguage(raw);
 }
 
 function normalizeVoicePersona(raw: unknown): LiveVoiceName {
@@ -90,7 +90,8 @@ export function resolveLocaleForLanguage(
   if (language === 'bn') {
     return normalizeBanglaAccent(banglaAccent) === 'bn-in' ? 'bn-IN' : 'bn-BD';
   }
-  return 'en-US';
+  const intl = TTS_INTL_VOICES[normalizeTtsLanguage(language)];
+  return intl ? intl.lang : 'en-US';
 }
 
 function buildResolvedConfig(params: {
@@ -135,11 +136,9 @@ function loadInitialConfig(): TtsServiceConfig {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<TtsServiceConfig>;
       // User account settings language takes precedence when present
-      if (parsed.language === 'bn' || parsed.language === 'en') {
-        storedLanguage =
-          readStoredSettingsLanguage() === 'bn' || parsed.language === 'bn'
-            ? readStoredSettingsLanguage()
-            : parsed.language;
+      // (Same outcome as before for bn/en — the account setting wins — now for every language.)
+      if (typeof parsed.language === 'string' && parsed.language) {
+        storedLanguage = readStoredSettingsLanguage();
       }
       if (parsed.voicePersona) {
         storedVoice = normalizeVoicePersona(parsed.voicePersona);
@@ -354,14 +353,9 @@ class GlobalTtsService {
     };
   }
 
+  /** Preview sentence in the exact app language — dialect codes (bn-ctg …) get dialect text. */
   getSamplePhrase(language?: AppLanguage): string {
-    const lang = normalizeAppLanguage(language ?? this.config.language);
-    if (lang === 'bn') {
-      return this.config.banglaAccent === 'bn-in'
-        ? 'নমস্কার! আমি আপনার SupremeAI ভয়েস অবতার। আপনার পছন্দের বাংলা ভাষা এবং গ্লোবাল TTS সেটিংস এখন সক্রিয়।'
-        : 'আসসালামু আলাইকুম! আমি আপনার SupremeAI ভয়েস অবতার। আপনার পছন্দের বাংলাদেশি বাংলা উচ্চারণ ও গ্লোবাল TTS সেটিংস এখন সক্রিয়।';
-    }
-    return 'Hello! I am your SupremeAI voice avatar. Your unified interface, chat response, and global TTS voice settings are now active.';
+    return sampleTtsPhrase(language ?? this.config.language, this.config.banglaAccent);
   }
 }
 

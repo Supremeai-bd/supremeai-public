@@ -20,6 +20,7 @@ import {
   computeEdgeTtsSecMsGecInput,
   resolveEdgeTtsClientConfig,
 } from '../../shared/edgeTtsConfig';
+import { googleTlForLocale, normalizeTtsLanguage } from '../../shared/ttsLanguages';
 
 /**
  * Multilingual Neural TTS — `POST /api/tts` + `POST /api/tts/edge`
@@ -158,7 +159,8 @@ export function registerTtsRoutes(app: Express, ctx: TtsContext): void {
       const voicePersona = (
         VALID_VOICES.has(voicePersonaRaw) ? voicePersonaRaw : 'Zephyr'
       ) as LiveVoiceName;
-      const language = req.body?.language === 'bn' ? 'bn' : 'en';
+      // hi/es/fr/… নিজস্ব Edge ভয়েস পায়; আঞ্চলিক বাংলা → বাংলা (আগে সব 'en' হয়ে যেত)।
+      const language = normalizeTtsLanguage(req.body?.language);
       const pitchRaw =
         typeof req.body?.pitch === 'number'
           ? req.body.pitch
@@ -318,11 +320,13 @@ export function registerTtsRoutes(app: Express, ctx: TtsContext): void {
         chunks: TtsAudioChunk[];
       }> => {
         const scriptSegs = splitByScriptSegments(truncatedText);
-        const chunks: Array<{ text: string; tl: 'bn' | 'en'; lang: 'bn-BD' | 'en-US' }> = [];
+        const chunks: Array<{ text: string; tl: string; lang: string }> = [];
+        const otherLocale = edgeLang.toLowerCase().startsWith('bn') ? 'en-US' : edgeLang;
         for (const seg of scriptSegs) {
-          const tl: 'bn' | 'en' = seg.lang === 'bn-BD' ? 'bn' : 'en';
+          const lang = seg.lang === 'bn-BD' ? 'bn-BD' : otherLocale;
+          const tl = googleTlForLocale(lang);
           for (const piece of chunkSpeechSegment(seg.text, 175)) {
-            chunks.push({ text: piece, tl, lang: seg.lang });
+            chunks.push({ text: piece, tl, lang });
           }
         }
         if (chunks.length === 0) {
@@ -372,7 +376,7 @@ export function registerTtsRoutes(app: Express, ctx: TtsContext): void {
           {
             audioBase64: audioBuffer.toString('base64'),
             mimeType: 'audio/mpeg',
-            lang: edgeLang as 'en-US' | 'bn-BD' | 'bn-IN',
+            lang: edgeLang,
           },
         ];
       } catch (wsErr) {

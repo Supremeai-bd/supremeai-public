@@ -46,6 +46,7 @@ import {
   GitProvider,
   loadGitTokens,
 } from '../../services/gitExportService';
+import { normalizeTtsLanguage } from '../../shared/ttsLanguages';
 
 export type SettingsSubTab = 'general' | 'language-voice' | 'appearance' | 'account';
 
@@ -285,6 +286,11 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   const handlePreviewVoiceSample = () => {
     triggerPreviewPulse();
     if (!onPreviewVoice) return;
+    // বাংলা মন্তব্য: প্রিভিউ সবসময় এখন সিলেক্ট করা ভাষায় — TTS কনফিগ আগে মিলিয়ে নিই
+    // (hi → हिन्दी ভয়েস; bn-ctg/bn-syl… → বাংলা ভয়েস + সেই ডায়ালেক্টের নমুনা বাক্য)।
+    if (ttsService.getConfig().language !== normalizeTtsLanguage(language)) {
+      ttsService.setLanguage(language, { syncRemote: false });
+    }
     const sample = ttsService.getSamplePhrase(language);
     onPreviewVoice(sample);
   };

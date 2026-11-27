@@ -1,6 +1,12 @@
 import type { AppLanguage } from '../types';
 import type { LiveVoiceName } from '../hooks/useLiveVoiceSession';
 import { schedulePreferencesPatch } from '../services/userPreferencesSyncBus';
+import {
+  TTS_INTL_VOICES,
+  googleTlForLocale,
+  isIntlTtsLanguage,
+  normalizeTtsLanguage,
+} from '../shared/ttsLanguages';
 
 export const VOICE_AVATAR_SYNC_EVENT = 'supremeai:voice-avatar-updated';
 
@@ -354,16 +360,7 @@ export function pickNativeSpeechVoice<T extends MinimalSpeechVoice>(
   );
 }
 
-const INTERNATIONAL_EDGE_VOICES: Record<string, { male: string; female: string; lang: string }> = {
-  es: { male: 'es-ES-AlvaroNeural', female: 'es-ES-ElviraNeural', lang: 'es-ES' },
-  fr: { male: 'fr-FR-HenriNeural', female: 'fr-FR-DeniseNeural', lang: 'fr-FR' },
-  ar: { male: 'ar-SA-HamedNeural', female: 'ar-SA-ZariyahNeural', lang: 'ar-SA' },
-  hi: { male: 'hi-IN-MadhurNeural', female: 'hi-IN-SwaraNeural', lang: 'hi-IN' },
-  zh: { male: 'zh-CN-YunxiNeural', female: 'zh-CN-XiaoxiaoNeural', lang: 'zh-CN' },
-  ja: { male: 'ja-JP-KeitaNeural', female: 'ja-JP-NanamiNeural', lang: 'ja-JP' },
-  de: { male: 'de-DE-ConradNeural', female: 'de-DE-KatjaNeural', lang: 'de-DE' },
-  pt: { male: 'pt-BR-AntonioNeural', female: 'pt-BR-FranciscaNeural', lang: 'pt-BR' },
-};
+const INTERNATIONAL_EDGE_VOICES = TTS_INTL_VOICES;
 
 export function resolveEdgeNeuralVoice(
   text: string,
@@ -405,15 +402,16 @@ export function resolveEdgeNeuralVoice(
   };
 }
 
-export function buildClientDirectTtsUrl(text: string, lang: 'bn-BD' | 'bn-IN' | 'en-US'): string {
-  const tl = lang === 'bn-BD' || lang === 'bn-IN' ? 'bn' : 'en';
+export function buildClientDirectTtsUrl(text: string, lang: string): string {
+  const tl = googleTlForLocale(lang);
   return `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${encodeURIComponent(text)}`;
 }
 
 export interface TtsAudioChunk {
   audioBase64: string;
   mimeType: string;
-  lang: 'bn-BD' | 'bn-IN' | 'en-US';
+  /** BCP-47 locale of this chunk (bn-BD, bn-IN, en-US, hi-IN, …). */
+  lang: string;
 }
 
 export const MIC_INPUT_GAIN_STORAGE_KEY = 'supremeai_mic_input_gain_v1';
@@ -496,6 +494,28 @@ export function resolveSpeechUtteranceTarget<T extends MinimalSpeechVoice>(
   banglaAccent: BanglaAccentId = DEFAULT_BANGLA_ACCENT
 ): { lang: string; targetScriptLang: 'bn-BD' | 'en-US'; voice: T | undefined } {
   const hasBengaliScript = /[\u0980-\u09FF]/.test(text);
+  // বাংলা মন্তব্য: hi/es/fr/… সিলেক্ট থাকলে (আর টেক্সটে বাংলা হরফ না থাকলে) সেই ভাষার নেটিভ ভয়েস/locale।
+  const intl = isIntlTtsLanguage(defaultLanguage)
+    ? TTS_INTL_VOICES[normalizeTtsLanguage(defaultLanguage)]
+    : undefined;
+  if (intl && !hasBengaliScript) {
+    const prefix = intl.lang.split('-')[0].toLowerCase();
+    const preferMale =
+      preferredPersona === 'Puck' || preferredPersona === 'Charon' || preferredPersona === 'Fenrir';
+    const sameLang = voices.filter((v) =>
+      normalizeVoiceLocale(v.lang).toLowerCase().startsWith(prefix)
+    );
+    const genderRe = preferMale ? /(male|man|madhur|alvaro|henri|hamed|yunxi|keita|conrad|antonio)/i : /(female|woman|swara|elvira|denise|zariyah|xiaoxiao|nanami|katja|francisca)/i;
+    const voice =
+      sameLang.find((v) => normalizeVoiceLocale(v.lang) === intl.lang && genderRe.test(v.name)) ||
+      sameLang.find((v) => normalizeVoiceLocale(v.lang) === intl.lang) ||
+      sameLang[0];
+    return {
+      lang: voice?.lang ? normalizeVoiceLocale(voice.lang) : intl.lang,
+      targetScriptLang: 'en-US',
+      voice,
+    };
+  }
   const isBanglishOrBn = hasBengaliScript || detectBengaliOrBanglish(text);
   const targetScriptLang: 'bn-BD' | 'en-US' =
     isBanglishOrBn || segmentLangHint === 'bn-BD'

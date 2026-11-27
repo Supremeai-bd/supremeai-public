@@ -11,6 +11,11 @@ import {
   computeEdgeTtsSecMsGecInput,
   resolveEdgeTtsClientConfig,
 } from '../../../src/shared/edgeTtsConfig';
+import {
+  TTS_INTL_VOICES,
+  googleTlForLocale,
+  normalizeTtsLanguage,
+} from '../../../src/shared/ttsLanguages';
 
 interface PagesContext {
   request: Request;
@@ -20,7 +25,8 @@ interface PagesContext {
 interface TtsAudioChunk {
   audioBase64: string;
   mimeType: string;
-  lang: 'bn-BD' | 'bn-IN' | 'en-US';
+  /** bn-BD | bn-IN | en-US | hi-IN | es-ES | … */
+  lang: string;
 }
 
 type BanglaAccentId = 'bn-bd' | 'bn-in';
@@ -154,7 +160,7 @@ async function computeSecMsGec(trustedToken: string): Promise<string> {
 async function synthesizeViaEdgeWs(
   text: string,
   edgeVoice: string,
-  edgeLang: 'bn-BD' | 'bn-IN' | 'en-US',
+  edgeLang: string,
   ssmlPitch: string,
   env?: Record<string, string | undefined>
 ): Promise<Uint8Array> {
@@ -290,13 +296,18 @@ async function synthesizeViaEdgeWs(
   });
 }
 
-async function synthesizeViaUnifiedMp3(text: string): Promise<TtsAudioChunk[]> {
+async function synthesizeViaUnifiedMp3(
+  text: string,
+  otherLocale: string = 'en-US'
+): Promise<TtsAudioChunk[]> {
   const segments = splitUnifiedSentences(text);
-  const jobs: Array<{ text: string; tl: 'bn' | 'en'; lang: 'bn-BD' | 'en-US' }> = [];
+  const jobs: Array<{ text: string; tl: string; lang: string }> = [];
   for (const seg of segments) {
-    const tl: 'bn' | 'en' = seg.lang === 'bn-BD' ? 'bn' : 'en';
+    // Non-Bangla text speaks in the selected language (hi-IN, es-ES …), not always English.
+    const lang = seg.lang === 'bn-BD' ? 'bn-BD' : otherLocale;
+    const tl = googleTlForLocale(lang);
     for (const piece of chunkText(seg.text, 175)) {
-      jobs.push({ text: piece, tl, lang: seg.lang });
+      jobs.push({ text: piece, tl, lang });
     }
   }
   if (jobs.length === 0) {
@@ -366,7 +377,9 @@ export async function onRequest(context: PagesContext): Promise<Response> {
 
     const truncatedText = rawText.slice(0, 1400);
     const voicePersona = typeof body.voiceName === 'string' ? body.voiceName.trim() : 'Zephyr';
-    const language = body.language === 'bn' ? 'bn' : 'en';
+    // বাংলা মন্তব্য: hi/es/fr/… নিজস্ব ভয়েস; আঞ্চলিক বাংলা (bn-ctg …) → বাংলা ভয়েস।
+    const language = normalizeTtsLanguage(body.language);
+    const intlVoice = TTS_INTL_VOICES[language];
     const pitch = clampPitch(body.pitch);
     const accent: BanglaAccentId = body.accent === 'bn-in' ? 'bn-in' : 'bn-bd';
     const ssmlPitch = pitchToSsml(pitch);
@@ -376,22 +389,29 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     const preferMale =
       voicePersona === 'Puck' || voicePersona === 'Charon' || voicePersona === 'Fenrir';
 
-    const edgeVoice = isBn
-      ? accent === 'bn-in'
-        ? preferMale
-          ? 'bn-IN-BashkarNeural'
-          : 'bn-IN-TanishaaNeural'
+    const useIntl = Boolean(intlVoice) && !/[\u0980-\u09FF]/.test(truncatedText);
+    const edgeVoice = useIntl
+      ? preferMale
+        ? intlVoice.male
+        : intlVoice.female
+      : isBn
+        ? accent === 'bn-in'
+          ? preferMale
+            ? 'bn-IN-BashkarNeural'
+            : 'bn-IN-TanishaaNeural'
+          : preferMale
+            ? 'bn-BD-PradeepNeural'
+            : 'bn-BD-NabanitaNeural'
         : preferMale
-          ? 'bn-BD-PradeepNeural'
-          : 'bn-BD-NabanitaNeural'
-      : preferMale
-        ? 'en-US-AndrewMultilingualNeural'
-        : 'en-US-AvaMultilingualNeural';
-    const edgeLang: 'bn-BD' | 'bn-IN' | 'en-US' = isBn
-      ? accent === 'bn-in'
-        ? 'bn-IN'
-        : 'bn-BD'
-      : 'en-US';
+          ? 'en-US-AndrewMultilingualNeural'
+          : 'en-US-AvaMultilingualNeural';
+    const edgeLang: string = useIntl
+      ? intlVoice.lang
+      : isBn
+        ? accent === 'bn-in'
+          ? 'bn-IN'
+          : 'bn-BD'
+        : 'en-US';
 
     try {
       const wsAudio = await synthesizeViaEdgeWs(
@@ -419,7 +439,10 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       );
     } catch (wsErr) {
       console.warn('[edge/tts] Edge WebSocket TTS failed, falling back to unified MP3:', wsErr);
-      const chunks = await synthesizeViaUnifiedMp3(truncatedText);
+      const chunks = await synthesizeViaUnifiedMp3(
+        truncatedText,
+        useIntl ? intlVoice.lang : 'en-US'
+      );
       return new Response(
         JSON.stringify({
           audioBase64: chunks[0]?.audioBase64 || '',

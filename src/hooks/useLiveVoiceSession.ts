@@ -26,6 +26,7 @@ import {
   type TtsAudioChunk,
 } from '../utils/speechUtils';
 import { logger } from '../utils/logger';
+import { TTS_INTL_VOICES, isIntlTtsLanguage, normalizeTtsLanguage } from '../shared/ttsLanguages';
 import type { AppLanguage } from '../types';
 
 export type LiveVoiceName = 'Zephyr' | 'Puck' | 'Kore' | 'Charon' | 'Fenrir';
@@ -1122,10 +1123,16 @@ export function useLiveVoiceSession({
     async (clean: string, genId: number): Promise<boolean> => {
       if (typeof Audio === 'undefined' || genId !== ttsGenerationRef.current) return false;
       const segments = splitByScriptSegments(clean.slice(0, 1400));
-      const items: Array<{ text: string; lang: 'bn-BD' | 'en-US' }> = [];
+      // বাংলা মন্তব্য: hi/es/… সিলেক্ট থাকলে বাংলা-বহির্ভূত অংশ সেই ভাষার locale-এ (আগে en-US)।
+      const activeLang = ttsService.getConfig().language;
+      const intlLocale = isIntlTtsLanguage(activeLang)
+        ? TTS_INTL_VOICES[normalizeTtsLanguage(activeLang)]?.lang
+        : undefined;
+      const items: Array<{ text: string; lang: string }> = [];
       for (const seg of segments) {
+        const lang = seg.lang === 'en-US' && intlLocale ? intlLocale : seg.lang;
         for (const piece of chunkSpeechSegment(seg.text, 175)) {
-          items.push({ text: piece, lang: seg.lang });
+          items.push({ text: piece, lang });
         }
       }
       if (items.length === 0) return false;
@@ -1294,6 +1301,23 @@ export function useLiveVoiceSession({
         if (hasBengali && !hasNativeBnVoice) {
           const playedRemote = await playRemoteOrDirectFallback();
           if (playedRemote || genId !== ttsGenerationRef.current) return;
+        }
+
+        // বাংলা মন্তব্য: हिन्दी/Español/… — ব্রাউজারে সেই ভাষার নেটিভ ভয়েস না থাকলে আগে
+        // Edge Neural (hi-IN-SwaraNeural ইত্যাদি); নইলে ইংরেজি ভয়েসে পড়ে ফেলত।
+        const activeLanguage = ttsService.getConfig().language;
+        if (!hasBengali && isIntlTtsLanguage(activeLanguage)) {
+          const nativeIntl = resolveSpeechUtteranceTarget(
+            clean,
+            undefined,
+            activeLanguage,
+            voices,
+            voiceRef.current
+          );
+          if (!nativeIntl.voice) {
+            const playedRemote = await playRemoteOrDirectFallback();
+            if (playedRemote || genId !== ttsGenerationRef.current) return;
+          }
         }
 
         if (speakTier1Native(clean, genId, voices, () => void playRemoteOrDirectFallback())) {
