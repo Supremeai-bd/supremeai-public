@@ -57,7 +57,11 @@ describe('AdminMissionControlView', () => {
     fireEvent.click(within(row).getByRole('button', { name: /fix key/i }));
     expect(onNavigate).toHaveBeenCalledWith('provider-keys');
 
+    // Command Wall: an area tile drills down in place (L2); the full page is one click further.
     fireEvent.click(screen.getByTestId('admin-area-users'));
+    expect(onNavigate).not.toHaveBeenCalledWith('customers');
+    const panel = screen.getByTestId('wall-area-panel');
+    fireEvent.click(within(panel).getByRole('button', { name: /open users/i }));
     expect(onNavigate).toHaveBeenCalledWith('customers');
   });
 

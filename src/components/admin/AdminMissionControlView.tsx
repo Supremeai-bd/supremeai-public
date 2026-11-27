@@ -20,6 +20,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useAdminHealthSummary } from '../../hooks/useAdminHealthSummary';
+import { AdminCommandWall } from './AdminCommandWall';
 import { useAdminHealthStore } from '../../stores/useAdminHealthStore';
 import { useAdminStore } from '../../stores/useAdminStore';
 import { useControlCenterStore } from '../../stores/useControlCenterStore';
@@ -97,13 +98,6 @@ const SEVERITY_ICON: Record<AdminSeverity, React.ReactNode> = {
   info: <Info className="w-4 h-4 text-sky-500 shrink-0" />,
 };
 
-const TONE_CLASS = {
-  good: 'text-emerald-600 dark:text-emerald-400',
-  bad: 'text-rose-600 dark:text-rose-400',
-  warn: 'text-amber-600 dark:text-amber-400',
-  muted: 'text-slate-700 dark:text-slate-200',
-} as const;
-
 const LOG_DOT = {
   error: 'bg-rose-500',
   warn: 'bg-amber-500',
@@ -157,7 +151,7 @@ export const AdminMissionControlView: React.FC<AdminMissionControlViewProps> = (
     ]
   );
 
-  const { overall, counts, issues, areas, services, score } = summary;
+  const { overall, counts, issues, services, score } = summary;
   const actionable = issues.filter((i) => i.severity !== 'info');
   const visibleIssues = showAllIssues ? issues : issues.slice(0, 6);
 
@@ -341,53 +335,8 @@ export const AdminMissionControlView: React.FC<AdminMissionControlViewProps> = (
           )}
         </section>
 
-        {/* 3. Area tiles */}
-        <section
-          className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3"
-          aria-label="Platform areas"
-        >
-          {areas.map((area) => {
-            const style = STATUS_STYLE[area.status];
-            return (
-              <button
-                key={area.id}
-                type="button"
-                data-testid={`admin-area-${area.id}`}
-                data-status={area.status}
-                onClick={() => onNavigateTab(area.targetTab)}
-                className={`text-left p-4 rounded-2xl border-2 bg-white dark:bg-slate-900 transition-colors cursor-pointer space-y-2.5 ${style.ring}`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-2 text-[13px] font-semibold text-slate-900 dark:text-white">
-                    <span className={style.text}>{AREA_ICON[area.id]}</span>
-                    {area.label}
-                  </span>
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${style.pill}`}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                    {style.label}
-                  </span>
-                </div>
-                <p className={`text-xs font-medium leading-snug ${style.text}`}>{area.headline}</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
-                  {area.metrics.map((m) => (
-                    <div key={m.label} className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-wide text-slate-400">
-                        {m.label}
-                      </div>
-                      <div
-                        className={`text-sm font-bold font-mono tabular-nums ${TONE_CLASS[m.tone ?? 'muted']}`}
-                      >
-                        {m.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </button>
-            );
-          })}
-        </section>
+        {/* 3. Command Wall — L1 areas → L2 nodes → L3 node detail, without leaving the page */}
+        <AdminCommandWall summary={summary} areaIcon={AREA_ICON} onNavigateTab={onNavigateTab} />
 
         {/* 4. Quick fixes */}
         <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-5">

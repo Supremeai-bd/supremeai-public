@@ -99,7 +99,7 @@ export interface AdminConnectionStatus {
   targetTab: string;
 }
 
-const CONNECTION_AREA: Record<string, AdminAreaId> = {
+export const CONNECTION_AREA: Record<string, AdminAreaId> = {
   infisical: 'ai',
   'key-pool': 'ai',
   supabase: 'users',
