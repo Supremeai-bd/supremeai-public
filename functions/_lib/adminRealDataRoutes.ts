@@ -6,6 +6,7 @@
 
 import { forwardRawUpstream, jsonEdgeResponse } from './edgeHelpers';
 import {
+  PROBE_BATCH_SIZE,
   buildProviderKeys,
   collectVault,
   resetProviderVaultCache,
@@ -68,8 +69,23 @@ export async function handleAdminRealDataRoute(
   }
 
   if (path === '/api/admin/providers/probe-all' && method === 'POST') {
+    // বাংলা মন্তব্য: ব্যাচে প্রোব (PROBE_BATCH_SIZE) — ক্লায়েন্ট `nextCursor` ধরে বাকি ব্যাচ চায়,
+    // তাই কোনো একক রিকোয়েস্ট Cloudflare-এর ৫০ subrequest সীমা ছোঁয় না।
+    const body = (await request
+      .clone()
+      .json()
+      .catch(() => ({}))) as { cursor?: unknown };
     const vault = await collectVault(env);
-    const keys = await buildProviderKeys(vault, { probe: 'all' });
+    const listed = await buildProviderKeys(vault, { probe: 'none' });
+    const cursor = Math.max(0, Math.min(listed.length, Math.floor(Number(body.cursor) || 0)));
+    const batchIds = new Set(listed.slice(cursor, cursor + PROBE_BATCH_SIZE).map((k) => k.id));
+    const end = cursor + batchIds.size;
+    const nextCursor = end < listed.length ? end : null;
+    const keys = await buildProviderKeys(vault, {
+      probe: 'all',
+      onlyIds: batchIds,
+      maxProbes: PROBE_BATCH_SIZE,
+    });
     if (keys.length === 0) {
       return reply({
         success: false,
@@ -83,10 +99,16 @@ export async function handleAdminRealDataRoute(
     }
     return reply({
       success: keys.every((k) => k.status !== 'unhealthy'),
-      message: summaryMessage(keys),
+      message:
+        nextCursor === null
+          ? summaryMessage(keys)
+          : `Probed ${end} of ${listed.length} keys — continuing…`,
       providers: keys,
       vaultKeys: toVaultKeyRows(keys, vault.summary.lastSyncedAt),
       vaultSummary: vault.summary,
+      nextCursor,
+      probedThrough: end,
+      total: listed.length,
     });
   }
 
