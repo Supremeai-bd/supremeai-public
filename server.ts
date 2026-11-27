@@ -82,6 +82,8 @@ import {
 import QRCode from 'qrcode';
 import { buildOtpAuthUri, generateTotpSecret, verifyTotpToken } from './src/server/totp';
 import { buildDurableAuditRow } from './src/server/auditPayload';
+import { createRateLimiter, isHttpsRequest, safeFetchWithRedirectCheck } from './src/server/httpGuards';
+import { createMcpClusterServices } from './src/server/mcpClusterServices';
 import {
   loginSchema,
   signupSchema,
@@ -96,7 +98,6 @@ import {
   hashPassword,
   isRestrictedProxyTarget,
   parseCookieHeader,
-  resolveAndCheckProxyTarget,
   signSessionToken,
   validateGitLabHost,
   verifyPassword,
@@ -227,19 +228,7 @@ async function startServer() {
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
 
-  const isHttpsRequest = (req: Request): boolean => {
-    const protoHeader = String(req.header('x-forwarded-proto') || '').toLowerCase();
-    const forwardedHeader = String(req.header('forwarded') || '').toLowerCase();
-    const originHeader = String(req.header('origin') || '').toLowerCase();
-    const refererHeader = String(req.header('referer') || '').toLowerCase();
-    return (
-      req.secure ||
-      protoHeader.includes('https') ||
-      forwardedHeader.includes('proto=https') ||
-      originHeader.startsWith('https://') ||
-      refererHeader.startsWith('https://')
-    );
-  };
+  // isHttpsRequest lives in src/server/httpGuards.ts.
 
   // Baseline production security headers (iframe-compatible for AI Studio preview)
   app.use((req: Request, res: Response, next: NextFunction) => {
@@ -252,57 +241,7 @@ async function startServer() {
     next();
   });
 
-  // SSRF-hardened outbound fetch helper: validates hostname + resolved DNS IPs on initial request and every redirect hop
-  const safeFetchWithRedirectCheck = async (
-    initialUrl: string | URL,
-    init: RequestInit = {},
-    isLocalRelative = false,
-    maxRedirects = 5
-  ): Promise<globalThis.Response> => {
-    let currentUrl = typeof initialUrl === 'string' ? new URL(initialUrl) : initialUrl;
-    let currentLocal = isLocalRelative;
-    let currentInit: RequestInit = { ...init, redirect: 'manual' };
-
-    for (let hop = 0; hop <= maxRedirects; hop += 1) {
-      const check = await resolveAndCheckProxyTarget(currentUrl, currentLocal);
-      if (check.restricted) {
-        throw new Error(
-          check.reason || 'Blocked outbound request to restricted or private target.'
-        );
-      }
-
-      const response = await fetch(currentUrl.toString(), currentInit);
-      if (
-        response.status === 301 ||
-        response.status === 302 ||
-        response.status === 303 ||
-        response.status === 307 ||
-        response.status === 308
-      ) {
-        const location = response.headers.get('location');
-        if (!location) return response;
-        if (hop === maxRedirects) {
-          throw new Error('Too many redirects from upstream target.');
-        }
-        const nextUrl = new URL(location, currentUrl);
-        currentLocal =
-          currentLocal && nextUrl.origin === currentUrl.origin && nextUrl.pathname.startsWith('/');
-        currentUrl = nextUrl;
-        if (
-          response.status === 303 ||
-          ((response.status === 301 || response.status === 302) &&
-            currentInit.method &&
-            currentInit.method.toUpperCase() === 'POST')
-        ) {
-          currentInit = { ...currentInit, method: 'GET', body: undefined };
-        }
-        continue;
-      }
-      return response;
-    }
-
-    throw new Error('Redirect limit exceeded.');
-  };
+  // SSRF-hardened outbound fetch (safeFetchWithRedirectCheck) lives in src/server/httpGuards.ts.
 
   // Real HTTP request throughput & latency instrumentation (excludes SSE streams)
   app.use('/api', (req, res, next) => {
@@ -321,28 +260,8 @@ async function startServer() {
   mountApiOnExpress(app, { fetchGatewayJson: (p, t) => fetchGatewayJson(p, t) });
   app.use(express.json({ limit: '15mb' }));
 
-  // Zero-dependency in-memory sliding-window rate limiter (per client IP).
-  const rateBuckets = new Map<string, number[]>();
-  const makeRateLimit = (windowMs: number, max: number) => {
-    return (req: Request, res: Response, next: NextFunction) => {
-      const ip = String(req.ip || req.socket?.remoteAddress || 'unknown').trim();
-      const bucketKey = `${req.baseUrl || req.path}:${ip}`;
-      const now = Date.now();
-      const hits = (rateBuckets.get(bucketKey) || []).filter((t) => now - t < windowMs);
-      if (hits.length >= max) {
-        res.status(429).json({ error: 'Too many requests. Please slow down and retry shortly.' });
-        return;
-      }
-      hits.push(now);
-      rateBuckets.set(bucketKey, hits);
-      if (rateBuckets.size > 10000) {
-        for (const [k, v] of rateBuckets) {
-          if (v.length === 0 || now - v[v.length - 1] > windowMs) rateBuckets.delete(k);
-        }
-      }
-      next();
-    };
-  };
+  // Zero-dependency in-memory sliding-window rate limiter (per client IP) — src/server/httpGuards.ts.
+  const makeRateLimit = createRateLimiter();
   app.use(['/api/chat', '/api/v1/chat', '/api/v1/stream/chat'], makeRateLimit(60_000, 60));
   app.use(
     [
@@ -364,225 +283,7 @@ async function startServer() {
   const fetchGatewayJson = createGatewayCatalogFetcher(GATEWAY_BASE);
 
   // --- MCP Tower Services & Health Orchestration Endpoints ---  // --- MCP Tower Services & Health Orchestration Endpoints ---
-  const mcpClusterServices = [
-    {
-      id: 'supreme-gateway-service',
-      name: 'supreme-gateway-service',
-      displayName: 'SupremeAI Gateway Broker',
-      category: 'core',
-      port: 8081,
-      status: 'healthy',
-      uptime: '99.98%',
-      latencyMs: 18,
-      cpuPercent: 2.1,
-      memoryMb: 142,
-      lastChecked: 'Just now',
-      version: 'v2.4.1',
-      endpoint: '/api/chat',
-      errorCount: 0,
-      logs: [
-        {
-          id: 'gw-log-1',
-          timestamp: new Date().toLocaleTimeString(),
-          level: 'INFO',
-          message:
-            'Active route pool healthy. 4 SupremeAI models registered with live streaming hooks.',
-          details: 'Endpoints: supreme-core, supreme-spark, supreme-reason, supreme-deep',
-        },
-      ],
-    },
-    {
-      id: 'mcp-context-server',
-      name: 'mcp-context-server',
-      displayName: 'MCP Context Protocol Server',
-      category: 'ai',
-      port: 9001,
-      status: 'healthy',
-      uptime: '99.94%',
-      latencyMs: 34,
-      cpuPercent: 4.8,
-      memoryMb: 318,
-      lastChecked: 'Just now',
-      version: 'v1.8.0',
-      endpoint: 'mcp://localhost:9001/protocol/v1',
-      errorCount: 0,
-      logs: [
-        {
-          id: 'mcp-log-1',
-          timestamp: new Date().toLocaleTimeString(),
-          level: 'INFO',
-          message: 'Model Context Protocol server listening on JSON-RPC stdio and SSE transport.',
-        },
-      ],
-    },
-    {
-      id: 'code-auditor-worker',
-      name: 'code-auditor-worker',
-      displayName: 'Code Auditor & Security Worker',
-      category: 'ai',
-      port: 9002,
-      status: 'unhealthy',
-      uptime: '94.20%',
-      latencyMs: 4120,
-      cpuPercent: 98.4,
-      memoryMb: 1840,
-      lastChecked: '30s ago (Health check failed)',
-      version: 'v1.3.2',
-      endpoint: 'http://localhost:9002/audit/jobs',
-      errorCount: 14,
-      logs: [
-        {
-          id: 'aud-log-1',
-          timestamp: new Date(Date.now() - 1000 * 60 * 14).toLocaleTimeString(),
-          level: 'WARN',
-          message: 'Worker queue depth exceeded threshold (depth: 84 jobs > threshold: 25).',
-          details: 'High concurrency in repository AST parsing for Supremeai-bd/supremeai.',
-        },
-        {
-          id: 'aud-log-2',
-          timestamp: new Date(Date.now() - 1000 * 60 * 8).toLocaleTimeString(),
-          level: 'ERROR',
-          message:
-            'Heap allocation failure: JavaScript heap out of memory during AST graph resolution.',
-          details:
-            'Process allocated 1840MB of 2048MB container limit. Garbage collection pauses > 1200ms.',
-          stackTrace:
-            'FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory\\n  at AstGraphResolver.traverseSyntaxNode (/workers/auditor/ast/parser.ts:412:18)\\n  at CodeAuditorWorker.processJob (/workers/auditor/worker.ts:184:22)',
-        },
-        {
-          id: 'aud-log-3',
-          timestamp: new Date(Date.now() - 1000 * 60 * 2).toLocaleTimeString(),
-          level: 'ERROR',
-          message:
-            'Heartbeat ping timeout after 4000ms. Service process not responding to HTTP ping.',
-          details:
-            'TCP connection active on port 9002, but event loop delay is 3890ms. Recommend service reboot.',
-        },
-      ],
-    },
-    {
-      id: 'sse-stream-broker',
-      name: 'sse-stream-broker',
-      displayName: 'SSE Real-time Stream Broker',
-      category: 'core',
-      port: 8084,
-      status: 'degraded',
-      uptime: '98.10%',
-      latencyMs: 195,
-      cpuPercent: 62.8,
-      memoryMb: 680,
-      lastChecked: 'Just now',
-      version: 'v2.1.0',
-      endpoint: 'http://localhost:8084/sse/hub',
-      errorCount: 4,
-      logs: [
-        {
-          id: 'sse-log-1',
-          timestamp: new Date(Date.now() - 1000 * 60 * 7).toLocaleTimeString(),
-          level: 'WARN',
-          message: 'Connection pool saturation reached 89% (890 / 1000 concurrent listeners).',
-          details: 'Backpressure detected on 12 streaming sockets. Latency elevated to 195ms.',
-        },
-      ],
-    },
-    {
-      id: 'github-sync-daemon',
-      name: 'github-sync-daemon',
-      displayName: 'GitHub Repository Sync Daemon',
-      category: 'integration',
-      port: 8085,
-      status: 'healthy',
-      uptime: '99.85%',
-      latencyMs: 42,
-      cpuPercent: 1.1,
-      memoryMb: 112,
-      lastChecked: 'Just now',
-      version: 'v3.0.4',
-      endpoint: 'http://localhost:8085/webhook/github',
-      errorCount: 0,
-      logs: [
-        {
-          id: 'gh-log-1',
-          timestamp: new Date().toLocaleTimeString(),
-          level: 'INFO',
-          message: 'Webhook subscription confirmed for Supremeai-bd organization repositories.',
-        },
-      ],
-    },
-    {
-      id: 'vector-cache-engine',
-      name: 'vector-cache-engine',
-      displayName: 'Vector & Prompt Cache Engine',
-      category: 'core',
-      port: 6379,
-      status: 'healthy',
-      uptime: '99.99%',
-      latencyMs: 3,
-      cpuPercent: 0.8,
-      memoryMb: 524,
-      lastChecked: 'Just now',
-      version: 'v7.2.4',
-      endpoint: 'redis://localhost:6379/0',
-      errorCount: 0,
-      logs: [
-        {
-          id: 'vec-log-1',
-          timestamp: new Date().toLocaleTimeString(),
-          level: 'INFO',
-          message: 'In-memory semantic cache hit ratio: 87.4% over 14,200 indexed queries.',
-        },
-      ],
-    },
-    {
-      id: 'auth-token-prober',
-      name: 'auth-token-prober',
-      displayName: 'Auth Token & Identity Prober',
-      category: 'integration',
-      port: 8083,
-      status: 'healthy',
-      uptime: '99.99%',
-      latencyMs: 11,
-      cpuPercent: 0.4,
-      memoryMb: 76,
-      lastChecked: 'Just now',
-      version: 'v1.4.0',
-      endpoint: 'http://localhost:8083/auth/verify',
-      errorCount: 0,
-      logs: [
-        {
-          id: 'auth-log-1',
-          timestamp: new Date().toLocaleTimeString(),
-          level: 'INFO',
-          message:
-            'Public key JWKS rotation cache validated. Zero signature validation rejections.',
-        },
-      ],
-    },
-    {
-      id: 'telemetry-collector',
-      name: 'telemetry-collector',
-      displayName: 'OpenTelemetry & Prometheus Collector',
-      category: 'telemetry',
-      port: 9090,
-      status: 'healthy',
-      uptime: '99.95%',
-      latencyMs: 24,
-      cpuPercent: 1.4,
-      memoryMb: 135,
-      lastChecked: 'Just now',
-      version: 'v0.92.0',
-      endpoint: 'http://localhost:9090/metrics',
-      errorCount: 0,
-      logs: [
-        {
-          id: 'tel-log-1',
-          timestamp: new Date().toLocaleTimeString(),
-          level: 'INFO',
-          message: 'Scraping metrics from 8 local endpoints with 10s interval.',
-        },
-      ],
-    },
-  ];
+  const mcpClusterServices = createMcpClusterServices();
 
   // MCP Tower proxy surface (health, services, reboot, probe, SSE stream) now
   // lives in src/server/routes/mcpTowerRoutes.ts. The four callbacks are passed

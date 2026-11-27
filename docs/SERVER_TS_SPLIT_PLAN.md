@@ -2,8 +2,8 @@
 
 `server.ts` is the Express + Vite bootstrap for the web app, the desktop shell
 and the Android WebView bridge. Previously **11,782 lines** with **149 inline
-route registrations**, it has now been refactored down to **2,559 lines**
-(78.3% reduction) with **all feature route groups extracted** into
+route registrations**, it has now been refactored down to **2,209 lines**
+(81.3% reduction) with **all feature route groups extracted** into
 `src/server/routes/**`, WebSocket bridges in `src/server/wsBridge.ts`, and
 durable session/queue state in `src/server/redisStore.ts`.
 
@@ -66,6 +66,7 @@ by hitting the live routes**, with a ratchet so the file can never grow back.
 | `api/admin/system` (schema parity 2 + llm-gateway 3 + github 4) | moved to `src/server/routes/admin/system.ts` (498 lines, owns `schemaParityTables`/`llmGatewayRoutes`/`fetchSupabaseLiveSchema`/`isSupabaseConfigured`/`getGithubAuthHeaders`) | `tsc` clean; 9 handlers + 2 stores + 3 helpers owned, only audit + `getRealGatewayTrafficSummary` via ctx |
 | `api/workspace/terminal` (terminal + files + file + project-run) | moved to `src/server/routes/workspace/terminal.ts` (408 lines, `mcpClusterServices`/`PORT`/`apiKey` via ctx) | `tsc` clean; 4 routes, 459 lines removed (469−10) |
 | `api/workspace remaining` (browser-proxy 1 + vault 3 + gmail 3 + schedules 5) | moved to `src/server/routes/workspace/{browserProxy,browserVault,gmailSession,browserSchedules}.ts` (386+132+78+258 lines, stores `expressVaultStore`/`expressSchedule*` owned, cron timer owned) | `tsc` clean; 12 routes, 798 lines removed (325+131+86+284 −16 delegation + `studioDataDir` dedup); `server.ts` 9617→8819 (−798) |
+| bootstrap helpers (`isHttpsRequest` + SSRF `safeFetchWithRedirectCheck` + per-IP rate limiter + MCP Tower `mcpClusterServices` data) | moved to `src/server/httpGuards.ts` (pure, no closure deps; `createRateLimiter()` keeps a per-server bucket map) and `src/server/mcpClusterServices.ts` (`createMcpClusterServices()` factory, fresh mutable copy per server) | `tsc` clean; `app.use` order unchanged; booted + curled `/api/health`, `/api/mcp-tower/services`, `/api/mcp-tower/health`, security headers present, 11th `/api/auth/login` → 429; `httpGuards.test.ts` 5 tests; `server.ts` 2508→2209 (−299) |
 
 The MCP Tower closure was 5 names (`app`, `mcpClusterServices`, `resolveAuditActor`,
 `recordAudit`, `verifyAdminAuthorization`). Admin customers closed over 4 shared
