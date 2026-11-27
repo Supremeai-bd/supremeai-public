@@ -11,6 +11,7 @@ import {
   verifyUpstreamSession,
 } from '../../_lib/edgeHelpers';
 import { extractCiErrorSnippet } from '../../../src/utils/githubPipelineMetrics';
+import { handleAdminRealDataRoute } from '../../_lib/adminRealDataRoutes';
 
 // বাংলা মন্তব্য: ফ্রন্টএন্ডের SchemaParityTable এবং LlmGatewayRoute ইন্টারফেসের সাথে শতভাগ সামঞ্জস্যপূর্ণ এজ প্যারিটি ডেটা।
 const DEFAULT_SCHEMA_TABLES = [
@@ -480,6 +481,11 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       }
     }
   }
+
+  // 1b. বাংলা মন্তব্য: Render-এ যেগুলো স্টাব (providers, vault, customers, connections) —
+  // সেগুলো edge-এ আসল উৎস (Infisical, Supabase Auth, লাইভ প্রোব) থেকে।
+  const realData = await handleAdminRealDataRoute(path, request, env, upstreamOrigin);
+  if (realData) return realData;
 
   // 2. Try Render Gateway upstream first for any /api/admin/* route
   try {

@@ -209,13 +209,10 @@ export const adminService = {
     if (env.isMockEnabled) {
       return INITIAL_CUSTOMERS;
     }
-    try {
-      const res = await apiClient.get<{ customers: CustomerRecord[] }>('/api/admin/customers');
-      return res.customers || [];
-    } catch (err) {
-      logger.warn('adminService: /api/admin/customers unreachable, returning fallback snapshot', { err });
-      return INITIAL_CUSTOMERS;
-    }
+    // বাংলা মন্তব্য: আগে ব্যর্থ হলে ডেমো (ভুয়া) কাস্টমার দেখাত — এখন ত্রুটি উপরে যায়, স্টোর শেষ আসল
+    // তালিকা রাখে। edge এখন Supabase Auth-এর আসল ইউজার মিশিয়ে দেয়।
+    const res = await apiClient.get<{ customers: CustomerRecord[] }>('/api/admin/customers');
+    return Array.isArray(res?.customers) ? res.customers : [];
   },
 
   async createCustomer(
@@ -460,16 +457,16 @@ export const adminService = {
     }
   },
 
+  /**
+   * বাংলা মন্তব্য: আগে ত্রুটি হলে `[]` ফেরত দিত — তাতে "কোনো কী নেই" (লাল) দেখাত অথচ আসলে
+   * জানাই যায়নি। এখন ত্রুটি উপরে যায় (UI "DEGRADED/অজানা" দেখায়)।
+   */
   async fetchProviders(): Promise<ProviderKeyItem[]> {
     if (env.isMockEnabled) {
       return INITIAL_PROVIDER_KEYS;
     }
-    try {
-      const res = await apiClient.get<{ providers: ProviderKeyItem[] }>('/api/admin/providers');
-      return res.providers || [];
-    } catch {
-      return [];
-    }
+    const res = await apiClient.get<{ providers: ProviderKeyItem[] }>('/api/admin/providers');
+    return Array.isArray(res?.providers) ? res.providers : [];
   },
 
   async addProviderKey(payload: {
@@ -546,6 +543,7 @@ export const adminService = {
     avgVaultLatencyMs: number;
     lastSyncedAt: string;
     keys: import('../types').InfisicalVaultKeyLatency[];
+    vaultSummary?: import('../utils/adminHealthSummary').AdminVaultSummary;
   }> {
     return apiClient.get('/api/admin/infisical/vault-keys');
   },
