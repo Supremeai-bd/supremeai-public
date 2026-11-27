@@ -225,7 +225,7 @@ async function fetchJson(
   }
 }
 
-async function readInfisicalSecrets(
+export async function readInfisicalSecrets(
   env: Env,
   fetchImpl: typeof fetch
 ): Promise<{ secrets: VaultSecret[]; total: number; environment: string }> {
