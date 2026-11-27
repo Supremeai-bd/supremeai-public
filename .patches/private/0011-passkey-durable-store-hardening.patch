@@ -1,5 +1,5 @@
 diff --git a/gateway/service/passkey_auth.py b/gateway/service/passkey_auth.py
-index d1135b5d..45cd6953 100644
+index d1135b5d..849311e2 100644
 --- a/gateway/service/passkey_auth.py
 +++ b/gateway/service/passkey_auth.py
 @@ -1,10 +1,16 @@
@@ -23,7 +23,7 @@ index d1135b5d..45cd6953 100644
  """
  from __future__ import annotations
  
-@@ -15,52 +21,36 @@ import logging
+@@ -15,52 +21,52 @@ import logging
  import os
  import re
  import secrets
@@ -53,29 +53,21 @@ index d1135b5d..45cd6953 100644
 -        return "supremeai-local-passkey-jwt-secret-32b"
 -
 -
--try:
+ try:
 -    from gateway.service.storage import (
--        get_user_passkey,
--        list_user_passkeys,
--        revoke_user_passkey,
--        save_user_passkey,
--        update_passkey_usage,
--    )
++    from gateway.service.auth_identity import extract_token
++    from gateway.service.keygen import generate_key, verify_key
++    from gateway.service.passkey_store import (
++        PasskeyConflict,
++        PasskeyStoreUnavailable,
+         get_user_passkey,
+         list_user_passkeys,
+         revoke_user_passkey,
+         save_user_passkey,
+         update_passkey_usage,
+     )
 -except ImportError:
 -    from service.storage import (  # type: ignore[no-redef]
--        get_user_passkey,
--        list_user_passkeys,
--        revoke_user_passkey,
--        save_user_passkey,
--        update_passkey_usage,
--    )
--
- try:
-+    from gateway.service import passkey_store
-     from gateway.service.auth_identity import extract_token
--    from gateway.service.keygen import verify_key
--except ImportError:
-+    from gateway.service.keygen import generate_key, verify_key
 +    from gateway.service.webauthn_codec import (
 +        AuthenticatorData,
 +        WebAuthnFormatError,
@@ -84,10 +76,24 @@ index d1135b5d..45cd6953 100644
 +        parse_authenticator_data,
 +    )
 +except ImportError:  # pragma: no cover - flat deploy layout
-+    from service import passkey_store  # type: ignore[no-redef]
-     from service.auth_identity import extract_token  # type: ignore[no-redef]
--    from service.keygen import verify_key  # type: ignore[no-redef]
++    from service.auth_identity import extract_token  # type: ignore[no-redef]
 +    from service.keygen import generate_key, verify_key  # type: ignore[no-redef]
++    from service.passkey_store import (  # type: ignore[no-redef]
++        PasskeyConflict,
++        PasskeyStoreUnavailable,
+         get_user_passkey,
+         list_user_passkeys,
+         revoke_user_passkey,
+         save_user_passkey,
+         update_passkey_usage,
+     )
+-
+-try:
+-    from gateway.service.auth_identity import extract_token
+-    from gateway.service.keygen import verify_key
+-except ImportError:
+-    from service.auth_identity import extract_token  # type: ignore[no-redef]
+-    from service.keygen import verify_key  # type: ignore[no-redef]
 +    from service.webauthn_codec import (  # type: ignore[no-redef]
 +        AuthenticatorData,
 +        WebAuthnFormatError,
@@ -98,7 +104,7 @@ index d1135b5d..45cd6953 100644
  
  logger = logging.getLogger("supremeai.passkey_auth")
  
-@@ -72,20 +62,34 @@ logger = logging.getLogger("supremeai.passkey_auth")
+@@ -72,20 +78,34 @@ logger = logging.getLogger("supremeai.passkey_auth")
  #                                   signed principal is the first 16 uuid chars)
  _GATEWAY_USER_RE = re.compile(r"usr-(usr-[a-f0-9]{12})")
  _SUPABASE_USER_RE = re.compile(r"(usr-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{2})")
@@ -122,14 +128,14 @@ index d1135b5d..45cd6953 100644
 +    ceremony: str  # "register" | "login"
 +    rp_id: str
 +    origin: str  # Origin header of the options request ("" when absent)
-+
-+
-+# Single-use challenges (5-minute TTL). In-memory is fine: a ceremony takes seconds,
-+# and a redeploy only cancels ceremonies that are in flight at that moment.
-+_challenges: Dict[str, _Challenge] = {}
  
  
 -def _clean_expired_challenges():
++# Single-use challenges (5-minute TTL). In-memory is fine: a ceremony takes seconds,
++# and a redeploy only cancels ceremonies that are in flight at that moment.
++_challenges: Dict[str, _Challenge] = {}
++
++
 +def _clean_expired_challenges() -> None:
      now = time.time()
 -    expired = [k for k, (_, exp, _, _) in _challenges.items() if exp < now]
@@ -140,7 +146,7 @@ index d1135b5d..45cd6953 100644
  
  
  def _b64url_encode(data: bytes) -> str:
-@@ -99,6 +103,8 @@ def _b64url_decode(s: str) -> bytes:
+@@ -99,6 +119,8 @@ def _b64url_decode(s: str) -> bytes:
      return base64.urlsafe_b64decode(s.encode("utf-8"))
  
  
@@ -149,7 +155,7 @@ index d1135b5d..45cd6953 100644
  def _owner_from_keygen_token(token: str) -> Optional[str]:
      """Map a keygen-signed session token to its stable registered user id."""
      try:
-@@ -107,7 +113,7 @@ def _owner_from_keygen_token(token: str) -> Optional[str]:
+@@ -107,7 +129,7 @@ def _owner_from_keygen_token(token: str) -> Optional[str]:
          return None
      client = str(claims.get("client") or "").strip()
      if client == "studio-admin":
@@ -158,7 +164,7 @@ index d1135b5d..45cd6953 100644
      for pattern in (_GATEWAY_USER_RE, _SUPABASE_USER_RE):
          match = pattern.fullmatch(client)
          if match:
-@@ -115,32 +121,15 @@ def _owner_from_keygen_token(token: str) -> Optional[str]:
+@@ -115,32 +137,15 @@ def _owner_from_keygen_token(token: str) -> Optional[str]:
      return None
  
  
@@ -194,11 +200,17 @@ index d1135b5d..45cd6953 100644
      if not owner:
          raise HTTPException(status_code=401, detail="Sign in with a registered account to manage passkeys.")
      return owner
-@@ -153,33 +142,79 @@ def _require_passkey_owner(request: Request) -> str:
+@@ -153,33 +158,79 @@ def _require_passkey_owner(request: Request) -> str:
      return owner
  
  
 -# ── Pydantic Request Models ──────────────────────────────────────────────────
+-
+-class RegisterOptionsRequest(BaseModel):
+-    user_id: Optional[str] = None
+-    email: Optional[str] = None
+-    role: Optional[str] = "user"
+-    display_name: Optional[str] = None
 +def _mint_passkey_session(owner: str) -> Tuple[str, str]:
 +    """Issue the same keygen session the password login issues (inverse of the owner map)."""
 +    if owner == ADMIN_OWNER:
@@ -215,18 +227,13 @@ index d1135b5d..45cd6953 100644
 +        # keygen fails closed without a signing secret: an error, never a session.
 +        raise HTTPException(status_code=503, detail="Sign-in is temporarily unavailable.") from None
  
--class RegisterOptionsRequest(BaseModel):
--    user_id: Optional[str] = None
--    email: Optional[str] = None
--    role: Optional[str] = "user"
--    display_name: Optional[str] = None
- 
-+# ── Ceremony checks ──────────────────────────────────────────────────────────
  
 -class RegisterVerifyRequest(BaseModel):
 -    clientDataJSON: str
 -    attestationObject: str
 -    device_name: Optional[str] = "Personal Biometric Device"
++# ── Ceremony checks ──────────────────────────────────────────────────────────
+ 
 +def _relying_party(request: Request) -> Tuple[str, str]:
 +    """(rp_id, origin) for this request. The browser's Origin header is authoritative."""
 +    origin = (request.headers.get("origin") or "").strip()
@@ -236,10 +243,10 @@ index d1135b5d..45cd6953 100644
 +        rp_id = "localhost"
 +    return rp_id, origin
  
- 
 -class LoginOptionsRequest(BaseModel):
 -    email: Optional[str] = None
 -    role: Optional[str] = None
+ 
 +def _issue_challenge(user_id: str, ceremony: str, request: Request) -> Tuple[str, str]:
 +    _clean_expired_challenges()
 +    rp_id, origin = _relying_party(request)
@@ -247,12 +254,11 @@ index d1135b5d..45cd6953 100644
 +    _challenges[challenge_b64] = _Challenge(user_id, time.time() + CHALLENGE_TTL_SECONDS, ceremony, rp_id, origin)
 +    return challenge_b64, rp_id
  
- 
 -class LoginVerifyRequest(BaseModel):
 -    id: str  # credential_id base64url
 -    rawId: str
 -    response: Dict[str, Any]  # clientDataJSON, authenticatorData, signature, userHandle
--
+ 
 +def _consume_challenge(client_data_b64: str, ceremony: str) -> Tuple[_Challenge, bytes]:
 +    """Validates clientDataJSON and pops its (single-use) challenge."""
 +    _clean_expired_challenges()
@@ -293,7 +299,7 @@ index d1135b5d..45cd6953 100644
  
  def _verify_webauthn_signature(
      public_key_spki_b64: str,
-@@ -187,144 +222,100 @@ def _verify_webauthn_signature(
+@@ -187,144 +238,100 @@ def _verify_webauthn_signature(
      client_data_hash: bytes,
      signature_bytes: bytes,
  ) -> bool:
@@ -392,9 +398,9 @@ index d1135b5d..45cd6953 100644
 +    """Runs a passkey_store call, mapping storage failures to HTTP errors."""
 +    try:
 +        return fn(*args, **kwargs)
-+    except passkey_store.PasskeyConflict:
++    except PasskeyConflict:
 +        raise HTTPException(status_code=409, detail="This passkey is already registered to another account.") from None
-+    except passkey_store.PasskeyStoreUnavailable:
++    except PasskeyStoreUnavailable:
 +        raise HTTPException(status_code=503, detail="Passkey storage is temporarily unavailable. Please retry.") from None
 +
 +
@@ -473,7 +479,7 @@ index d1135b5d..45cd6953 100644
 -        rp_id = request.headers.get("host", "localhost").split(":")[0]
 +    display_email = (req.email or "").strip()
 +    email = display_email if "@" in display_email and len(display_email) <= 160 else f"{owner}@supremeai.local"
-+    existing: List[Dict[str, Any]] = _store(passkey_store.list_user_passkeys, owner)
++    existing: List[Dict[str, Any]] = _store(list_user_passkeys, owner)
 +    challenge_b64, rp_id = _issue_challenge(owner, "register", request)
  
 -    options = {
@@ -503,7 +509,7 @@ index d1135b5d..45cd6953 100644
          ],
          "authenticatorSelection": {
              "authenticatorAttachment": "platform",  # Built-in Fingerprint / Touch ID / Face ID
-@@ -334,47 +325,38 @@ async def get_register_options(req: RegisterOptionsRequest, request: Request):
+@@ -334,47 +341,38 @@ async def get_register_options(req: RegisterOptionsRequest, request: Request):
          "timeout": 60000,
          "attestation": "none",
      }
@@ -560,7 +566,7 @@ index d1135b5d..45cd6953 100644
 +
 +    device_name = (req.device_name or "Biometric Device").strip()[:160] or "Biometric Device"
 +    passkey = _store(
-+        passkey_store.save_user_passkey,
++        save_user_passkey,
 +        credential_id=_b64url_encode(auth.credential_id),
 +        user_id=challenge.user_id,
 +        role="admin" if challenge.user_id == ADMIN_OWNER else "user",
@@ -575,7 +581,7 @@ index d1135b5d..45cd6953 100644
      return {
          "status": "success",
          "message": f"Passkey registered successfully for {device_name}",
-@@ -386,105 +368,74 @@ async def verify_registration(req: RegisterVerifyRequest, request: Request):
+@@ -386,105 +384,74 @@ async def verify_registration(req: RegisterVerifyRequest, request: Request):
  
  @router.post("/login/options")
  async def get_login_options(req: LoginOptionsRequest, request: Request):
@@ -618,16 +624,16 @@ index d1135b5d..45cd6953 100644
 -    challenge_b64 = client_data.get("challenge")
 -    if not challenge_b64 or challenge_b64 not in _challenges:
 -        raise HTTPException(status_code=400, detail="Invalid or expired challenge")
-+    """Verifies the biometric assertion and returns a gateway session."""
-+    challenge, client_data_raw = _consume_challenge(str(req.response.get("clientDataJSON", "")), "login")
- 
+-
 -    _, _, _expected_role, ceremony = _challenges.pop(challenge_b64)
 -    if ceremony != "login":
 -        raise HTTPException(status_code=400, detail="Challenge ceremony mismatch")
--
++    """Verifies the biometric assertion and returns a gateway session."""
++    challenge, client_data_raw = _consume_challenge(str(req.response.get("clientDataJSON", "")), "login")
+ 
 -    cred_id_b64 = req.id
 -    passkey = get_user_passkey(cred_id_b64)
-+    passkey = _store(passkey_store.get_user_passkey, req.id)
++    passkey = _store(get_user_passkey, req.id)
      if not passkey:
          raise HTTPException(status_code=401, detail="Passkey not recognized or has been revoked")
  
@@ -693,7 +699,7 @@ index d1135b5d..45cd6953 100644
 +    if auth.sign_count > 0 and auth.sign_count <= stored_counter:
 +        logger.warning("Passkey sign counter regressed for credential %s…", req.id[:12])
 +        raise HTTPException(status_code=403, detail="Potential cloned authenticator detected")
-+    _store(passkey_store.update_passkey_usage, req.id, auth.sign_count)
++    _store(update_passkey_usage, req.id, auth.sign_count)
  
 +    owner = passkey["user_id"]
 +    token, role = _mint_passkey_session(owner)
@@ -719,7 +725,7 @@ index d1135b5d..45cd6953 100644
          "role": role,
          "device_name": passkey.get("device_name"),
      }
-@@ -494,21 +445,15 @@ async def verify_login(req: LoginVerifyRequest, request: Request, response: Resp
+@@ -494,21 +461,15 @@ async def verify_login(req: LoginVerifyRequest, request: Request, response: Resp
  
  @router.get("/devices")
  async def list_devices(request: Request, user_id: Optional[str] = None):
@@ -732,7 +738,7 @@ index d1135b5d..45cd6953 100644
      owner = _require_passkey_owner(request)
 -    devices = list_user_passkeys(owner)
 -    return {"devices": devices}
-+    return {"devices": _store(passkey_store.list_user_passkeys, owner)}
++    return {"devices": _store(list_user_passkeys, owner)}
  
  
  @router.delete("/devices/{credential_id}")
@@ -742,7 +748,7 @@ index d1135b5d..45cd6953 100644
      owner = _require_passkey_owner(request)
 -    success = revoke_user_passkey(credential_id, owner)
 -    if not success:
-+    if not _store(passkey_store.revoke_user_passkey, credential_id, owner):
++    if not _store(revoke_user_passkey, credential_id, owner):
          raise HTTPException(status_code=404, detail="Device not found or unauthorized")
      return {"status": "success", "message": "Passkey revoked successfully"}
 diff --git a/gateway/service/passkey_store.py b/gateway/service/passkey_store.py
