@@ -162,6 +162,7 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   authCreateBtn: 'ওয়ার্কস্পেস তৈরি করুন',
   authContinueGuestBtn: 'গেস্ট হিসেবে চালিয়ে যান (চ্যাট ও ভয়েস)',
   authFooterVault: 'SupremeAI জিরো-ট্রাস্ট ভল্ট • TOTP ও বায়োমেট্রিক 2FA সুরক্ষিত',
+  authCaptchaPending: 'একটি ছোট নিরাপত্তা যাচাই চলছে। একটু পরে আবার চেষ্টা করুন।',
   authLoginErrorFallback: 'সাইন ইন ব্যর্থ হয়েছে। আপনার ইমেইল ও পাসওয়ার্ড যাচাই করুন।',
   authSignupErrorFallback: 'অ্যাকাউন্ট তৈরি ব্যর্থ হয়েছে। তথ্যগুলো পুনরায় যাচাই করুন।',
   // Tips & Micro Survey

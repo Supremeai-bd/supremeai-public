@@ -138,7 +138,7 @@ export function applyCorsHeaders(
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   headers.set(
     'Access-Control-Allow-Headers',
-    'Content-Type, Authorization, X-SupremeAI-Key, X-Admin-Token, Accept, Cache-Control, X-Vault-Cookie'
+    'Content-Type, Authorization, X-SupremeAI-Key, X-Admin-Token, Accept, Cache-Control, X-Vault-Cookie, X-Turnstile-Token'
   );
   headers.set(
     'Access-Control-Expose-Headers',

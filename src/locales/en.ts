@@ -163,6 +163,7 @@ export const EN_DICT = {
   authCreateBtn: 'Create Workspace',
   authContinueGuestBtn: 'Continue as Guest (Chat & Voice)',
   authFooterVault: 'SupremeAI Zero-Trust Vault • TOTP & WebAuthn Biometric 2FA Enabled',
+  authCaptchaPending: 'Running a quick security check. Please try again in a moment.',
   authLoginErrorFallback: 'Authentication failed. Please check your credentials.',
   authSignupErrorFallback: 'Registration failed. Please check your input.',
   // Tips & Micro Survey

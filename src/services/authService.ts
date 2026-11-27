@@ -3,6 +3,7 @@ import { AuthUser } from '../types';
 import { env } from '../config/env';
 import { DEFAULT_BACKEND_ORIGIN } from '../config/platformEndpoints';
 import { logger } from '../utils/logger';
+import { captchaHeaders } from '../utils/turnstile';
 
 export interface LoginResponse {
   success: boolean;
@@ -164,7 +165,11 @@ export function normalizeAuthUser(
 }
 
 export const authService = {
-  async login(email: string, password: string): Promise<LoginResponse> {
+  async login(
+    email: string,
+    password: string,
+    captchaToken?: string | null
+  ): Promise<LoginResponse> {
     if (env.isMockEnabled) {
       const cleanEmail = email.trim().toLowerCase();
       const isAdmin = isAuthorizedAdminEmail(cleanEmail);
@@ -186,11 +191,15 @@ export const authService = {
       };
     }
 
-    const data = await apiClient.post<any>('/api/v1/auth/login', {
-      username: email,
-      email,
-      password,
-    });
+    const data = await apiClient.post<any>(
+      '/api/v1/auth/login',
+      {
+        username: email,
+        email,
+        password,
+      },
+      { headers: captchaHeaders(captchaToken) }
+    );
     const token = data.access_token || data.token || '';
     const user = normalizeAuthUser(data, email);
     if (!user) {
@@ -213,7 +222,8 @@ export const authService = {
     email: string,
     password: string,
     plan: string = 'Pro',
-    isDeveloperEligible: boolean = false
+    isDeveloperEligible: boolean = false,
+    captchaToken?: string | null
   ): Promise<LoginResponse> {
     if (env.isMockEnabled) {
       const cleanEmail = email.trim().toLowerCase();
@@ -236,15 +246,19 @@ export const authService = {
       };
     }
 
-    const data = await apiClient.post<any>('/api/v1/auth/register', {
-      username: email,
-      email,
-      password,
-      name,
-      plan,
-      isDeveloperEligible,
-      workspaceFocus: isDeveloperEligible ? 'developer' : 'everyday',
-    });
+    const data = await apiClient.post<any>(
+      '/api/v1/auth/register',
+      {
+        username: email,
+        email,
+        password,
+        name,
+        plan,
+        isDeveloperEligible,
+        workspaceFocus: isDeveloperEligible ? 'developer' : 'everyday',
+      },
+      { headers: captchaHeaders(captchaToken) }
+    );
     const token = data.access_token || data.token || '';
     const normalized = normalizeAuthUser(data, email, name);
     if (!normalized) {

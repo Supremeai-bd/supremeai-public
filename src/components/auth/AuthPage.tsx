@@ -19,6 +19,8 @@ import { ThemeControlPopover } from '../theme/ThemeControlPopover';
 import { usePlatformStore } from '../../stores/usePlatformStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useI18n } from '../../utils/i18n';
+import { fetchTurnstileSiteKey } from '../../utils/turnstile';
+import { TurnstileWidget } from './TurnstileWidget';
 
 interface AuthPageProps {
   onLoginSuccess: (user: AuthUser, token?: string) => void;
@@ -44,6 +46,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Turnstile bot check: empty siteKey = disabled (no env yet, or desktop/VS Code app).
+  const [captchaSiteKey, setCaptchaSiteKey] = useState('');
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaWidgetKey, setCaptchaWidgetKey] = useState(0);
 
   const config = usePlatformStore((s) => s.config);
   const fetchConfig = usePlatformStore((s) => s.fetchConfig);
@@ -54,6 +60,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   useEffect(() => {
     fetchConfig();
   }, [fetchConfig]);
+
+  useEffect(() => {
+    let active = true;
+    void fetchTurnstileSiteKey().then((key) => {
+      if (active) setCaptchaSiteKey(key);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handlePasskeySignIn = async () => {
     setIsLoading(true);
@@ -86,20 +102,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (captchaSiteKey && !captchaToken) {
+      setErrorMessage(t.authCaptchaPending);
+      return;
+    }
     setIsLoading(true);
     setErrorMessage(null);
     clearAuthError();
 
     try {
       if (mode === 'login') {
-        const ok = await login(email.trim(), password);
+        const ok = await login(email.trim(), password, captchaToken);
         const state = useAuthStore.getState();
         if (!ok || !state.authUser) {
           throw new Error(state.authError || t.authLoginErrorFallback);
         }
         onLoginSuccess(state.authUser, localStorage.getItem('supremeai_access_token') || undefined);
       } else {
-        const ok = await signup(name.trim(), email.trim(), password, 'Free', false);
+        const ok = await signup(name.trim(), email.trim(), password, 'Free', false, captchaToken);
         const state = useAuthStore.getState();
         if (!ok || !state.authUser) {
           throw new Error(state.authError || t.authSignupErrorFallback);
@@ -110,6 +130,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       setErrorMessage(err instanceof Error ? err.message : t.authLoginErrorFallback);
     } finally {
       setIsLoading(false);
+      // Turnstile tokens are single-use: mount a fresh widget for the next attempt.
+      if (captchaSiteKey) {
+        setCaptchaToken(null);
+        setCaptchaWidgetKey((k) => k + 1);
+      }
     }
   };
 
@@ -332,6 +357,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 <span>{t.authRememberDevice}</span>
               </label>
             </div>
+
+            {captchaSiteKey && (
+              <TurnstileWidget
+                key={captchaWidgetKey}
+                siteKey={captchaSiteKey}
+                onToken={setCaptchaToken}
+              />
+            )}
 
             <button
               type="submit"
