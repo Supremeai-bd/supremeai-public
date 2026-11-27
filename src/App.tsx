@@ -238,6 +238,7 @@ import { AdminSectionTabs } from './components/admin/AdminSectionTabs';
 import { UserProject, ChatAttachment } from './types';
 import { useI18n } from './utils/i18n';
 import { FOCUS_CHAT_SEARCH_EVENT } from './utils/chatSearch';
+import { AppCommandPalette } from './components/AppCommandPalette';
 import { executeScheduledTaskOnce, loadScheduledTasks } from './services/browserVaultService';
 import { getCronMinuteKey, matchesCronAtDate } from './shared/cronMatcher';
 
@@ -2046,6 +2047,7 @@ export default function App() {
           />
         )}
 
+        <AppCommandPalette isAdmin={effectiveRole === 'admin'} onSelectTab={handleSelectTab} />
         <OfflineIndicator />
         <ToastContainer />
       </div>
