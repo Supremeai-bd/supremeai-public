@@ -22,8 +22,9 @@ import {
 } from 'lucide-react';
 import { DEFAULT_GATEWAY_URL } from '../../bridge/desktopBridge';
 import {
+  fetchPasskeyDevices,
   isPasskeySupported,
-  listPasskeyDevices,
+  mergePasskeyDevices,
   registerPasskey,
   revokePasskeyDevice,
   type PasskeyDevice,
@@ -161,10 +162,11 @@ export const PersonalMcpHubCard: React.FC<PersonalMcpHubCardProps> = ({
       // Honest offline state: leave mcpState null so UI explains unconfigured state
     }
 
-    // 2. Registered Passkeys
+    // 2. Registered Passkeys (owner = signed-in session; errors are shown, not hidden)
     if (userId) {
-      const devs = await listPasskeyDevices(userId);
-      setPasskeys(devs);
+      const listed = await fetchPasskeyDevices(userId);
+      setPasskeys(listed.devices);
+      if (!listed.ok && listed.error) setPasskeyStatus(listed.error);
     }
 
     // 3. Personal Memory Graph
@@ -274,24 +276,24 @@ export const PersonalMcpHubCard: React.FC<PersonalMcpHubCardProps> = ({
   };
 
   const handleRegisterPasskey = async () => {
+    if (passkeyBusy) return;
     setPasskeyBusy(true);
-    setPasskeyStatus(null);
-    const res = await registerPasskey(
-      userEmail || `${userId || 'user'}@supremeai.local`,
-      userName || userEmail || 'SupremeAI User',
-      navigator.platform || 'Biometric Device'
-    );
-    if (res.ok) {
-      setPasskeyStatus('Biometric Passkey registered on this device.');
-      if (userId) {
-        setPasskeys(await listPasskeyDevices(userId));
-      } else if (res.device) {
-        setPasskeys((prev) => [...prev, res.device!]);
+    setPasskeyStatus('Follow the prompt from your device (Windows Hello, Touch ID, …).');
+    try {
+      const res = await registerPasskey(
+        userEmail || `${userId || 'user'}@supremeai.local`,
+        userName || userEmail || 'SupremeAI User'
+      );
+      if (!res.ok) {
+        setPasskeyStatus(res.error || 'Passkey registration did not complete.');
+        return;
       }
-    } else {
-      setPasskeyStatus(res.error || 'Passkey registration did not complete.');
+      setPasskeyStatus('Passkey saved for this account.');
+      const listed = await fetchPasskeyDevices(userId);
+      setPasskeys((prev) => mergePasskeyDevices(listed.ok ? listed.devices : prev, res.device));
+    } finally {
+      setPasskeyBusy(false);
     }
-    setPasskeyBusy(false);
   };
 
   const handleRevokePasskey = async (credId: string) => {
@@ -300,6 +302,8 @@ export const PersonalMcpHubCard: React.FC<PersonalMcpHubCardProps> = ({
     const ok = await revokePasskeyDevice(credId, userId);
     if (ok) {
       setPasskeys((prev) => prev.filter((d) => d.credential_id !== credId));
+    } else {
+      setPasskeyStatus('Could not remove that passkey. Please try again.');
     }
     setPasskeyBusy(false);
   };
