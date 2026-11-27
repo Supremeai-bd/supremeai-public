@@ -13,6 +13,8 @@ import {
   Trash2,
   Loader2,
   Sparkles,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import {
   POOL_PROVIDER_MANIFESTS,
@@ -32,6 +34,13 @@ import { useI18n } from '../../utils/i18n';
 
 interface BoostLimitViewProps {
   isGuest?: boolean;
+  /**
+   * বাংলা মন্তব্য: আগের আলাদা "API Keys & Providers" কনসোল (নিজের কী, গেটওয়ে কী, ওয়েবহুক) —
+   * এখন এখানেই, ভাঁজ করা অবস্থায়। সাইডবারে আলাদা এন্ট্রি নেই।
+   */
+  advanced?: React.ReactNode;
+  /** Open the advanced section on first render (old `user-api-keys` deep links). */
+  advancedOpen?: boolean;
 }
 
 const formatTokens = (n: number): string =>
@@ -46,7 +55,12 @@ const formatTokens = (n: number): string =>
  * নতুন ডিজাইনে ফেরত)। ইউজারকে প্রোভাইডার বাছতে হয় না: কী পেস্ট করলেই ফরম্যাট দেখে নিজে চিনে নেয়,
  * সার্ভার যাচাই করে, তারপর দৈনিক বোনাস যোগ হয়। কাঁচা কী ব্রাউজারে কোথাও জমা থাকে না।
  */
-export const BoostLimitView: React.FC<BoostLimitViewProps> = ({ isGuest = false }) => {
+export const BoostLimitView: React.FC<BoostLimitViewProps> = ({
+  isGuest = false,
+  advanced,
+  advancedOpen = false,
+}) => {
+  const [showAdvanced, setShowAdvanced] = useState(advancedOpen);
   const { lang } = useI18n();
   const bn = lang === 'bn';
   const L = (bnText: string, enText: string) => (bn ? bnText : enText);
@@ -476,6 +490,33 @@ export const BoostLimitView: React.FC<BoostLimitViewProps> = ({ isGuest = false 
           </ul>
         )}
       </section>
+
+      {advanced && (
+        <section
+          className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70"
+          data-testid="boost-advanced"
+        >
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            aria-expanded={showAdvanced}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100 cursor-pointer"
+          >
+            <span className="flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-blue-500" />
+              {L('নিজের কী ও ওয়েবহুক', 'My own keys & webhooks')}
+            </span>
+            {showAdvanced ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+          </button>
+          {showAdvanced && (
+            <div className="border-t border-slate-200 dark:border-slate-800">{advanced}</div>
+          )}
+        </section>
+      )}
     </div>
   );
 };

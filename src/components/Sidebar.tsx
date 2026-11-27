@@ -7,7 +7,6 @@ import {
   Edit2,
   Check,
   Users,
-  Key,
   Zap,
   CreditCard,
   LogOut,
@@ -434,7 +433,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onClick={() => onSelectTab('boost-limit')}
             data-testid="sidebar-boost-limit"
             className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors cursor-pointer ${
-              activeTab === 'boost-limit'
+              activeTab === 'boost-limit' || activeTab === 'user-api-keys'
                 ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-900 dark:text-white font-medium'
                 : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
@@ -531,18 +530,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => onSelectTab('user-api-keys')}
-                      className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                        activeTab === 'user-api-keys'
-                          ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-900 dark:text-white font-medium'
-                          : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
-                      }`}
-                    >
-                      <Key className="w-3.5 h-3.5 text-blue-500" />
-                      <span>{t.apiKeysProviders}</span>
-                    </button>
 
                 <AiMemoryPanel />
               </div>
