@@ -124,6 +124,9 @@ const AdminGitHubPipelineView = React.lazy(() =>
 const AdminCustomersView = React.lazy(() =>
   import('./components/admin/AdminCustomersView').then((m) => ({ default: m.AdminCustomersView }))
 );
+const AdminTeamAccessView = React.lazy(() =>
+  import('./components/admin/AdminTeamAccessView').then((m) => ({ default: m.AdminTeamAccessView }))
+);
 const AdminMcpTowerView = React.lazy(() =>
   import('./components/admin/AdminMcpTowerView').then((m) => ({ default: m.AdminMcpTowerView }))
 );
@@ -1881,6 +1884,8 @@ export default function App() {
                               }}
                             />
                           )}
+
+                          {activeTab === 'team-access' && <AdminTeamAccessView />}
 
                           {activeTab === 'health-monitor' && <ControlCenterHealthMonitorView />}
 

@@ -22,6 +22,7 @@ export const ADMIN_ONLY_TABS = new Set([
   'security',
   'system-audit',
   'customers',
+  'team-access',
 ]);
 
 // বাংলা মন্তব্য: সব ফিচার সবার জন্য উন্মুক্ত — কোনো ট্যাব কৃত্রিমভাবে লক থাকবে না
@@ -55,6 +56,7 @@ export const SUBVIEW_TITLES: Record<string, string> = {
   security: 'Security & Firewall',
   'system-audit': 'System Audit Log',
   customers: 'Customer Directory',
+  'team-access': 'Team & Access',
   'mcp-tower': 'MCP Service Tower',
 };
 
@@ -100,6 +102,7 @@ export function getLocalizedSubviewTitle(
     security: t.subviewSecurity,
     'system-audit': t.subviewSystemAudit,
     customers: t.subviewCustomers,
+    'team-access': t.teamTitle,
     'mcp-tower': t.subviewMcpTower,
   };
   return localizedMap[tab] || SUBVIEW_TITLES[tab] || t.workspaceFallbackTitle;
