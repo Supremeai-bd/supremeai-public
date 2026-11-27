@@ -193,6 +193,28 @@ export function recordUserMemory(update: {
   return next;
 }
 
+/** Remove one remembered topic (case-insensitive). বাংলা: একটা বিষয় ভুলে যাও। */
+export function forgetUserMemoryTopic(topic: string): UserMemoryProfile {
+  const current = loadUserMemory();
+  const needle = topic.trim().toLowerCase();
+  const next: UserMemoryProfile = {
+    ...current,
+    recentTopics: current.recentTopics.filter((t) => t.toLowerCase() !== needle),
+    updatedAt: Date.now(),
+  };
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(USER_MEMORY_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Ignore quota issues
+    }
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(USER_MEMORY_UPDATED_EVENT, { detail: next }));
+  }
+  return next;
+}
+
 export function clearUserMemory(): void {
   if (typeof localStorage !== 'undefined') {
     try {

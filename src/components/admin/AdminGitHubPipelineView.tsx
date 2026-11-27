@@ -53,13 +53,22 @@ function loadStoredDurationThreshold(): number {
 
 type Run = GitHubWorkflowRun;
 
+type BranchRef = string | { ref?: string; label?: string } | null | undefined;
+
 interface Pull {
   number: number;
   title: string;
-  head?: string;
-  base?: string;
+  head?: BranchRef;
+  base?: BranchRef;
   html_url: string;
   user: string | { login?: string };
+}
+
+/** GitHub returns `head`/`base` as objects; the gateway returns plain strings. */
+export function branchName(ref: BranchRef): string {
+  if (!ref) return '';
+  if (typeof ref === 'string') return ref;
+  return String(ref.ref || ref.label || '');
 }
 
 export const AdminGitHubPipelineView: React.FC = () => {
@@ -201,8 +210,11 @@ export const AdminGitHubPipelineView: React.FC = () => {
     try {
       await adminService.triggerGitHubPullAction(repo, number, action);
       setActionMsg(`PR #${number} ${action} completed.`);
+      toast.success(`PR #${number}`, action === 'approve' ? 'Approved on GitHub.' : 'Merged on GitHub.');
     } catch (err) {
-      setActionMsg(err instanceof Error ? err.message : `Failed to ${action} PR #${number}.`);
+      const message = err instanceof Error ? err.message : `Failed to ${action} PR #${number}.`;
+      setActionMsg(message);
+      toast.error(`PR #${number} ${action} failed`, message, 12000);
     }
     setTimeout(() => setActionMsg(null), 4000);
     void load();
@@ -702,7 +714,9 @@ export const AdminGitHubPipelineView: React.FC = () => {
                     PR #{pr.number}: {pr.title}
                   </div>
                   <div className="text-xs text-slate-500 font-mono mt-0.5">
-                    {pr.head && pr.base ? `${pr.head} -> ${pr.base} · ` : ''}requested by{' '}
+                    {branchName(pr.head) && branchName(pr.base)
+                      ? `${branchName(pr.head)} -> ${branchName(pr.base)} · `
+                      : ''}requested by{' '}
                     {getPullAuthor(pr.user)}
                   </div>
                 </div>

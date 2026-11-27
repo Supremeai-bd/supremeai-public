@@ -22,7 +22,6 @@ import {
   X,
   ChevronDown,
   ChevronRight,
-  Brain,
   Eye,
   EyeOff,
 } from 'lucide-react';
@@ -32,7 +31,7 @@ import { PlatformDownloadsCard } from './common/PlatformDownloadsCard';
 import { useI18n } from '../utils/i18n';
 import { useAuthStore } from '../stores/useAuthStore';
 import { isAuthorizedAdminEmail } from '../services/authService';
-import { clearUserMemory, loadUserMemory } from '../services/intentOrchestrator';
+import { AiMemoryPanel } from './user/AiMemoryPanel';
 import { FOCUS_CHAT_SEARCH_EVENT, searchChatSessions } from '../utils/chatSearch';
 
 // বাংলা মন্তব্য: সাইডবারে প্রথমে এতগুলো সাম্প্রতিক চ্যাট; বাকিগুলো "Show all" চাপলে (আলাদা ট্যাব নেই)
@@ -89,9 +88,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [showInlinePassword, setShowInlinePassword] = useState(false);
   const [inlineError, setInlineError] = useState('');
   const [showMoreWorkspace, setShowMoreWorkspace] = useState(false);
-  const [memoryTopicsCount, setMemoryTopicsCount] = useState(
-    () => loadUserMemory().recentTopics.length
-  );
   // বাংলা মন্তব্য: "All Conversations" ট্যাবের বদলে সাইডবারেই চ্যাট সার্চ (শিরোনাম + মেসেজ)
   const [chatQuery, setChatQuery] = useState('');
   const [showAllRecent, setShowAllRecent] = useState(false);
@@ -471,7 +467,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => {
-                setMemoryTopicsCount(loadUserMemory().recentTopics.length);
                 setShowMoreWorkspace((v) => !v);
               }}
               className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/40 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
@@ -549,24 +544,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <span>{t.apiKeysProviders}</span>
                     </button>
 
-                <div className="flex items-center justify-between px-3 py-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-                  <span className="inline-flex items-center gap-2">
-                    <Brain className="w-3.5 h-3.5 text-cyan-500" />
-                    <span>AI Memory ({memoryTopicsCount})</span>
-                  </span>
-                  {memoryTopicsCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearUserMemory();
-                        setMemoryTopicsCount(0);
-                      }}
-                      className="text-[10px] text-slate-400 hover:text-rose-500 underline cursor-pointer"
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
+                <AiMemoryPanel />
               </div>
             )}
           </div>

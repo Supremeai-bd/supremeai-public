@@ -194,7 +194,15 @@ type Env = Record<string, string | undefined> | undefined;
 function infisicalApiBase(env: Env): string {
   return String(env?.INFISICAL_API_URL || env?.INFISICAL_SITE_URL || 'https://app.infisical.com')
     .trim()
-    .replace(/\/+$/, '');
+    .replace(/\/+$/, '')
+    .replace(/\/api$/i, '');
+}
+
+/** Infisical's own reason (e.g. "Folder with path '/' in environment 'prod' not found"). No secrets. */
+function infisicalReason(data: unknown): string {
+  const msg =
+    data && typeof data === 'object' ? String((data as { message?: unknown }).message || '') : '';
+  return msg ? `: ${msg.replace(/\s+/g, ' ').slice(0, 200)}` : '';
 }
 
 export function missingInfisicalEnv(env: Env): string[] {
@@ -248,7 +256,9 @@ export async function readInfisicalSecrets(
       8000
     );
     token = String(login.data?.accessToken || '');
-    if (!login.ok || !token) throw new Error(`Infisical login failed (HTTP ${login.status})`);
+    if (!login.ok || !token) {
+      throw new Error(`Infisical login failed (HTTP ${login.status})${infisicalReason(login.data)}`);
+    }
   }
   const q = new URLSearchParams({
     workspaceId: String(env?.INFISICAL_PROJECT_ID || '').trim(),
@@ -262,7 +272,15 @@ export async function readInfisicalSecrets(
     { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
     9000
   );
-  if (!res.ok) throw new Error(`Infisical secrets read failed (HTTP ${res.status})`);
+  if (!res.ok) {
+    const hint =
+      res.status === 404
+        ? ` — check INFISICAL_PROJECT_ID, environment "${environment}" and path "${secretPath}"`
+        : '';
+    throw new Error(
+      `Infisical secrets read failed (HTTP ${res.status})${infisicalReason(res.data)}${hint}`
+    );
+  }
   const items: Array<{ secretKey?: string; secretValue?: string; secretPath?: string }> =
     Array.isArray(res.data?.secrets) ? res.data.secrets : [];
   const secrets: VaultSecret[] = [];
