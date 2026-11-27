@@ -132,34 +132,9 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
     }
   };
 
-  // Event delegation for code block copy, sandbox run, preview, and workspace dock buttons inside markdown
+  // Event delegation for code block copy, open-in-editor and schedule buttons inside markdown.
+  // বাংলা মন্তব্য: Run/Preview/Terminal বাটন সরানো হয়েছে — কোড নিজে থেকেই চলে।
   const handleContainerClick = useCallback((e: React.MouseEvent) => {
-    const runBtn = (e.target as HTMLElement).closest('.run-code-btn') as HTMLButtonElement | null;
-    if (runBtn) {
-      const encodedCode = runBtn.getAttribute('data-code');
-      const lang = runBtn.getAttribute('data-lang') || 'javascript';
-      if (encodedCode) {
-        useWorkspaceStore
-          .getState()
-          .loadCodeIntoWorkspace(decodeURIComponent(encodedCode), lang, 'sandbox', true);
-      }
-      return;
-    }
-
-    const previewBtn = (e.target as HTMLElement).closest(
-      '.preview-code-btn'
-    ) as HTMLButtonElement | null;
-    if (previewBtn) {
-      const encodedCode = previewBtn.getAttribute('data-code');
-      const lang = previewBtn.getAttribute('data-lang') || 'html';
-      if (encodedCode) {
-        useWorkspaceStore
-          .getState()
-          .loadCodeIntoWorkspace(decodeURIComponent(encodedCode), lang, 'preview');
-      }
-      return;
-    }
-
     const editBtn = (e.target as HTMLElement).closest('.edit-code-btn') as HTMLButtonElement | null;
     if (editBtn) {
       const encodedCode = editBtn.getAttribute('data-code');
@@ -169,16 +144,6 @@ export const ChatThread: React.FC<ChatThreadProps> = ({
           .getState()
           .loadCodeIntoWorkspace(decodeURIComponent(encodedCode), lang, 'code');
       }
-      return;
-    }
-
-    const terminalBtn = (e.target as HTMLElement).closest(
-      '.terminal-code-btn'
-    ) as HTMLButtonElement | null;
-    if (terminalBtn) {
-      const ws = useWorkspaceStore.getState();
-      ws.setActiveDockTab('terminal');
-      ws.setDockOpen(true);
       return;
     }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMemoryContextPrompt,
   detectDirectDashboardActionWithPayload,
+  isRunLastCodeCommand,
   shouldEnableSmartDeveloperMode,
 } from './intentOrchestrator';
 
@@ -83,5 +84,45 @@ describe('intentOrchestrator smart commands & adaptive memory', () => {
     expect(prompt).toMatch(/Bengali/);
     expect(prompt).toMatch(/brief, direct answers/i);
     expect(prompt).toMatch(/ecommerce, invoice/);
+  });
+});
+
+describe('run-last-code voice/chat command (replaces chat Run/Preview buttons)', () => {
+  it('detects short EN / BN / Banglish run commands', () => {
+    for (const phrase of [
+      'run it',
+      'Run',
+      'preview',
+      'please run the code',
+      'show me the preview',
+      'run it again',
+      'চালাও',
+      'কোডটা চালাও',
+      'প্রিভিউ দেখাও',
+      'রান করো',
+      'chalao',
+      'eta chalao',
+      'preview dekhao',
+      'run koro',
+    ]) {
+      expect(isRunLastCodeCommand(phrase), phrase).toBe(true);
+      expect(detectDirectDashboardActionWithPayload(phrase, false).action, phrase).toBe(
+        'run_last_code'
+      );
+    }
+  });
+
+  it('does not hijack real requests that merely mention running', () => {
+    for (const phrase of [
+      'run a marathon',
+      'show me how to run a node server',
+      'preview of the new iphone',
+      'write code to run',
+      'how do I run python',
+      'chalao ekta website',
+      'open settings',
+    ]) {
+      expect(isRunLastCodeCommand(phrase), phrase).toBe(false);
+    }
   });
 });

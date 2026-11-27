@@ -557,7 +557,6 @@ describe('Workspace Dock Localization Completeness', () => {
       'wsOpenInTerminalBtn',
       'wsScriptRunnerBtn',
       'wsLiveAutoPreviewHint',
-      'wsChatTerminalBtn',
     ] as const;
 
     for (const key of keys) {

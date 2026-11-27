@@ -30,11 +30,7 @@ import { ResearchReportViewer } from './ResearchReportViewer';
 import { useI18n } from '../../utils/i18n';
 import { formatChatTimestampWithMs, formatResponseDeltaMs } from '../../utils/chatTimestamp';
 import { getMessageAttachments, isImageAttachment } from '../../utils/imageAttachmentUtils';
-import {
-  classifyCodeLanguage,
-  extractVirtualProject,
-  isShellCommandLanguage,
-} from '../../utils/artifactStreamParser';
+import { extractVirtualProject } from '../../utils/artifactStreamParser';
 import { downloadProjectZip } from '../../utils/projectZipExport';
 
 interface ChatMessageItemProps {
@@ -57,20 +53,12 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
-function createMarkdownProcessor(
-  showDockButtons: boolean,
-  showTerminalAction: boolean,
-  hasExtractedProject: boolean,
-  labels: {
-    savedTitle: string;
-    openTabLabel: string;
-    previewLabel: string;
-    sandboxLabel: string;
-    codeLabel: string;
-    terminalLabel: string;
-    copyLabel: string;
-  }
-) {
+function createMarkdownProcessor(labels: {
+  savedTitle: string;
+  openTabLabel: string;
+  codeLabel: string;
+  copyLabel: string;
+}) {
   const processor = new Marked({
     gfm: true,
     breaks: true,
@@ -117,38 +105,12 @@ function createMarkdownProcessor(
         }
         const escapedText = escapeHtml(text);
         const encodedCode = encodeURIComponent(text);
-        const lowerBase = cleanLang.toLowerCase();
-        const codeCategory = classifyCodeLanguage(cleanLang);
-        const isConfigJsonInProject =
-          hasExtractedProject &&
-          (lowerBase === 'json' || lowerBase === 'yaml' || lowerBase === 'yml');
-        const canPreviewInBrowser =
-          !isConfigJsonInProject && (codeCategory !== 'non-browser' || lowerBase === 'php');
-        const isShell = isShellCommandLanguage(cleanLang);
-
-        const dockActions = showDockButtons
-          ? `${
-              canPreviewInBrowser
-                ? `<button type="button" class="preview-code-btn flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 transition-colors text-[11px] cursor-pointer whitespace-nowrap shrink-0" data-code="${encodedCode}" data-lang="${escapeHtml(cleanLang)}">
-                    <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-                    <span>${escapeHtml(labels.previewLabel)}</span>
-                  </button>`
-                : showTerminalAction && isShell
-                  ? `<button type="button" class="terminal-code-btn flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 transition-colors text-[11px] cursor-pointer whitespace-nowrap shrink-0" data-code="${encodedCode}" data-lang="${escapeHtml(cleanLang)}">
-                      <span>${escapeHtml(labels.terminalLabel)}</span>
-                    </button>`
-                  : ''
-            }${
-              showTerminalAction && codeCategory === 'script'
-                ? `<button type="button" class="run-code-btn flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 transition-colors text-[11px] cursor-pointer whitespace-nowrap shrink-0" data-code="${encodedCode}" data-lang="${escapeHtml(cleanLang)}">
-                    <span>${escapeHtml(labels.sandboxLabel)}</span>
-                  </button>`
-                : ''
-            }
-            <button type="button" class="edit-code-btn flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-800 text-slate-300 hover:text-cyan-300 transition-colors text-[11px] cursor-pointer whitespace-nowrap shrink-0" data-code="${encodedCode}" data-lang="${escapeHtml(cleanLang)}">
+        // বাংলা মন্তব্য: কোড-ব্লকে আর Run / Preview / Terminal বাটন নেই — AI উত্তর দিলেই
+        // কোড নিজে থেকে ওয়ার্কস্পেসে চলে; আবার চালাতে চাইলে শুধু বলুন "চালাও / run it"।
+        // শুধু "Code" (এডিটরে খোলা) আর Copy রাখা হয়েছে।
+        const dockActions = `<button type="button" class="edit-code-btn flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-800 text-slate-300 hover:text-cyan-300 transition-colors text-[11px] cursor-pointer whitespace-nowrap shrink-0" data-code="${encodedCode}" data-lang="${escapeHtml(cleanLang)}">
               <span>${escapeHtml(labels.codeLabel)}</span>
-            </button>`
-          : '';
+            </button>`;
 
         return `<div class="code-block-wrapper my-3 rounded-xl overflow-hidden border border-slate-700/60 bg-slate-950 shadow-md">
           <div class="code-block-header flex items-center justify-between px-3.5 py-1.5 bg-slate-900 border-b border-slate-800 text-xs font-mono select-none">
@@ -219,20 +181,12 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   const renderedContent = React.useMemo(() => {
     if (isUser) return message.content;
     try {
-      const processor = createMarkdownProcessor(
-        true,
-        Boolean(developerMode),
-        Boolean(extractedProject && extractedProject.files.length > 0),
-        {
-          savedTitle: t.wsScheduleChatCardTitle,
-          openTabLabel: t.wsScheduleViewInTab,
-          previewLabel: t.dockPreview,
-          sandboxLabel: t.dockSandbox,
-          codeLabel: t.dockCode,
-          terminalLabel: t.wsChatTerminalBtn,
-          copyLabel: t.copyBtn,
-        }
-      );
+      const processor = createMarkdownProcessor({
+        savedTitle: t.wsScheduleChatCardTitle,
+        openTabLabel: t.wsScheduleViewInTab,
+        codeLabel: t.dockCode,
+        copyLabel: t.copyBtn,
+      });
       const parsed = processor.parse(message.content);
       return typeof parsed === 'string' ? parsed : '';
     } catch {
@@ -241,14 +195,9 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
   }, [
     message.content,
     isUser,
-    developerMode,
-    extractedProject,
     t.wsScheduleChatCardTitle,
     t.wsScheduleViewInTab,
-    t.dockPreview,
-    t.dockSandbox,
     t.dockCode,
-    t.wsChatTerminalBtn,
     t.copyBtn,
   ]);
 
@@ -441,27 +390,6 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                    <button
-                      type="button"
-                      data-testid="project-card-preview-btn"
-                      onClick={() => {
-                        const ws = useWorkspaceStore.getState();
-                        ws.syncVirtualProject(extractedProject, {
-                          isFinal: true,
-                          autoOpenDock: true,
-                        });
-                        if (
-                          extractedProject.runtime === 'python' ||
-                          extractedProject.runtime === 'node'
-                        ) {
-                          void ws.runCurrentServerProject();
-                        }
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-[11px] font-semibold cursor-pointer whitespace-nowrap shrink-0 transition-colors"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>{t.wsOpenPreviewBtn}</span>
-                    </button>
                     <button
                       type="button"
                       data-testid="project-card-zip-btn"
