@@ -204,11 +204,22 @@ const FALLBACK_CRAWLER_JOBS: CrawlerJob[] = [
   },
 ];
 
+/** Untyped JSON object from an upstream payload; every field is narrowed before use. */
+type LooseRecord = Record<string, unknown>;
+
+function isLooseRecord(value: unknown): value is LooseRecord {
+  return Boolean(value && typeof value === 'object');
+}
+
+function asLooseRecords(list: readonly unknown[]): LooseRecord[] {
+  return list.filter(isLooseRecord);
+}
+
 export function sanitizeMemoryEntries(raw: unknown): MemoryGovernanceEntry[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((item): item is Record<string, any> => Boolean(item && typeof item === 'object'))
-    .map((item, idx) => ({
+    .filter(isLooseRecord)
+    .map((item, idx): MemoryGovernanceEntry => ({
       id: typeof item.id === 'string' && item.id ? item.id : `mem_norm_${idx}`,
       tier:
         item.tier === 'episodic' || item.tier === 'procedural' || item.tier === 'semantic'
@@ -229,9 +240,7 @@ export function sanitizeMemoryEntries(raw: unknown): MemoryGovernanceEntry[] {
 export function sanitizeQdrantCollections(raw: unknown): QdrantCollectionStats[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((item): item is Record<string, any> =>
-      Boolean(item && typeof item === 'object' && item.name)
-    )
+    .filter((item): item is LooseRecord => isLooseRecord(item) && Boolean(item.name))
     .map((item) => ({
       name: String(item.name),
       vectorsCount: Number.isFinite(Number(item.vectorsCount)) ? Number(item.vectorsCount) : 0,
@@ -247,7 +256,7 @@ export function sanitizeQdrantCollections(raw: unknown): QdrantCollectionStats[]
 export function sanitizeAstMatches(raw: unknown): AstGraphMatch[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .filter((item): item is Record<string, any> => Boolean(item && typeof item === 'object'))
+    .filter(isLooseRecord)
     .map((item, idx) => ({
       id: typeof item.id === 'string' && item.id ? item.id : `ast_norm_${idx}`,
       symbol: typeof item.symbol === 'string' ? item.symbol : String(item.name || `node_${idx}`),
@@ -279,7 +288,7 @@ export function normalizeMemoryGraphPayload(
   astMatches: AstGraphMatch[];
   notice: string | null;
 } {
-  const payload = raw && typeof raw === 'object' ? (raw as Record<string, any>) : {};
+  const payload = raw && typeof raw === 'object' ? (raw as LooseRecord) : {};
   const hasFullSchema =
     Array.isArray(payload.entries) &&
     Array.isArray(payload.collections) &&
@@ -338,9 +347,9 @@ export function normalizeComputeBrowserPayload(
   crawlerJobs: CrawlerJob[];
   notice: string | null;
 } {
-  const payload = raw && typeof raw === 'object' ? (raw as Record<string, any>) : {};
+  const payload = raw && typeof raw === 'object' ? (raw as LooseRecord) : {};
   const nestedData =
-    payload.data && typeof payload.data === 'object' ? (payload.data as Record<string, any>) : {};
+    payload.data && typeof payload.data === 'object' ? (payload.data as LooseRecord) : {};
 
   const rawKaggle = Array.isArray(payload.kaggleRuns)
     ? payload.kaggleRuns
@@ -360,14 +369,12 @@ export function normalizeComputeBrowserPayload(
 
   const hasFullSchema = Boolean(rawKaggle && rawAudits && rawCrawlers);
 
-  const kaggleRuns: KaggleKernelRun[] = (
+  const kaggleRuns: KaggleKernelRun[] = asLooseRecords(
     rawKaggle ??
     (current?.kaggleRuns && current.kaggleRuns.length > 0
       ? current.kaggleRuns
       : FALLBACK_KAGGLE_RUNS)
-  )
-    .filter((r: any) => Boolean(r && typeof r === 'object'))
-    .map((r: any, idx: number) => ({
+  ).map((r, idx) => ({
       id: typeof r.id === 'string' && r.id ? r.id : `kgl_norm_${idx}`,
       title: typeof r.title === 'string' && r.title ? r.title : 'unnamed-kernel',
       accelerator:
@@ -387,14 +394,12 @@ export function normalizeComputeBrowserPayload(
       submittedAt: typeof r.submittedAt === 'string' && r.submittedAt ? r.submittedAt : 'Snapshot',
     }));
 
-  const devToolsAudits: DevToolsAuditReport[] = (
+  const devToolsAudits: DevToolsAuditReport[] = asLooseRecords(
     rawAudits ??
     (current?.devToolsAudits && current.devToolsAudits.length > 0
       ? current.devToolsAudits
       : FALLBACK_DEVTOOLS_AUDITS)
-  )
-    .filter((a: any) => Boolean(a && typeof a === 'object'))
-    .map((a: any, idx: number) => ({
+  ).map((a, idx) => ({
       id: typeof a.id === 'string' && a.id ? a.id : `cdp_norm_${idx}`,
       url: typeof a.url === 'string' && a.url ? a.url : '/api/health',
       lcpMs: Number.isFinite(Number(a.lcpMs)) ? Number(a.lcpMs) : 0,
@@ -410,14 +415,12 @@ export function normalizeComputeBrowserPayload(
       provenance: normalizeProvenance(a.provenance, 'local-snapshot'),
     }));
 
-  const crawlerJobs: CrawlerJob[] = (
+  const crawlerJobs: CrawlerJob[] = asLooseRecords(
     rawCrawlers ??
     (current?.crawlerJobs && current.crawlerJobs.length > 0
       ? current.crawlerJobs
       : FALLBACK_CRAWLER_JOBS)
-  )
-    .filter((j: any) => Boolean(j && typeof j === 'object'))
-    .map((j: any, idx: number) => ({
+  ).map((j, idx) => ({
       id: typeof j.id === 'string' && j.id ? j.id : `crawl_norm_${idx}`,
       targetUrl:
         typeof j.targetUrl === 'string' && j.targetUrl
@@ -569,7 +572,7 @@ interface ControlCenterState {
   loadMcpTools: (refresh?: boolean) => Promise<void>;
   runMcpTool: (
     toolName: string,
-    args: Record<string, any>,
+    args: Record<string, unknown>,
     isMutating: boolean,
     actor?: string
   ) => Promise<void>;
