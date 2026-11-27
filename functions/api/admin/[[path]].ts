@@ -15,6 +15,7 @@ import { handleAdminRealDataRoute } from '../../_lib/adminRealDataRoutes';
 import { handleAdminTeamRoute } from '../../_lib/adminTeam';
 import { handleAdminModelRouterRoute } from '../../_lib/adminModelRouter';
 import { handleAdminBackupsRoute } from '../../_lib/adminBackups';
+import { handleAdminFinOpsRoute } from '../../_lib/adminFinOps';
 import {
   handleAdminAuditLogRoute,
   withAdminAudit,
@@ -488,6 +489,9 @@ async function handleAdminRequest(
 
   const backups = await handleAdminBackupsRoute(path, request, env);
   if (backups) return backups;
+
+  const finops = await handleAdminFinOpsRoute(path, request, env, audit);
+  if (finops) return finops;
 
   const realData = await handleAdminRealDataRoute(path, request, env, upstreamOrigin);
   if (realData) return realData;

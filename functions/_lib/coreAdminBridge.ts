@@ -82,7 +82,7 @@ export type CoreCallResult =
 /** Calls a core admin route with the core service token. Never throws. */
 export async function callCoreAdmin(
   env: Env,
-  method: 'GET' | 'POST' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
   body?: unknown,
   opts: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}

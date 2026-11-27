@@ -61,11 +61,12 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
   {
     id: 'ai',
     label: 'AI & Providers',
-    description: 'Provider keys, health, routing, failover and pricing.',
+    description: 'Provider keys, health, routing, failover, pricing and usage limits.',
     group: 'Manage',
     tabs: [
       { id: 'provider-keys', label: 'Provider Keys' },
       { id: 'llm-gateway', label: 'Routing & Pricing' },
+      { id: 'usage-limits', label: 'Usage Limits' },
     ],
   },
   {
