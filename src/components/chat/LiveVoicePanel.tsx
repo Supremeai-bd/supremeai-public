@@ -141,8 +141,14 @@ export const LiveVoicePanel: React.FC<LiveVoicePanelProps> = ({
       data-testid="live-voice-panel"
       aria-label="3D Real-time Voice Companion"
       data-expression={expression}
-      className={`${expressionClass} fixed inset-y-0 right-0 z-40 w-[min(86vw,300px)] bg-slate-950/85 backdrop-blur-xl sm:static sm:z-auto sm:w-[230px] md:w-[300px] lg:w-[350px] xl:w-[390px] sm:bg-transparent sm:backdrop-blur-none shrink-0 h-full border-0 flex flex-col overflow-hidden select-none`}
+      className={`${expressionClass} fixed inset-y-0 right-0 z-40 w-[min(86vw,300px)] bg-slate-950/85 backdrop-blur-xl sm:static sm:z-auto sm:w-[230px] md:w-[300px] lg:w-[350px] xl:w-[390px] sm:bg-gradient-to-b sm:from-slate-50/40 sm:via-transparent sm:to-slate-100/30 dark:sm:from-cyan-950/20 dark:sm:via-transparent dark:sm:to-slate-950/30 sm:backdrop-blur-none shrink-0 h-full border-0 relative flex flex-col overflow-hidden select-none`}
     >
+      {/* চ্যাট ও অবতারের মাঝে হালকা আলোকিত বিভাজক রেখা */}
+      <div
+        aria-hidden="true"
+        data-testid="live-voice-divider"
+        className="hidden sm:block pointer-events-none absolute left-0 top-[8%] bottom-[8%] w-px bg-gradient-to-b from-transparent via-slate-300/80 to-transparent dark:via-cyan-400/40 shadow-[0_0_12px_rgba(34,211,238,0.25)]"
+      />
       <div className="flex-1 w-full h-full min-h-[240px] relative bg-transparent overflow-hidden">
         <LiveVoiceAvatarCanvas
           status={status}

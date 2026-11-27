@@ -10,6 +10,7 @@ import {
   type CustomFaceTraits,
 } from '../../utils/hologramAvatar';
 import { createParticleSpriteTexture } from './avatar3d/avatarTextures';
+import { landmarksToShaderFeatures } from '../../utils/faceAlignment';
 import {
   createArticulatedAvatarRig,
   type ArticulatedAvatarRig,
@@ -76,9 +77,10 @@ function createPlaceholderTexture(fillHex: string): THREE.CanvasTexture {
   return tex;
 }
 
-// Custom photo portrait shaders. বাংলা মন্তব্য: ছবির ওপর কৃত্রিম চোখ/ঠোঁট/পলক আঁকা হয় না —
-// নির্দিষ্ট জায়গায় আঁকা ফিচার আসল মুখের সঙ্গে না মিললে অদ্ভুত দেখায়। ছবি অক্ষুণ্ণ থাকে; শুধু
-// মাথার নড়াচড়া, কথা বলার সময় হালকা ঢেউ, কিনারার আলো আর স্ক্যান-রেখা যোগ হয়।
+// Custom photo portrait shaders. বাংলা মন্তব্য: আগের মতো নির্দিষ্ট জায়গায় কৃত্রিম চোখ/ঠোঁট আঁকা হয় না।
+// আপলোডের সময় ছবিটা ক্যানোনিকাল ফরম্যাটে আনা হয় এবং FaceMesh থেকে আসল চোখ-ঠোঁটের বক্স সেভ হয়।
+// সেই বক্স থাকলে তবেই: (১) আসল চোখের ওপর ত্বকের রঙের পাতা নেমে পলক, (২) চোখের মণি সামান্য সরে
+// তাকানো, (৩) নিচের ঠোঁট-চোয়াল নেমে কথা বলা। বক্স না থাকলে ছবি স্থির থাকে (শুধু মাথা নড়া ও আলো)।
 const HOLOGRAM_VERTEX_SHADER = /* glsl */ `
   uniform sampler2D uDepthMap;
   uniform float uTime;
@@ -114,14 +116,83 @@ const HOLOGRAM_FRAGMENT_SHADER = /* glsl */ `
   uniform float uSpeakEnergy;
   uniform float uListenEnergy;
   uniform vec3 uAccentColor;
+  uniform float uHasFeatures;
+  uniform vec4 uEyeL;
+  uniform vec4 uEyeR;
+  uniform vec4 uMouth;
+  uniform float uBlink;
+  uniform vec2 uLook;
+  uniform float uJaw;
+  uniform float uOh;
 
   varying vec2 vUv;
   varying float vDepth;
   varying vec3 vViewPos;
 
+  float ellipseMask(vec2 uv, vec2 c, vec2 r, float soft) {
+    return 1.0 - smoothstep(1.0 - soft, 1.0, length((uv - c) / max(r, vec2(1e-4))));
+  }
+
+  // Shift the iris/pupil inside the real eye opening toward the gaze direction
+  vec2 eyeWarp(vec2 uv, vec4 eye) {
+    float m = ellipseMask(uv, eye.xy, vec2(eye.z * 0.95, max(eye.w * 1.25, eye.z * 0.3)), 0.75);
+    return uv - uLook * vec2(eye.z * 0.26, eye.w * 0.3) * m;
+  }
+
+  // Jaw drop: everything below the lip seam slides down; the opened gap is filled later
+  vec2 mouthWarp(vec2 uv, out float gapT, out float gapOpen) {
+    vec2 rel = uv - uMouth.xy;
+    float fx = 1.0 - smoothstep(0.55, 1.2, abs(rel.x) / uMouth.z);
+    float open = uJaw * uMouth.z * 0.6 * fx;
+    float near = 1.0 - smoothstep(0.0, uMouth.z * 1.6, abs(rel.y));
+    // "Oh" vowel gently narrows the lips toward the centre
+    uv.x = uMouth.x + rel.x * (1.0 + uOh * 0.16 * near);
+    gapOpen = open;
+    gapT = -1.0;
+    if (rel.y < 0.0) {
+      float fy = 1.0 - smoothstep(0.0, uMouth.z * 2.6, -rel.y);
+      if (-rel.y < open) gapT = -rel.y / max(open, 1e-4);
+      uv.y += open * fy;
+    }
+    return uv;
+  }
+
+  vec3 applyBlink(vec3 color, vec2 uv, vec4 eye) {
+    vec2 r = vec2(eye.z * 1.12, max(eye.w * 1.6, eye.z * 0.34));
+    float inEye = ellipseMask(uv, eye.xy, r, 0.3);
+    if (inEye <= 0.0 || uBlink < 0.02) return color;
+    float topY = eye.y + r.y;
+    float lidY = mix(topY, eye.y - r.y * 0.55, uBlink);
+    float covered = smoothstep(lidY - 0.002, lidY + 0.002, uv.y);
+    vec3 skin = texture2D(uColorMap, vec2(uv.x, topY + r.y * 0.8)).rgb * 0.94;
+    float lashD = (uv.y - lidY) / 0.0032;
+    float lash = exp(-lashD * lashD) * smoothstep(0.25, 0.8, uBlink);
+    color = mix(color, skin, covered * inEye);
+    return mix(color, skin * 0.32, lash * inEye * 0.75);
+  }
+
   void main() {
-    vec4 tex = texture2D(uColorMap, vUv);
+    vec2 uv = vUv;
+    float gapT = -1.0;
+    float gapOpen = 0.0;
+    if (uHasFeatures > 0.5) {
+      uv = eyeWarp(uv, uEyeL);
+      uv = eyeWarp(uv, uEyeR);
+      uv = mouthWarp(uv, gapT, gapOpen);
+    }
+    vec4 tex = texture2D(uColorMap, uv);
     if (tex.a < 0.015) discard;
+    if (uHasFeatures > 0.5) {
+      tex.rgb = applyBlink(tex.rgb, vUv, uEyeL);
+      tex.rgb = applyBlink(tex.rgb, vUv, uEyeR);
+      if (gapT >= 0.0 && gapOpen > 0.0015) {
+        float edge = smoothstep(0.0, 0.18, gapT) * (1.0 - smoothstep(0.8, 1.0, gapT));
+        vec3 inner = vec3(0.17, 0.06, 0.07);
+        float teeth = (1.0 - smoothstep(0.12, 0.36, gapT)) * smoothstep(0.01, 0.03, gapOpen) * 0.65;
+        inner = mix(inner, vec3(0.86, 0.83, 0.78), teeth);
+        tex.rgb = mix(tex.rgb, inner, edge);
+      }
+    }
 
     float eps = 0.004;
     float dL = texture2D(uDepthMap, vUv - vec2(eps, 0.0)).r;
@@ -352,6 +423,14 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
         uListenEnergy: { value: 0 },
         uDepthScale: { value: 0.16 },
         uAccentColor: { value: new THREE.Color(STATUS_ACCENT_COLORS.idle) },
+        uHasFeatures: { value: 0 },
+        uEyeL: { value: new THREE.Vector4(0.37, 0.6, 0.05, 0.015) },
+        uEyeR: { value: new THREE.Vector4(0.63, 0.6, 0.05, 0.015) },
+        uMouth: { value: new THREE.Vector4(0.5, 0.32, 0.09, 0.03) },
+        uBlink: { value: 0 },
+        uLook: { value: new THREE.Vector2(0, 0) },
+        uJaw: { value: 0 },
+        uOh: { value: 0 },
       },
       vertexShader: HOLOGRAM_VERTEX_SHADER,
       fragmentShader: HOLOGRAM_FRAGMENT_SHADER,
@@ -360,7 +439,8 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
       side: THREE.DoubleSide,
     });
 
-    const customBustGeo = new THREE.PlaneGeometry(1.78, 1.78, 96, 96);
+    // Slightly zoomed-out portrait so the soft transparent edges stay visible around the face
+    const customBustGeo = new THREE.PlaneGeometry(1.58, 1.58, 96, 96);
     const customBustMesh = new THREE.Mesh(customBustGeo, hologramMat);
     customBustMesh.position.set(0, 0.04, 0);
     customBustMesh.visible = false;
@@ -812,6 +892,13 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
         hologramMat.uniforms.uSpeakEnergy.value = speakEnergy;
         hologramMat.uniforms.uListenEnergy.value = listenEnergy;
         hologramMat.uniforms.uAccentColor.value.copy(currentAccent);
+        hologramMat.uniforms.uBlink.value = blinkAmount;
+        hologramMat.uniforms.uLook.value.set(
+          THREE.MathUtils.clamp(smoothLookX, -1, 1),
+          THREE.MathUtils.clamp(smoothLookY, -1, 1)
+        );
+        hologramMat.uniforms.uJaw.value = smoothJaw;
+        hologramMat.uniforms.uOh.value = smoothOh;
 
         // বাংলা মন্তব্য: কথা বলার সময় হালকা মাথা নাড়া ও শ্বাসের মতো ছোট স্কেল — মুখ বিকৃত না করে প্রাণবন্ত।
         customBustMesh.rotation.y = smoothYaw * 0.55;
@@ -955,6 +1042,17 @@ export const LiveVoiceAvatarCanvas: React.FC<LiveVoiceAvatarCanvasProps> = ({
         activeTexturesRef.current = { color: colorTex, depth: depthTex };
         refs.hologramMat.uniforms.uColorMap.value = colorTex;
         refs.hologramMat.uniforms.uDepthMap.value = depthTex;
+        // Real eye/mouth boxes from the canonical upload → animate exactly on the user's features
+        const features = isPrestyledHologram
+          ? null
+          : landmarksToShaderFeatures(customTraits?.landmarks);
+        const u = refs.hologramMat.uniforms;
+        u.uHasFeatures.value = features ? 1 : 0;
+        if (features) {
+          u.uEyeL.value.set(...features.leftEye);
+          u.uEyeR.value.set(...features.rightEye);
+          u.uMouth.value.set(...features.mouth);
+        }
 
         unmountRig();
         refs.customBustMesh.visible = true;
