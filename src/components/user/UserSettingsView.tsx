@@ -2,16 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   User,
   Check,
-  Save,
   Gauge,
   Sparkles,
-  ArrowRight,
   Palette,
-  MessageSquareCode,
-  Database,
-  Lightbulb,
   AudioLines,
-  SlidersHorizontal,
   Upload,
   Trash2,
   Volume2,
@@ -24,6 +18,8 @@ import { UserAccountSettings, UserRole } from '../../types';
 import { TranslationKeys, useI18n } from '../../utils/i18n';
 import { AccountSettingsPanel } from './settings/AccountSettingsPanel';
 import { LanguageVoicePanel } from './settings/LanguageVoicePanel';
+import { ProfilePreferencesCard } from './settings/ProfilePreferencesCard';
+import { AdminWorkspaceSwitcher } from './settings/AdminWorkspaceSwitcher';
 import { VOICE_TONE_KEYS } from '../../config/languageVoiceOptions';
 import { PersonalMcpHubCard } from './PersonalMcpHubCard';
 import { useThemeStore } from '../../stores/useThemeStore';
@@ -65,7 +61,6 @@ interface UserSettingsViewProps {
   onRevokeTrustedBrowser?: () => void;
   onSignOut?: () => void;
   onOpenFeedbackSurvey?: () => void;
-  onOpenKnowledgeBase?: () => void;
   initialSubTab?: SettingsSubTab;
   subTabRequestKey?: number;
   onOpenLiveVoice?: () => void;
@@ -77,7 +72,7 @@ const SETTINGS_TABS: Array<{
   labelKey: TranslationKeys;
   icon: React.ReactNode;
 }> = [
-  { id: 'general', labelKey: 'tabGeneral', icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  { id: 'general', labelKey: 'tabProfile', icon: <User className="w-3.5 h-3.5" /> },
   {
     id: 'language-voice',
     labelKey: 'tabLanguageVoice',
@@ -99,7 +94,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   onRevokeTrustedBrowser,
   onOpenFeedbackSurvey,
   onSignOut,
-  onOpenKnowledgeBase,
   initialSubTab = 'general',
   subTabRequestKey = 0,
   onOpenLiveVoice,
@@ -144,11 +138,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
     }
   };
 
-  const [name, setName] = useState(settings.name);
-  const [email, setEmail] = useState(settings.email);
-  const [showWorkspaceTips, setShowWorkspaceTips] = useState(settings.showWorkspaceTips !== false);
-  const [customInstructions, setCustomInstructions] = useState(settings.customInstructions || '');
-  const [savedSuccess, setSavedSuccess] = useState(false);
   const language = useAppPreferencesStore((s) => s.language);
   const centralizedRole = useAppPreferencesStore((s) => s.role);
   const setCentralizedRole = useAppPreferencesStore((s) => s.setRole);
@@ -170,13 +159,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   const pulseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastAvatarSrcRef = useRef<string | null>(null);
   const crossFadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    setName(settings.name);
-    setEmail(settings.email);
-    setShowWorkspaceTips(settings.showWorkspaceTips !== false);
-    setCustomInstructions(settings.customInstructions || '');
-  }, [settings]);
 
   useEffect(() => {
     const unsubscribeTts = ttsService.subscribe((nextCfg) => {
@@ -211,22 +193,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
     }
     lastAvatarSrcRef.current = activeAvatarSource.src;
   }, [activeAvatarSource.src]);
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    onUpdateSettings({
-      name,
-      email,
-      streamResponses: settings.streamResponses ?? true,
-      enableKnowledgeGrounding: settings.enableKnowledgeGrounding ?? true,
-      showWorkspaceTips,
-      language,
-      customInstructions,
-    });
-    setChatCustomInstruction(customInstructions);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
-  };
 
   const triggerPreviewPulse = () => {
     if (pulseTimerRef.current) clearInterval(pulseTimerRef.current);
@@ -294,17 +260,11 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
       setAvatarPref(next);
       saveAvatarPreference(next);
       triggerPreviewPulse();
-      toast.success(
-        'Face Verified & Matched',
-        'Detected your face, extracted skin & hair tones, and mapped it onto your 3D avatar.'
-      );
+      toast.success(t.avatarFaceMatchedTitle, t.avatarFaceMatchedDesc);
     } catch (err) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : 'No human face could be detected. Please upload a clear portrait.';
+      const msg = err instanceof Error ? err.message : t.avatarFaceMissingDesc;
       setAvatarError(msg);
-      toast.error('Face Not Detected', msg);
+      toast.error(t.avatarFaceMissingTitle, msg);
     } finally {
       setIsProcessingAvatar(false);
     }
@@ -319,7 +279,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
     setAvatarPref(next);
     setAvatarError(null);
     saveAvatarPreference(next);
-    toast.info('Custom Photo Removed', 'Switched back to preset 3D hologram avatar.');
+    toast.info(t.avatarPhotoRemovedTitle, t.avatarPhotoRemovedDesc);
   };
 
   const handlePreviewVoiceSample = () => {
@@ -333,7 +293,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
     100,
     Math.round((settings.monthlyTokensUsed / Math.max(1, settings.monthlyTokensLimit)) * 100)
   );
-  const userInitial = (settings.name || name || 'U').trim().charAt(0).toUpperCase() || 'U';
+  const userInitial = (settings.name || 'U').trim().charAt(0).toUpperCase() || 'U';
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-8 workspace-container space-y-6 text-slate-800 dark:text-slate-200">
@@ -378,51 +338,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
       ============================================================ */}
       {activeSubTab === 'general' && (
         <div className="space-y-6">
-          {/* Role Workspace Switcher Card - Only visible when Admin User ID is matched */}
-          {Boolean(isAdminEligible) && (
-            <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-50/80 to-indigo-50/80 dark:from-slate-900 dark:to-slate-900/90 border border-blue-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                    {t.activeWorkspaceLabel}
-                  </span>
-                  <span aria-hidden="true" className="text-slate-400">
-                    ·
-                  </span>
-                  <span className="font-semibold text-slate-900 dark:text-white">
-                    {currentRole === 'admin' ? t.adminStudio : t.customerWorkspaceLabel}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  {currentRole === 'admin' ? t.adminModeSummary : t.customerModeSummary}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                {currentRole === 'admin' && onOpenAdminConsole && (
-                  <button
-                    type="button"
-                    onClick={onOpenAdminConsole}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full border border-blue-300 dark:border-blue-700/70 bg-white/80 dark:bg-slate-800 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:border-blue-500 transition-all cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>{t.opsConsoleTitle}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleSwitchRole(currentRole === 'admin' ? 'user' : 'admin')}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-100 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0"
-                >
-                  <span>
-                    {currentRole === 'admin' ? t.switchToUserViewBtn : t.switchToAdminStudio}
-                  </span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Profile + Usage Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 space-y-4 shadow-xs">
@@ -483,140 +398,12 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
             </div>
           </div>
 
-          {/* Preferences, Custom Instructions & Workspace Form */}
-          <form
-            onSubmit={handleSave}
-            className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 space-y-5 shadow-xs"
-          >
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-slate-500" />
-              <span>{t.preferencesAiModeTitle}</span>
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  {t.authFullNameLabel}
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-slate-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  {t.authWorkEmailLabel}
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-slate-400"
-                />
-              </div>
-            </div>
-
-            {/* বাংলা মন্তব্য: মডেল পিকার ও Auto Routing টগল নেই — সিস্টেম প্রতিটি অনুরোধে নিজেই সেরা মডেল বাছে */}
-            {/* Custom Instructions & Persona Section */}
-            <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 space-y-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    <MessageSquareCode className="w-3.5 h-3.5 theme-accent-text" />
-                    <span>{t.customInstructionsTitle}</span>
-                  </label>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    {/* বাংলা মন্তব্য: একক স্বয়ংক্রিয় অ্যাসিস্ট্যান্ট নির্দেশনা */}
-                    {t.activePersonaLabel}{' '}
-                    <span className="font-medium text-slate-700 dark:text-slate-200">
-                      SupremeAI Autonomous Executive
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              <textarea
-                rows={3}
-                value={customInstructions}
-                onChange={(e) => {
-                  setCustomInstructions(e.target.value);
-                  setChatCustomInstruction(e.target.value);
-                }}
-                placeholder="Example: Always keep answers brief with clear bullet points and simple language."
-                className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-[var(--theme-accent)]"
-              />
-            </div>
-
-            {/* Streamlined Preferences (Streaming SSE & Smart RAG are always active automatically) */}
-            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-
-              {onOpenKnowledgeBase && (
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <span className="text-xs font-medium text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                      <Database className="w-3.5 h-3.5 text-emerald-500" />
-                      <span>{t.kbAutoRagStatusLabel}</span>
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                      {t.kbAutoRagStatusDesc}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onOpenKnowledgeBase()}
-                    className="text-[11px] font-medium theme-accent-text hover:underline cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    {t.manageDocsBtn}
-                  </button>
-                </div>
-              )}
-
-              <label className="flex items-center justify-between gap-4 cursor-pointer">
-                <div>
-                  <span className="text-xs font-medium text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                    <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
-                    <span>{t.workspaceTipsSettingLabel}</span>
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                    {t.workspaceTipsSettingDesc}
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={showWorkspaceTips}
-                  onChange={(e) => {
-                    const next = e.target.checked;
-                    setShowWorkspaceTips(next);
-                    onUpdateSettings({ showWorkspaceTips: next });
-                  }}
-                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
-                />
-              </label>
-
-            </div>
-
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800">
-              {savedSuccess ? (
-                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" />
-                  {t.settingsSavedToast}
-                </span>
-              ) : (
-                <span className="text-xs text-slate-400">{t.preferencesLocalHint}</span>
-              )}
-
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full theme-btn-primary text-xs font-medium cursor-pointer whitespace-nowrap shrink-0"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{t.savePreferences}</span>
-              </button>
-            </div>
-          </form>
+          {/* বাংলা মন্তব্য: Save বাটন নেই — সব পরিবর্তন নিজে থেকেই সেভ হয় */}
+          <ProfilePreferencesCard
+            settings={settings}
+            onUpdateSettings={onUpdateSettings}
+            onInstructionsLive={setChatCustomInstruction}
+          />
         </div>
       )}
 
@@ -931,6 +718,13 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
       ============================================================ */}
       {activeSubTab === 'account' && (
         <div className="space-y-6">
+          {Boolean(isAdminEligible) && (
+            <AdminWorkspaceSwitcher
+              currentRole={currentRole}
+              onSwitchRole={handleSwitchRole}
+              onOpenAdminConsole={onOpenAdminConsole}
+            />
+          )}
           <PersonalMcpHubCard
             userId={settings.email}
             userEmail={settings.email}
