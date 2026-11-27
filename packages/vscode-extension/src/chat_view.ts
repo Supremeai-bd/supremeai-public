@@ -15,6 +15,8 @@ import {
   tierToModel,
 } from './models';
 import { UnifiedVsixState, VsCodeSyncEngine } from './sync_client';
+import { warnUserKeyRejected } from './authNotice';
+import { gatewayFetch } from './gatewayAuth';
 
 const DEFAULT_GATEWAY_URL = 'https://supremeai-api-ulw0.onrender.com';
 
@@ -156,28 +158,27 @@ export class SupremeAIChatViewProvider implements vscode.WebviewViewProvider {
       { role: 'user', content: userText },
     ];
 
-    const url = gatewayUrl.replace(/\/$/, '') + '/v1/chat/completions';
     const gatewayModel = tierToModel(model);
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-SupremeAI-Key': apiKey || 'guest',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+    const res = await gatewayFetch(
+      '/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: gatewayModel,
+          messages,
+          stream: false,
+          temperature: state.temperature,
+          max_tokens: state.maxOutputTokens,
+          reasoning_effort: thinkingLevelToReasoningEffort(state.thinkingLevel),
+          runConfig: {
+            thinking_level: state.thinkingLevel,
+            google_search: state.enableSearchGrounding,
+          },
+        }),
       },
-      body: JSON.stringify({
-        model: gatewayModel,
-        messages,
-        stream: false,
-        temperature: state.temperature,
-        max_tokens: state.maxOutputTokens,
-        reasoning_effort: thinkingLevelToReasoningEffort(state.thinkingLevel),
-        runConfig: {
-          thinking_level: state.thinkingLevel,
-          google_search: state.enableSearchGrounding,
-        },
-      }),
-    });
+      { gatewayUrl, apiKey, onUserKeyRejected: warnUserKeyRejected }
+    );
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
