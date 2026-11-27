@@ -6,6 +6,7 @@ import { useI18n } from '../../utils/i18n';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
 import { ModelMatrix } from '../ModelMatrix';
+import { ModelRouterOverrideCard } from './ModelRouterOverrideCard';
 
 interface AdminLlmGatewayViewProps {
   routes: LlmGatewayRoute[];
@@ -137,6 +138,8 @@ export const AdminLlmGatewayView: React.FC<AdminLlmGatewayViewProps> = ({
           </span>
         </div>
       </div>
+
+      <ModelRouterOverrideCard />
 
       {/* Sub-tab switcher: Routes & Pricing | Model Matrix & Ping Benchmark */}
       <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
