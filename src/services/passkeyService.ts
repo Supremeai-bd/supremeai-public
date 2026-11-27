@@ -97,6 +97,89 @@ function base64UrlToBuffer(base64url: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+/** Friendly device label, e.g. "Windows Hello (Chrome)" — `navigator.platform` is deprecated. */
+export function describePasskeyDevice(userAgent?: string): string {
+  const ua = userAgent ?? (typeof navigator !== 'undefined' ? navigator.userAgent || '' : '');
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /Firefox\//.test(ua)
+      ? 'Firefox'
+      : /Chrome\//.test(ua)
+        ? 'Chrome'
+        : /Safari\//.test(ua)
+          ? 'Safari'
+          : '';
+  const device = /Windows/.test(ua)
+    ? 'Windows Hello'
+    : /iPhone|iPad/.test(ua)
+      ? 'Face ID / Touch ID (iOS)'
+      : /Mac OS X|Macintosh/.test(ua)
+        ? 'Touch ID (Mac)'
+        : /Android/.test(ua)
+          ? 'Android biometrics'
+          : /Linux/.test(ua)
+            ? 'Linux passkey'
+            : 'Biometric device';
+  return browser ? `${device} (${browser})` : device;
+}
+
+const FOCUS_WAIT_MS = 30_000;
+
+function documentHasFocus(): boolean {
+  return typeof document === 'undefined' || typeof document.hasFocus !== 'function'
+    ? true
+    : document.hasFocus();
+}
+
+/**
+ * Resolves once the page has focus again (or after `timeoutMs`). WebAuthn rejects with
+ * "The operation is not allowed at this time because the page does not have focus"
+ * when it runs while another window (e.g. the Windows Hello dialog) owns focus.
+ */
+export function waitForDocumentFocus(timeoutMs = FOCUS_WAIT_MS): Promise<boolean> {
+  if (documentHasFocus() || typeof window === 'undefined') return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const done = (focused: boolean) => {
+      window.removeEventListener('focus', onFocus);
+      clearTimeout(timer);
+      resolve(focused);
+    };
+    const onFocus = () => done(true);
+    const timer = setTimeout(() => done(documentHasFocus()), timeoutMs);
+    window.addEventListener('focus', onFocus);
+  });
+}
+
+function isFocusError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'NotAllowedError' && /focus/i.test(err.message || '');
+}
+
+/** Maps raw WebAuthn DOMExceptions to short, actionable messages. */
+export function describePasskeyError(err: unknown): string {
+  if (!(err instanceof Error)) return 'Passkey registration error.';
+  if (isFocusError(err)) {
+    return 'The browser lost focus while the passkey was being saved. Click inside this page and try again.';
+  }
+  if (err.name === 'NotAllowedError') {
+    return 'Passkey setup was cancelled or timed out.';
+  }
+  if (err.name === 'InvalidStateError') {
+    return 'This device already has a passkey for your account.';
+  }
+  if (err.name === 'SecurityError') {
+    return 'Passkeys are not allowed on this site address.';
+  }
+  return err.message || 'Passkey registration error.';
+}
+
+async function readErrorDetail(res: Response, fallback: string): Promise<string> {
+  const body = (await res.json().catch(() => ({}))) as { detail?: unknown; error?: unknown };
+  const detail = typeof body.detail === 'string' ? body.detail : body.error;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (res.status === 401) return 'Your session expired. Sign in again to manage passkeys.';
+  return fallback;
+}
+
 export function isPasskeySupported(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -105,11 +188,49 @@ export function isPasskeySupported(): boolean {
   );
 }
 
-export async function registerPasskey(
+export type PasskeyRegistrationResult = { ok: boolean; device?: PasskeyDevice; error?: string };
+
+let registrationInFlight: Promise<PasskeyRegistrationResult> | null = null;
+
+/**
+ * Registers a passkey for the signed-in account. Single-flight: a second click while
+ * a ceremony is open returns the same promise instead of opening a second
+ * `navigator.credentials.create()` (which Chrome rejects with a focus error).
+ */
+export function registerPasskey(
   email: string,
   displayName: string,
-  deviceName = 'Personal Biometric Device'
-): Promise<{ ok: boolean; device?: PasskeyDevice; error?: string }> {
+  deviceName = describePasskeyDevice()
+): Promise<PasskeyRegistrationResult> {
+  if (registrationInFlight) return registrationInFlight;
+  registrationInFlight = runPasskeyRegistration(email, displayName, deviceName).finally(() => {
+    registrationInFlight = null;
+  });
+  return registrationInFlight;
+}
+
+async function createCredential(
+  publicKey: PublicKeyCredentialCreationOptions
+): Promise<PublicKeyCredential | null> {
+  // The options fetch is async: make sure we still own focus before opening the prompt.
+  await waitForDocumentFocus();
+  try {
+    return (await navigator.credentials.create({ publicKey })) as PublicKeyCredential | null;
+  } catch (err) {
+    if (!isFocusError(err)) throw err;
+    // Windows Hello can finish while its own dialog owns focus; Chrome then saves the
+    // passkey on the device but rejects the promise, so the server never hears about it.
+    // Retry once when focus returns — the same user handle overwrites that orphan.
+    if (!(await waitForDocumentFocus())) throw err;
+    return (await navigator.credentials.create({ publicKey })) as PublicKeyCredential | null;
+  }
+}
+
+async function runPasskeyRegistration(
+  email: string,
+  displayName: string,
+  deviceName: string
+): Promise<PasskeyRegistrationResult> {
   if (!isPasskeySupported()) {
     return { ok: false, error: 'WebAuthn Passkey is not supported on this browser/device.' };
   }
@@ -125,8 +246,10 @@ export async function registerPasskey(
     });
 
     if (!optRes.ok) {
-      const err = (await optRes.json().catch(() => ({}))) as { detail?: string };
-      return { ok: false, error: err.detail || 'Failed to initiate passkey registration.' };
+      return {
+        ok: false,
+        error: await readErrorDetail(optRes, 'Failed to initiate passkey registration.'),
+      };
     }
 
     const options = await optRes.json();
@@ -140,9 +263,7 @@ export async function registerPasskey(
     }
 
     // 2. Prompt Platform Authenticator (Face ID / Touch ID / Windows Hello)
-    const credential = (await navigator.credentials.create({
-      publicKey: options,
-    })) as PublicKeyCredential | null;
+    const credential = await createCredential(options);
 
     if (!credential) {
       return { ok: false, error: 'Passkey creation was cancelled.' };
@@ -163,17 +284,16 @@ export async function registerPasskey(
     });
 
     if (!verifyRes.ok) {
-      const err = (await verifyRes.json().catch(() => ({}))) as { detail?: string };
-      return { ok: false, error: err.detail || 'Passkey verification failed on server.' };
+      return {
+        ok: false,
+        error: await readErrorDetail(verifyRes, 'Passkey verification failed on server.'),
+      };
     }
 
     const data = (await verifyRes.json()) as { passkey?: PasskeyDevice };
     return { ok: true, device: data.passkey };
   } catch (err: unknown) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : 'Passkey registration error.',
-    };
+    return { ok: false, error: describePasskeyError(err) };
   }
 }
 
@@ -273,18 +393,43 @@ export async function loginWithPasskey(
   }
 }
 
-export async function listPasskeyDevices(userId: string): Promise<PasskeyDevice[]> {
-  if (!userId) return [];
+/**
+ * Lists the signed-in account's passkeys. The gateway derives the owner from the
+ * session token; `userId` is only sent for older gateways that still read it.
+ */
+export async function fetchPasskeyDevices(
+  userId: string
+): Promise<{ ok: boolean; devices: PasskeyDevice[]; error?: string }> {
   try {
-    const res = await fetchWithFallback(
-      `/api/auth/passkey/devices?user_id=${encodeURIComponent(userId)}`
-    );
-    if (!res.ok) return [];
+    const query = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+    const res = await fetchWithFallback(`/api/auth/passkey/devices${query}`);
+    if (!res.ok) {
+      return {
+        ok: false,
+        devices: [],
+        error: await readErrorDetail(res, 'Could not load your passkeys.'),
+      };
+    }
     const data = (await res.json()) as { devices?: PasskeyDevice[] };
-    return Array.isArray(data.devices) ? data.devices : [];
+    return { ok: true, devices: Array.isArray(data.devices) ? data.devices : [] };
   } catch {
-    return [];
+    return { ok: false, devices: [], error: 'Could not reach the server to load passkeys.' };
   }
+}
+
+/** Adds a just-registered device if the server list does not include it yet. */
+export function mergePasskeyDevices(
+  devices: PasskeyDevice[],
+  added?: PasskeyDevice
+): PasskeyDevice[] {
+  if (!added?.credential_id || devices.some((d) => d.credential_id === added.credential_id)) {
+    return devices;
+  }
+  return [added, ...devices];
+}
+
+export async function listPasskeyDevices(userId: string): Promise<PasskeyDevice[]> {
+  return (await fetchPasskeyDevices(userId)).devices;
 }
 
 export async function revokePasskeyDevice(
