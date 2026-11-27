@@ -1741,22 +1741,27 @@ export default function App() {
                         />
                       )}
 
-                      {activeTab === 'user-api-keys' && (
-                        <UserApiKeysView
-                          apiKeys={apiKeys}
-                          onAddApiKey={addApiKey}
-                          onUpdateApiKey={updateApiKey}
-                          onRevokeApiKey={revokeApiKey}
-                          onDeleteApiKey={deleteApiKey}
-                          onProbeApiKey={probeApiKey}
-                          webhooks={webhooks}
-                          onAddWebhook={addWebhook}
-                          onDeleteWebhook={deleteWebhook}
-                          onTestWebhook={testWebhook}
+                      {/* বাংলা মন্তব্য: "Add API Key" এখন "Boost my limit"-এর ভেতরে (হার্ড কাট); পুরনো ডিপ লিংকও এখানে আসে */}
+                      {(activeTab === 'boost-limit' || activeTab === 'user-api-keys') && (
+                        <BoostLimitView
+                          isGuest={isGuest}
+                          advancedOpen={activeTab === 'user-api-keys'}
+                          advanced={
+                            <UserApiKeysView
+                              apiKeys={apiKeys}
+                              onAddApiKey={addApiKey}
+                              onUpdateApiKey={updateApiKey}
+                              onRevokeApiKey={revokeApiKey}
+                              onDeleteApiKey={deleteApiKey}
+                              onProbeApiKey={probeApiKey}
+                              webhooks={webhooks}
+                              onAddWebhook={addWebhook}
+                              onDeleteWebhook={deleteWebhook}
+                              onTestWebhook={testWebhook}
+                            />
+                          }
                         />
                       )}
-
-                      {activeTab === 'boost-limit' && <BoostLimitView isGuest={isGuest} />}
 
                       {activeTab === 'user-team' && (
                         <UserTeamView

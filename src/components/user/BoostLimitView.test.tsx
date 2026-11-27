@@ -87,4 +87,22 @@ describe('BoostLimitView — লিমিট বাড়ান ট্যাব'
     render(<BoostLimitView />);
     await waitFor(() => expect(screen.getByTestId('boost-keys-unavailable')).toBeTruthy());
   });
+
+  it('"Add API Key" now lives here: collapsed advanced section, opened for old deep links', async () => {
+    const { unmount } = render(<BoostLimitView advanced={<div data-testid="keys-console" />} />);
+    const section = await screen.findByTestId('boost-advanced');
+    expect(screen.queryByTestId('keys-console')).toBeNull();
+    fireEvent.click(section.querySelector('button')!);
+    expect(screen.getByTestId('keys-console')).toBeTruthy();
+    unmount();
+
+    render(<BoostLimitView advanced={<div data-testid="keys-console" />} advancedOpen />);
+    expect(await screen.findByTestId('keys-console')).toBeTruthy();
+  });
+
+  it('shows no advanced section when nothing is passed', async () => {
+    render(<BoostLimitView />);
+    await waitFor(() => expect(screen.getByTestId('boost-daily-bonus')).toBeTruthy());
+    expect(screen.queryByTestId('boost-advanced')).toBeNull();
+  });
 });
