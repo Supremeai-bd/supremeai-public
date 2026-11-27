@@ -136,6 +136,9 @@ const AdminFinOpsView = React.lazy(() =>
 const AdminSessionsView = React.lazy(() =>
   import('./components/admin/AdminSessionsView').then((m) => ({ default: m.AdminSessionsView }))
 );
+const AdminAlertsView = React.lazy(() =>
+  import('./components/admin/AdminAlertsView').then((m) => ({ default: m.AdminAlertsView }))
+);
 const AdminMcpTowerView = React.lazy(() =>
   import('./components/admin/AdminMcpTowerView').then((m) => ({ default: m.AdminMcpTowerView }))
 );
@@ -1903,6 +1906,7 @@ export default function App() {
                           {activeTab === 'backups' && <AdminBackupsView />}
                           {activeTab === 'usage-limits' && <AdminFinOpsView />}
                           {activeTab === 'sessions' && <AdminSessionsView />}
+                          {activeTab === 'alerts' && <AdminAlertsView />}
 
                           {activeTab === 'health-monitor' && <ControlCenterHealthMonitorView />}
 

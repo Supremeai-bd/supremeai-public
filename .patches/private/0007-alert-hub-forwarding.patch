@@ -1,0 +1,401 @@
+diff --git a/.github/workflows/db-backup.yml b/.github/workflows/db-backup.yml
+index 154c4cf9..fc906cef 100644
+--- a/.github/workflows/db-backup.yml
++++ b/.github/workflows/db-backup.yml
+@@ -66,3 +66,16 @@ jobs:
+           path: db-backup/
+           if-no-files-found: error
+           retention-days: 30
++
++      - name: Alert admins on failure
++        if: failure()
++        env:
++          INFISICAL_HOST: https://app.infisical.com
++          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
++          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
++          INFISICAL_PROJECT_ID: ${{ secrets.INFISICAL_PROJECT_ID }}
++          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
++        run: >-
++          python scripts/runtime/infisical_bootstrap.py python scripts/ops/send_alert.py
++          --severity critical --source db-backup --title "Nightly DB backup failed"
++          --body "$RUN_URL" --dedupe db-backup-failed
+diff --git a/.github/workflows/unified-pipeline.yml b/.github/workflows/unified-pipeline.yml
+index ff298e94..b30af350 100644
+--- a/.github/workflows/unified-pipeline.yml
++++ b/.github/workflows/unified-pipeline.yml
+@@ -1087,11 +1087,17 @@ jobs:
+           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+           CF_COMMIT_SHA: ${{ github.sha }}
++          INFISICAL_HOST: https://app.infisical.com
++          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
++          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
++          INFISICAL_PROJECT_ID: ${{ secrets.INFISICAL_PROJECT_ID }}
+         run: |
+           if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+             if [ -d infrastructure/cloudflare-render-keepwarm ]; then
+               cd infrastructure/cloudflare-render-keepwarm
+               npx wrangler deploy --var CF_COMMIT_SHA:${{ github.sha }}
++              # Down-alerts: hand the worker the core service token (from Infisical) as a secret.
++              python3 ../../scripts/runtime/infisical_bootstrap.py sh -c 'if [ -n "${SUPREMEAI_API_TOKEN:-}" ]; then printf "%s" "$SUPREMEAI_API_TOKEN" | npx wrangler secret put ALERT_INGEST_TOKEN; else echo "SUPREMEAI_API_TOKEN not in Infisical; keep-warm alerts stay off"; fi' || echo "keep-warm alert token sync skipped"
+             else
+               echo "keepwarm dir not found; skipping"
+             fi
+diff --git a/core/api/routes/internal.py b/core/api/routes/internal.py
+index d360452e..be2912b6 100644
+--- a/core/api/routes/internal.py
++++ b/core/api/routes/internal.py
+@@ -1,7 +1,7 @@
+ import secrets
+ from typing import Any
+ 
+-from fastapi import APIRouter, Depends, HTTPException, Request
++from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+ from pydantic import BaseModel, SecretStr
+ 
+ from core.config import settings
+@@ -81,7 +81,9 @@ class SystemAlertPayload(BaseModel):
+ 
+ 
+ @router.post("/api/v1/admin/alerts")
+-async def report_system_alert(request: Request, payload: SystemAlertPayload):
++async def report_system_alert(
++    request: Request, payload: SystemAlertPayload, background_tasks: BackgroundTasks
++):
+     """Canonical internal alert ingestion (issue #1497).
+ 
+     Machine-to-machine alert reporting (API key or admin secret). The AI Log
+@@ -112,4 +114,16 @@ async def report_system_alert(request: Request, payload: SystemAlertPayload):
+         )
+     )
+ 
++    # বাংলা মন্তব্য: অ্যাডমিনের বেছে নেওয়া চ্যানেলে পাঠাতে Studio অ্যালার্ট হাবে ফরোয়ার্ড (best-effort).
++    from core.services.alert_forwarder import forward_alert, severity_for_level
++
++    background_tasks.add_task(
++        forward_alert,
++        severity_for_level(payload.level),
++        "core",
++        payload.message[:200],
++        None,
++        f"core:{payload.level}:{payload.message[:120]}",
++    )
++
+     return {"status": "received", "level": payload.level}
+diff --git a/core/services/alert_forwarder.py b/core/services/alert_forwarder.py
+new file mode 100644
+index 00000000..108f4909
+--- /dev/null
++++ b/core/services/alert_forwarder.py
+@@ -0,0 +1,77 @@
++"""Forward platform alerts to the Studio alert hub (admin → Services & Health → Alerts).
++
++বাংলা মন্তব্য: Studio edge `/api/internal/alerts` অ্যালার্টকে অ্যাডমিনের বেছে নেওয়া
++চ্যানেলে (Telegram / Discord / Slack / webhook) পাঠায় ও ইতিহাসে রাখে। এখান থেকে শুধু
++best-effort POST — ব্যর্থ হলে লগ করে চুপচাপ ফিরে আসে, অনুরোধ কখনো আটকায় না।
++"""
++
++from __future__ import annotations
++
++import os
++
++import httpx
++from loguru import logger
++
++DEFAULT_INGEST_URL = "https://supremeai-studio.pages.dev/api/internal/alerts"
++_TIMEOUT_S = 8.0
++
++_LEVEL_TO_SEVERITY = {
++    "critical": "critical",
++    "fatal": "critical",
++    "error": "critical",
++    "warning": "warning",
++    "warn": "warning",
++}
++
++
++def severity_for_level(level: str) -> str:
++    """Map a free-form log level to the hub's info / warning / critical."""
++    return _LEVEL_TO_SEVERITY.get((level or "").strip().lower(), "info")
++
++
++def build_payload(
++    severity: str, source: str, title: str, body: str | None = None, dedupe_key: str | None = None
++) -> dict:
++    payload = {
++        "severity": severity if severity in ("info", "warning", "critical") else "info",
++        "source": (source or "core")[:60],
++        "title": (title or "Alert")[:200],
++    }
++    if body:
++        payload["body"] = body[:2000]
++    if dedupe_key:
++        payload["dedupeKey"] = dedupe_key[:200]
++    return payload
++
++
++async def forward_alert(
++    severity: str,
++    source: str,
++    title: str,
++    body: str | None = None,
++    dedupe_key: str | None = None,
++    token: str | None = None,
++) -> bool:
++    """POST one alert to the hub. Returns True when the hub accepted it."""
++    if token is None:
++        from core.config import settings
++
++        token = settings.supremeai_api_token
++    if not token:
++        logger.debug("alert_forwarder: no SUPREMEAI_API_TOKEN, alert kept local only")
++        return False
++    url = os.getenv("ALERT_INGEST_URL", "").strip() or DEFAULT_INGEST_URL
++    try:
++        async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
++            res = await client.post(
++                url,
++                json=build_payload(severity, source, title, body, dedupe_key),
++                headers={"Authorization": f"Bearer {token}"},
++            )
++        if res.status_code >= 400:
++            logger.warning(f"alert_forwarder: hub returned HTTP {res.status_code}")
++            return False
++        return True
++    except httpx.HTTPError as exc:
++        logger.warning(f"alert_forwarder: hub unreachable ({type(exc).__name__})")
++        return False
+diff --git a/infrastructure/cloudflare-render-keepwarm/worker.js b/infrastructure/cloudflare-render-keepwarm/worker.js
+index 06523673..28ee5c90 100644
+--- a/infrastructure/cloudflare-render-keepwarm/worker.js
++++ b/infrastructure/cloudflare-render-keepwarm/worker.js
+@@ -70,12 +70,47 @@ async function pingServices() {
+   };
+ }
+ 
++const DEFAULT_ALERT_INGEST_URL = "https://supremeai-studio.pages.dev/api/internal/alerts";
++
++// বাংলা: জরুরি সার্ভিস বন্ধ হলে Studio অ্যালার্ট হাবে জানায় (admin → Services & Health → Alerts)।
++// একই সার্ভিসের জন্য হাব ৬ ঘণ্টায় একবারই চ্যানেলে পাঠায় (dedupeKey)। টোকেন না থাকলে চুপচাপ বাদ।
++async function reportRequiredDown(outcome, env, fetchImpl = fetch) {
++  const token = env?.ALERT_INGEST_TOKEN;
++  if (!token || !outcome.requiredDown) return 0;
++  const url = env?.ALERT_INGEST_URL || DEFAULT_ALERT_INGEST_URL;
++  const down = outcome.nodes.filter((node, i) => TARGET_SERVICES[i].required && !node.ok);
++  let sent = 0;
++  for (const node of down) {
++    try {
++      const res = await fetchImpl(url, {
++        method: "POST",
++        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
++        body: JSON.stringify({
++          severity: "critical",
++          source: "keep-warm",
++          title: `${node.name} is down`,
++          body: `${node.url} → ${node.status ? `HTTP ${node.status}` : node.error || "no response"} after ${node.latency_ms} ms`,
++          dedupeKey: `keepwarm-down:${node.name}`
++        }),
++        signal: AbortSignal.timeout(8000)
++      });
++      if (res.ok) sent += 1;
++    } catch (err) {
++      console.log(JSON.stringify({ alert_error: err.message || String(err) }));
++    }
++  }
++  return sent;
++}
++
+ export default {
+   // বাংলা: সময়সূচির একমাত্র উৎস wrangler.toml।
+   async scheduled(event, env, ctx) {
+     const outcome = await pingServices();
+     console.log(JSON.stringify({ cron: event.cron, scheduledTime: event.scheduledTime, ...outcome }));
+-    if (outcome.requiredDown) throw new Error("Required Render keepwarm target unavailable");
++    if (outcome.requiredDown) {
++      await reportRequiredDown(outcome, env);
++      throw new Error("Required Render keepwarm target unavailable");
++    }
+   },
+ 
+   // HTTP Gateway for health check or status probing
+diff --git a/scripts/ops/_INDEX.md b/scripts/ops/_INDEX.md
+index 28cf22b8..2d93bd34 100644
+--- a/scripts/ops/_INDEX.md
++++ b/scripts/ops/_INDEX.md
+@@ -2,7 +2,7 @@
+ 
+ > **AUTO-GENERATED by `scripts/ops/generate_script_index.py` — DO NOT EDIT BY HAND.**
+ > Regenerate: `python3 scripts/ops/generate_script_index.py` · CI gate: `--check` (exit 1 when stale)
+-> Last generated: 2026-11-27 14:32:48 UTC · **656 scripts** (617 py · 34 sh · 5 js/mjs · 0 other) across 44 groups · 28 empty files skipped · 65 missing docstrings.
++> Last generated: 2026-11-27 15:50:30 UTC · **657 scripts** (618 py · 34 sh · 5 js/mjs · 0 other) across 44 groups · 28 empty files skipped · 65 missing docstrings.
+ > AI: পুরো ফোল্ডার স্ক্যান না করে এই index পড়ুন। Paths are relative to `scripts/`.
+ 
+ Hand-curated sections live inside `<!-- hand:Name -->` … `<!-- /hand:Name -->` blocks
+@@ -662,7 +662,7 @@ at the bottom — the generator preserves them verbatim on every regeneration.
+ | `operations/sync_operational_truth.py` | SupremeAI — sync_operational_truth.py (issue #2377, Deliverable 2). |
+ | `operations/tower_db_bridge.py` | SupremeAI — MCP Tower ↔ Operational Truth DB Bridge (issue #2377, Deliverable 3). |
+ 
+-## scripts/ops/  (85 scripts)
++## scripts/ops/  (86 scripts)
+ 
+ | File | Purpose |
+ |---|---|
+@@ -741,6 +741,7 @@ at the bottom — the generator preserves them verbatim on every regeneration.
+ | `ops/scan_duplicate_plans.py` | (no docstring — run scripts/devops/devops_ai_scribe.py or add one) |
+ | `ops/security/auto_vulnerability_scanner.py` | ╔══════════════════════════════════════════════════════════════════════════════╗ |
+ | `ops/security/delete_vault_duplicate_render_keys.py` | Standalone script to remove duplicate Render keys from Infisical prod vault. |
++| `ops/send_alert.py` | Send one alert to the Studio alert hub from CI (e.g. a failed nightly backup). |
+ | `ops/setup-git-hooks.sh` | SupremeAI 2.0 — Git Hooks Installer |
+ | `ops/setup_kms.sh` | Script to generate a local Fernet key for SupremeAI 2.0 local development |
+ | `ops/supreme_ops.py` | Unified SupremeAI Operations & Pipeline CLI Dispatcher. |
+diff --git a/scripts/ops/send_alert.py b/scripts/ops/send_alert.py
+new file mode 100755
+index 00000000..701659ab
+--- /dev/null
++++ b/scripts/ops/send_alert.py
+@@ -0,0 +1,62 @@
++#!/usr/bin/env python3
++"""Send one alert to the Studio alert hub from CI (e.g. a failed nightly backup).
++
++বাংলা মন্তব্য: শুধু stdlib। টোকেন (SUPREMEAI_API_TOKEN) infisical_bootstrap থেকে আসে।
++সবসময় exit 0 — অ্যালার্ট পাঠাতে না পারলে মূল job-এর ফলাফল বদলায় না।
++
++    python scripts/runtime/infisical_bootstrap.py python scripts/ops/send_alert.py \
++        --severity critical --source db-backup --title "Nightly DB backup failed" \
++        --body "$RUN_URL" --dedupe db-backup-failed
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import os
++import urllib.error
++import urllib.request
++
++DEFAULT_INGEST_URL = "https://supremeai-studio.pages.dev/api/internal/alerts"
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--severity", choices=("info", "warning", "critical"), default="warning")
++    parser.add_argument("--source", required=True)
++    parser.add_argument("--title", required=True)
++    parser.add_argument("--body", default="")
++    parser.add_argument("--dedupe", default="")
++    args = parser.parse_args()
++
++    token = os.getenv("SUPREMEAI_API_TOKEN") or os.getenv("SUPREMEAI_API_KEY") or ""
++    if not token:
++        print("send_alert: SUPREMEAI_API_TOKEN not available; skipping")
++        return 0
++    payload = {"severity": args.severity, "source": args.source[:60], "title": args.title[:200]}
++    if args.body:
++        payload["body"] = args.body[:2000]
++    if args.dedupe:
++        payload["dedupeKey"] = args.dedupe[:200]
++    url = os.getenv("ALERT_INGEST_URL", "").strip() or DEFAULT_INGEST_URL
++    if not url.startswith("https://"):
++        print("send_alert: ALERT_INGEST_URL must be https; skipping")
++        return 0
++    request = urllib.request.Request(  # noqa: S310 - https enforced above
++        url,
++        data=json.dumps(payload).encode("utf-8"),
++        method="POST",
++        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
++    )
++    try:
++        with urllib.request.urlopen(request, timeout=15) as res:  # noqa: S310
++            print(f"send_alert: hub answered HTTP {res.status}")
++    except urllib.error.HTTPError as exc:
++        print(f"send_alert: hub returned HTTP {exc.code}")
++    except (urllib.error.URLError, TimeoutError) as exc:
++        print(f"send_alert: hub unreachable ({type(exc).__name__})")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/tests/test_alert_forwarder.py b/tests/test_alert_forwarder.py
+new file mode 100644
+index 00000000..e7b68199
+--- /dev/null
++++ b/tests/test_alert_forwarder.py
+@@ -0,0 +1,77 @@
++"""Alert forwarding to the Studio alert hub (core → /api/internal/alerts)."""
++
++from __future__ import annotations
++
++import asyncio
++import json
++
++import httpx
++
++from core.services import alert_forwarder
++from core.services.alert_forwarder import (
++    build_payload,
++    forward_alert,
++    severity_for_level,
++)
++
++
++def test_severity_mapping():
++    assert severity_for_level("ERROR") == "critical"
++    assert severity_for_level("warn") == "warning"
++    assert severity_for_level("debug") == "info"
++    assert severity_for_level("") == "info"
++
++
++def test_payload_is_trimmed_and_optional_fields_omitted():
++    payload = build_payload("loud", "", "x" * 500)
++    assert payload == {"severity": "info", "source": "core", "title": "x" * 200}
++    full = build_payload("critical", "core", "Down", "b" * 3000, "k")
++    assert len(full["body"]) == 2000
++    assert full["dedupeKey"] == "k"
++
++
++def _patch_client(monkeypatch, handler):
++    transport = httpx.MockTransport(handler)
++    real = httpx.AsyncClient
++
++    def factory(*args, **kwargs):
++        kwargs["transport"] = transport
++        return real(*args, **kwargs)
++
++    monkeypatch.setattr(alert_forwarder.httpx, "AsyncClient", factory)
++
++
++def test_forward_posts_with_bearer(monkeypatch):
++    seen = {}
++
++    def handler(request: httpx.Request) -> httpx.Response:
++        seen["url"] = str(request.url)
++        seen["auth"] = request.headers.get("Authorization")
++        seen["body"] = json.loads(request.content)
++        return httpx.Response(200, json={"success": True})
++
++    monkeypatch.delenv("ALERT_INGEST_URL", raising=False)
++    _patch_client(monkeypatch, handler)
++    ok = asyncio.run(
++        forward_alert("critical", "core", "Down", dedupe_key="core:x", token="tok")
++    )
++    assert ok is True
++    assert seen["url"] == alert_forwarder.DEFAULT_INGEST_URL
++    assert seen["auth"] == "Bearer tok"
++    assert seen["body"] == {
++        "severity": "critical",
++        "source": "core",
++        "title": "Down",
++        "dedupeKey": "core:x",
++    }
++
++
++def test_forward_never_raises(monkeypatch):
++    def refused(request: httpx.Request) -> httpx.Response:
++        raise httpx.ConnectError("refused", request=request)
++
++    _patch_client(monkeypatch, refused)
++    assert asyncio.run(forward_alert("warning", "core", "x", token="tok")) is False
++    _patch_client(monkeypatch, lambda r: httpx.Response(403))
++    assert asyncio.run(forward_alert("warning", "core", "x", token="tok")) is False
++    assert asyncio.run(forward_alert("warning", "core", "x", token="")) is False

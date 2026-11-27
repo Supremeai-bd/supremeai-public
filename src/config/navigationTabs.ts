@@ -26,6 +26,7 @@ export const ADMIN_ONLY_TABS = new Set([
   'backups',
   'usage-limits',
   'sessions',
+  'alerts',
 ]);
 
 // বাংলা মন্তব্য: সব ফিচার সবার জন্য উন্মুক্ত — কোনো ট্যাব কৃত্রিমভাবে লক থাকবে না
@@ -63,6 +64,7 @@ export const SUBVIEW_TITLES: Record<string, string> = {
   backups: 'Backups',
   'usage-limits': 'Usage Limits',
   sessions: 'Sessions',
+  alerts: 'Alerts',
   'mcp-tower': 'MCP Service Tower',
 };
 
@@ -112,6 +114,7 @@ export function getLocalizedSubviewTitle(
     backups: t.bkTitle,
     'usage-limits': t.foTitle,
     sessions: t.ssTitle,
+    alerts: t.alTitle,
     'mcp-tower': t.subviewMcpTower,
   };
   return localizedMap[tab] || SUBVIEW_TITLES[tab] || t.workspaceFallbackTitle;
