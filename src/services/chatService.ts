@@ -28,6 +28,13 @@ export class VisionRequestError extends Error {
   }
 }
 import { resolveThinkingParams } from '../utils/chatAutoIntent';
+import {
+  WEB_RELAY_FALLBACK_MODEL,
+  WEB_RELAY_MODEL,
+  isWebRelayDown,
+  isWebRelayFailure,
+  markWebRelayDown,
+} from './webRelayHealth';
 
 export function prepareConversationMessagesForGateway(messages: ChatMessage[]): {
   preparedMessages: ChatMessage[];
@@ -166,7 +173,47 @@ export interface FormattedGatewayMessage {
 }
 
 export const chatService = {
+  /**
+   * বাংলা মন্তব্য: supremeai-web (relay-only) লেনে relay ডাউন হলে ব্যবহারকারী হার্ড এরর
+   * না দেখে — কোনো টোকেন আসার আগেই ব্যর্থ হলে একবার স্বয়ংক্রিয়ভাবে API pool
+   * (supremeai-api)-এ আবার চেষ্টা হয়, আর ৫ মিনিট relay এড়ানো হয় (webRelayHealth)।
+   */
   async streamChat(options: ChatStreamOptions): Promise<void> {
+    if (options.model !== WEB_RELAY_MODEL) {
+      return chatService.streamChatOnce(options);
+    }
+    const toApiPool = () => {
+      options.onMeta?.({
+        routeMeta: { poolType: 'api-pool', servedModel: WEB_RELAY_FALLBACK_MODEL },
+      });
+      return chatService.streamChatOnce({ ...options, model: WEB_RELAY_FALLBACK_MODEL });
+    };
+    if (isWebRelayDown()) {
+      return toApiPool();
+    }
+    let emitted = false;
+    let relayFailure: Error | null = null;
+    await chatService.streamChatOnce({
+      ...options,
+      onChunk: (chunk) => {
+        if (chunk) emitted = true;
+        options.onChunk(chunk);
+      },
+      onError: (err) => {
+        if (!emitted && !options.signal?.aborted && isWebRelayFailure(err?.message)) {
+          relayFailure = err;
+          return;
+        }
+        options.onError(err);
+      },
+    });
+    if (relayFailure) {
+      markWebRelayDown();
+      return toApiPool();
+    }
+  },
+
+  async streamChatOnce(options: ChatStreamOptions): Promise<void> {
     const {
       model,
       messages,
