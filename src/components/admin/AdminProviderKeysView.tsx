@@ -19,6 +19,7 @@ import {
   Gauge,
 } from 'lucide-react';
 import { ProviderKeyItem, InfisicalVaultKeyLatency } from '../../types';
+import type { AdminVaultSummary } from '../../utils/adminHealthSummary';
 import { INITIAL_PROVIDER_KEYS } from '../../data/adminExpansionData';
 import { AI_PROVIDER_DEFINITIONS } from '../../constants/aiProviders';
 import { adminService } from '../../services/adminService';
@@ -61,6 +62,8 @@ export const AdminProviderKeysView: React.FC = () => {
     lastSyncedAt: '',
   });
 
+  // বাংলা মন্তব্য: Infisical ভল্ট অ্যাডমিন সার্ভারের সাথে সংযুক্ত কিনা — না হলে কোন env লাগবে
+  const [vaultLink, setVaultLink] = useState<AdminVaultSummary | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   // বাংলা মন্তব্য: প্রোভাইডার লিস্টের লাইভ-সিঙ্ক সত্য — ব্যাজের জন্য।
   const [sourceMeta, setSourceMeta] = useState<{ at?: number; error?: string }>({});
@@ -118,6 +121,7 @@ export const AdminProviderKeysView: React.FC = () => {
         adminService.fetchProviders(),
         adminService.fetchInfisicalVaultKeys().catch(() => null),
       ]);
+      setVaultLink(vaultRes?.vaultSummary ?? null);
       if (Array.isArray(provList)) {
         setProviders(provList);
       }
@@ -543,6 +547,29 @@ export const AdminProviderKeysView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {vaultLink && !vaultLink.connected && (
+        <div
+          data-testid="vault-not-linked"
+          className="p-3.5 rounded-xl text-xs border bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300 space-y-1"
+        >
+          <div className="font-semibold">Infisical vault is not linked to the admin server</div>
+          <div>
+            {vaultLink.missingEnv && vaultLink.missingEnv.length > 0
+              ? `Your keys stay in Infisical — add ${vaultLink.missingEnv.join(', ')} to the Cloudflare Pages environment and they appear here automatically, with a live test for each.`
+              : vaultLink.error || 'The vault could not be read right now.'}
+          </div>
+        </div>
+      )}
+      {vaultLink?.connected && (
+        <div
+          data-testid="vault-linked"
+          className="p-3 rounded-xl text-xs border bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+        >
+          Live from Infisical: {vaultLink.totalSecrets ?? 0} secrets,{' '}
+          {vaultLink.providerSecrets ?? 0} AI provider keys (each tested automatically).
+        </div>
+      )}
 
       {/* Feedback Banner */}
       {feedbackBanner && (

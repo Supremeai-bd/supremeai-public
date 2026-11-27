@@ -79,6 +79,36 @@ export interface AdminHealthSummary {
   services: AdminServiceRow[];
 }
 
+/** edge `/api/admin/providers`-এর `vaultSummary` — ভল্ট সংযুক্ত কিনা ও কোন env নেই। */
+export interface AdminVaultSummary {
+  connected: boolean;
+  mode?: string;
+  totalSecrets?: number;
+  providerSecrets?: number;
+  missingEnv?: string[];
+  error?: string;
+}
+
+/** edge `/api/admin/connections` — প্রতিটি ইন্টিগ্রেশনের আসল অবস্থা। */
+export interface AdminConnectionStatus {
+  id: string;
+  name: string;
+  status: 'connected' | 'missing' | 'error';
+  detail: string;
+  missingEnv: string[];
+  targetTab: string;
+}
+
+const CONNECTION_AREA: Record<string, AdminAreaId> = {
+  infisical: 'ai',
+  'key-pool': 'ai',
+  supabase: 'users',
+  github: 'deploy',
+  cloudflare: 'deploy',
+  'render-api': 'services',
+  'mcp-tower': 'services',
+};
+
 export interface AdminHealthInput {
   customers: CustomerRecord[];
   mcpServices: McpTowerService[];
@@ -88,6 +118,9 @@ export interface AdminHealthInput {
   deployments: DeploymentStatus[] | null;
   /** null = could not load (unknown), [] = loaded but none configured */
   providers: ProviderKeyItem[] | null;
+  /** null/undefined = অজানা (পুরনো ব্যাকএন্ড) */
+  vault?: AdminVaultSummary | null;
+  connections?: AdminConnectionStatus[] | null;
   jobs: TaskQueueJob[];
   workers: SwarmWorker[];
   securityEvents: SecurityEventLog[];
@@ -298,13 +331,31 @@ export function buildAdminHealthSummary(input: AdminHealthInput): AdminHealthSum
       actionLabel: 'Open provider keys',
       targetTab: 'provider-keys',
     });
+  } else if (providers.length === 0 && input.vault && !input.vault.connected) {
+    // বাংলা মন্তব্য: ভল্টে কী আছে কিন্তু অ্যাডমিন সার্ভার পড়তে পারছে না — "কী নেই" বলা ভুল।
+    const missing = input.vault.missingEnv ?? [];
+    add({
+      id: 'issue-vault-not-linked',
+      severity: 'warning',
+      area: 'ai',
+      title: 'Secrets vault is not linked to the admin server',
+      detail: missing.length
+        ? `Keys in Infisical can't be read yet. Add ${missing.join(', ')} to Cloudflare Pages env.`
+        : input.vault.error || 'Infisical could not be read. Check the vault credentials.',
+      actionLabel: 'Open provider keys',
+      targetTab: 'provider-keys',
+    });
   } else if (providers.length === 0) {
+    const total = input.vault?.totalSecrets ?? 0;
     add({
       id: 'issue-providers-none',
       severity: 'critical',
       area: 'ai',
       title: 'No AI provider key is configured',
-      detail: 'Chat and code generation need at least one working provider key.',
+      detail:
+        input.vault?.connected && total > 0
+          ? `The vault has ${total} secrets, but none is named like an AI key (e.g. GEMINI_API_KEY, GROQ_API_KEY).`
+          : 'Chat and code generation need at least one working provider key.',
       actionLabel: 'Add a key',
       targetTab: 'provider-keys',
     });
@@ -343,6 +394,22 @@ export function buildAdminHealthSummary(input: AdminHealthInput): AdminHealthSum
         targetTab: 'provider-keys',
       });
     }
+  }
+
+  // ---------------- Integrations / connections ----------------
+  for (const c of input.connections ?? []) {
+    if (c.status === 'connected') continue;
+    // ভল্টের সমস্যা উপরে আলাদা করে বলা হয়েছে — দুবার নয়
+    if (c.id === 'infisical' && issues.some((i) => i.id === 'issue-vault-not-linked')) continue;
+    add({
+      id: `issue-connection-${c.id}`,
+      severity: 'warning',
+      area: CONNECTION_AREA[c.id] ?? 'settings',
+      title: c.status === 'missing' ? `${c.name} is not connected` : `${c.name} has a problem`,
+      detail: c.missingEnv.length ? `${c.detail} Set ${c.missingEnv.join(', ')}.` : c.detail,
+      actionLabel: 'Open',
+      targetTab: c.targetTab,
+    });
   }
 
   // ---------------- Agents & queue ----------------

@@ -113,8 +113,8 @@ describe('functions/api/pool — লিমিট বাড়ান API', () => 
     for (const [input, init] of spy.mock.calls) {
       const target = String(input);
       if (target === 'https://api.groq.com/openai/v1/models') continue;
-      if (target.startsWith('https://app.test') || target.includes('/api/pool/contribute'))
-        continue;
+      // ইউজারের নিজের অনুরোধ ব্যাকএন্ডের একই রাউটে ফরোয়ার্ড হওয়া বৈধ
+      if (new URL(target).pathname === '/api/pool/contribute') continue;
       expect(String(init?.body ?? '')).not.toContain(GROQ_KEY);
     }
   });

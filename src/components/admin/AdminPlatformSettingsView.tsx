@@ -5,6 +5,7 @@ import { SUPREMEAI_MODELS } from '../../data/models';
 import { INITIAL_FEATURE_FLAGS } from '../../data/adminExpansionData';
 import { usePlatformStore } from '../../stores/usePlatformStore';
 import { useI18n } from '../../utils/i18n';
+import { AdminConnectionsCard } from './AdminConnectionsCard';
 
 /**
  * বাংলা মন্তব্য: প্ল্যাটফর্মের সব গুরুত্বপূর্ণ সেটিং এক জায়গায় — মেইনটেন্যান্স লক, ঘোষণা ব্যানার,
@@ -44,6 +45,9 @@ export const AdminPlatformSettingsView: React.FC<AdminPlatformSettingsViewProps>
       className="flex-1 overflow-y-auto bg-[#f6f8fb] dark:bg-slate-950 px-4 sm:px-6 py-5 text-slate-800 dark:text-slate-200"
     >
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* বাংলা মন্তব্য: কোন ইন্টিগ্রেশন সত্যিই সংযুক্ত — আসল ডেটা না এলে কারণ এখানেই দেখা যায় */}
+        <AdminConnectionsCard onNavigateTab={onNavigateTab} />
+
         {/* Platform Governance & Model Access Matrix */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Global Platform Policy Controls */}

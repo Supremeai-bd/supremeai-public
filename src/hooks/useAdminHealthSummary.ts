@@ -29,6 +29,8 @@ export function useAdminHealthSummary(): AdminHealthSummary & {
   const config = usePlatformStore((s) => s.config);
   const providers = useAdminHealthStore((s) => s.providers);
   const deployments = useAdminHealthStore((s) => s.deployments);
+  const vault = useAdminHealthStore((s) => s.vault);
+  const connections = useAdminHealthStore((s) => s.connections);
 
   return useMemo(() => {
     const domainErrors = Object.entries(domainProvenance || {})
@@ -42,6 +44,8 @@ export function useAdminHealthSummary(): AdminHealthSummary & {
       mcpReachable: ecosystemDiagnostics ? ecosystemDiagnostics.mcpReachable : null,
       deployments,
       providers,
+      vault,
+      connections,
       jobs,
       workers,
       securityEvents,
@@ -60,6 +64,8 @@ export function useAdminHealthSummary(): AdminHealthSummary & {
     ecosystemDiagnostics,
     deployments,
     providers,
+    vault,
+    connections,
     jobs,
     workers,
     securityEvents,

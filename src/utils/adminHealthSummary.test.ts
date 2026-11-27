@@ -245,4 +245,58 @@ describe('buildAdminHealthSummary', () => {
     expect(issue?.detail).toBe('HTTP 502');
     expect(issue?.targetTab).toBe('health-monitor');
   });
+
+  it('says "vault not linked" (warning) instead of "no keys" when Infisical cannot be read', () => {
+    const s = buildAdminHealthSummary(
+      base({
+        providers: [],
+        vault: { connected: false, missingEnv: ['INFISICAL_CLIENT_ID', 'INFISICAL_CLIENT_SECRET'] },
+      })
+    );
+    expect(s.issues.find((i) => i.id === 'issue-providers-none')).toBeUndefined();
+    const vault = s.issues.find((i) => i.id === 'issue-vault-not-linked');
+    expect(vault?.severity).toBe('warning');
+    expect(vault?.detail).toContain('INFISICAL_CLIENT_ID');
+    expect(vault?.targetTab).toBe('provider-keys');
+  });
+
+  it('turns missing connections into routed warnings without duplicating the vault issue', () => {
+    const s = buildAdminHealthSummary(
+      base({
+        providers: [],
+        vault: { connected: false, missingEnv: ['INFISICAL_PROJECT_ID'] },
+        connections: [
+          {
+            id: 'infisical',
+            name: 'Infisical vault',
+            status: 'missing',
+            detail: 'x',
+            missingEnv: ['INFISICAL_PROJECT_ID'],
+            targetTab: 'provider-keys',
+          },
+          {
+            id: 'github',
+            name: 'GitHub (CI & PRs)',
+            status: 'error',
+            detail: 'Token rejected (HTTP 401)',
+            missingEnv: [],
+            targetTab: 'github-pipeline',
+          },
+          {
+            id: 'supabase',
+            name: 'Supabase',
+            status: 'connected',
+            detail: 'ok',
+            missingEnv: [],
+            targetTab: 'customers',
+          },
+        ],
+      })
+    );
+    expect(s.issues.find((i) => i.id === 'issue-connection-infisical')).toBeUndefined();
+    expect(s.issues.find((i) => i.id === 'issue-connection-supabase')).toBeUndefined();
+    const gh = s.issues.find((i) => i.id === 'issue-connection-github');
+    expect(gh?.title).toBe('GitHub (CI & PRs) has a problem');
+    expect(gh?.targetTab).toBe('github-pipeline');
+  });
 });

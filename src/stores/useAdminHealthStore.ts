@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import type { ProviderKeyItem } from '../types';
-import type { DeploymentStatus } from '../utils/adminHealthSummary';
+import type {
+  AdminConnectionStatus,
+  AdminVaultSummary,
+  DeploymentStatus,
+} from '../utils/adminHealthSummary';
 import { apiClient } from '../services/apiClient';
 import { env } from '../config/env';
 import { INITIAL_PROVIDER_KEYS } from '../data/adminExpansionData';
@@ -16,6 +20,10 @@ import { logger } from '../utils/logger';
  */
 interface AdminHealthState {
   providers: ProviderKeyItem[] | null;
+  /** Infisical ভল্ট সংযুক্ত কিনা (edge থেকে) — null = অজানা */
+  vault: AdminVaultSummary | null;
+  /** সব ইন্টিগ্রেশনের আসল অবস্থা — null = অজানা */
+  connections: AdminConnectionStatus[] | null;
   deployments: DeploymentStatus[] | null;
   lastRefreshedAt: number | null;
   isRefreshing: boolean;
@@ -24,13 +32,38 @@ interface AdminHealthState {
 
 const MIN_REFRESH_GAP_MS = 15_000;
 
-async function loadProviders(): Promise<ProviderKeyItem[] | null> {
-  if (env.isMockEnabled) return INITIAL_PROVIDER_KEYS;
+async function loadProviders(): Promise<{
+  providers: ProviderKeyItem[] | null;
+  vault: AdminVaultSummary | null;
+}> {
+  if (env.isMockEnabled) return { providers: INITIAL_PROVIDER_KEYS, vault: null };
   try {
-    const res = await apiClient.get<{ providers?: ProviderKeyItem[] }>('/api/admin/providers');
-    return Array.isArray(res?.providers) ? res.providers : null;
+    const res = await apiClient.get<{
+      providers?: ProviderKeyItem[];
+      vaultSummary?: AdminVaultSummary;
+    }>('/api/admin/providers');
+    return {
+      providers: Array.isArray(res?.providers) ? res.providers : null,
+      vault:
+        res?.vaultSummary && typeof res.vaultSummary.connected === 'boolean'
+          ? res.vaultSummary
+          : null,
+    };
   } catch (error) {
     logger.debug('AdminHealth: provider keys unavailable', error);
+    return { providers: null, vault: null };
+  }
+}
+
+async function loadConnections(): Promise<AdminConnectionStatus[] | null> {
+  if (env.isMockEnabled) return null;
+  try {
+    const res = await apiClient.get<{ connections?: AdminConnectionStatus[] }>(
+      '/api/admin/connections'
+    );
+    return Array.isArray(res?.connections) ? res.connections : null;
+  } catch (error) {
+    logger.debug('AdminHealth: connections unavailable', error);
     return null;
   }
 }
@@ -51,6 +84,8 @@ async function loadDeployments(): Promise<DeploymentStatus[] | null> {
 
 export const useAdminHealthStore = create<AdminHealthState>((set, get) => ({
   providers: null,
+  vault: null,
+  connections: null,
   deployments: null,
   lastRefreshedAt: null,
   isRefreshing: false,
@@ -66,9 +101,10 @@ export const useAdminHealthStore = create<AdminHealthState>((set, get) => ({
     const admin = useAdminStore.getState();
     const platform = usePlatformStore.getState();
     try {
-      const [providers, deployments] = await Promise.all([
+      const [providerRes, deployments, connections] = await Promise.all([
         loadProviders(),
         loadDeployments(),
+        loadConnections(),
         cc.loadOverview().catch(() => undefined),
         cc.loadServiceHealth(Boolean(options?.force)).catch(() => undefined),
         cc.loadEcosystemDiagnostics().catch(() => undefined),
@@ -76,7 +112,13 @@ export const useAdminHealthStore = create<AdminHealthState>((set, get) => ({
         admin.fetchMcpServices({ force: Boolean(options?.force) }).catch(() => undefined),
         platform.fetchConfig().catch(() => undefined),
       ]);
-      set({ providers, deployments, lastRefreshedAt: Date.now() });
+      set({
+        providers: providerRes.providers,
+        vault: providerRes.vault,
+        connections,
+        deployments,
+        lastRefreshedAt: Date.now(),
+      });
     } finally {
       set({ isRefreshing: false });
     }
