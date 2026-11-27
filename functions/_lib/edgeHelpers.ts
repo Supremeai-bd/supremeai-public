@@ -533,6 +533,12 @@ export interface UpstreamSessionVerification {
   user_id?: string;
   permissions?: string[];
   status?: number;
+  /**
+   * True when the session could not be checked at all (core timeout, 5xx, 429,
+   * network error). Callers must answer 503 — never 401 — so a slow backend
+   * right after login does not sign the user out.
+   */
+  unavailable?: boolean;
 }
 
 const SESSION_VERIFY_CACHE_TTL_MS = 60_000;
@@ -615,6 +621,7 @@ export async function verifyUpstreamSession(
   let role: string | undefined;
   let userId: string | undefined;
   let permissions: string[] | undefined;
+  let unavailable = false;
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -648,9 +655,19 @@ export async function verifyUpstreamSession(
         lowerEmail === 'guest' ||
         Boolean(data?.is_guest) ||
         String(data?.plan || '').toLowerCase() === 'guest';
+    } else if (res.status !== 401 && res.status !== 403) {
+      // বাংলা মন্তব্য: 5xx/429/অন্য কিছু = core এখন উত্তর দিতে পারছে না, সেশন অবৈধ নয়।
+      unavailable = true;
     }
   } catch {
     ok = false;
+    unavailable = true;
+  }
+
+  // বাংলা মন্তব্য: "যাচাই করা যায়নি" ফল cache করা হয় না — নইলে লগইনের পরপর একটা
+  // cold-start টাইমআউট পুরো এক মিনিট ধরে প্রতিটি কলকে 401 বানিয়ে ইউজারকে লগআউট করাত।
+  if (unavailable) {
+    return { valid: false, isGuest: false, status: 503, unavailable: true };
   }
 
   // বাংলা মন্তব্য: আগে এই cleanup একটি return-এর পরে ছিল (unreachable) — ফলে

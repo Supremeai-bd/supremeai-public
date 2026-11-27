@@ -77,7 +77,9 @@ describe('apiClient 401 recovery', () => {
 
     await expect(apiClient.get('/api/v1/protected')).rejects.toBeInstanceOf(ApiError);
     expect(refresh).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // original + retry + the /auth/me confirmation probe (also 401 here)
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[2][0])).toContain('/api/v1/auth/me');
     expect(dispatchEvent).toHaveBeenCalledTimes(1);
     expect((dispatchEvent.mock.calls[0][0] as CustomEvent).type).toBe(SESSION_EXPIRED_EVENT);
   });
@@ -89,6 +91,44 @@ describe('apiClient 401 recovery', () => {
     apiClient.registerRefreshHandler(vi.fn().mockResolvedValue(null));
 
     await expect(apiClient.get('/api/v1/protected')).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the user signed in when a background endpoint 401s but /auth/me still accepts the session', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async (url: string) =>
+        String(url).includes('/api/v1/auth/me')
+          ? jsonResponse({ email: 'admin@example.com', role: 'admin' })
+          : jsonResponse({ detail: 'Sign in to boost your limit.' }, 401)
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    // Refresh endpoint unavailable -> handler hands back the existing token.
+    apiClient.registerRefreshHandler(vi.fn().mockResolvedValue('stale-token'));
+
+    await expect(apiClient.get('/api/pool/quota')).rejects.toMatchObject({ status: 401 });
+    expect(dispatchEvent).not.toHaveBeenCalled();
+  });
+
+  it('keeps the session when the confirmation probe cannot reach the backend', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/v1/auth/me')) throw new TypeError('Failed to fetch');
+      return jsonResponse({ detail: 'nope' }, 401);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    apiClient.registerRefreshHandler(vi.fn().mockResolvedValue(null));
+
+    await expect(apiClient.get('/api/v1/protected')).rejects.toMatchObject({ status: 401 });
+    expect(dispatchEvent).not.toHaveBeenCalled();
+  });
+
+  it('treats a 401 from /auth/me itself as authoritative without an extra probe', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ detail: 'expired' }, 401));
+    vi.stubGlobal('fetch', fetchMock);
+    apiClient.registerRefreshHandler(vi.fn().mockResolvedValue(null));
+
+    await expect(apiClient.get('/api/v1/auth/me')).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(dispatchEvent).toHaveBeenCalledTimes(1);
   });

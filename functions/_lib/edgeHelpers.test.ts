@@ -52,6 +52,31 @@ describe('verifyUpstreamSession', () => {
     expect(fetchMock.mock.calls[1][0]).toBe('https://other-upstream.example/api/v1/auth/me');
   });
 
+  it('reports a core outage as unavailable (503), not as an invalid session, and does not cache it', async () => {
+    const request = requestWith('cold-start-token');
+    fetchMock.mockImplementationOnce(async () => new Response('upstream down', { status: 502 }));
+    const down = await verifyUpstreamSession(request, UPSTREAM);
+    expect(down).toMatchObject({ valid: false, unavailable: true, status: 503 });
+
+    fetchMock.mockImplementationOnce(async () => {
+      throw new TypeError('network timeout');
+    });
+    expect((await verifyUpstreamSession(request, UPSTREAM)).unavailable).toBe(true);
+
+    // Next call reaches core again and succeeds — the outage verdict was not cached.
+    const ok = await verifyUpstreamSession(request, UPSTREAM);
+    expect(ok.valid).toBe(true);
+    expect(ok.unavailable).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps 401/403 from core as a real invalid-session verdict', async () => {
+    fetchMock.mockImplementationOnce(async () => new Response('{}', { status: 403 }));
+    const result = await verifyUpstreamSession(requestWith('forbidden-token'), UPSTREAM);
+    expect(result).toMatchObject({ valid: false, status: 401 });
+    expect(result.unavailable).toBeUndefined();
+  });
+
   it('does not reuse a rejected token verdict across upstreams', async () => {
     const request = requestWith('negative-origin-isolation-token');
     fetchMock.mockImplementationOnce(async () => new Response('{}', { status: 401 }));

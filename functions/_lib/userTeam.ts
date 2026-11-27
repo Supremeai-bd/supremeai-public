@@ -180,9 +180,17 @@ export async function handleUserTeamRequest(
   const method = request.method.toUpperCase();
 
   const session = await deps.verify(request);
+  if (session.unavailable) {
+    return fail(503, 'Session check is temporarily unavailable. Please retry.');
+  }
   const userId = String(session.user_id || '');
-  if (!session.valid || session.isGuest || !UUID_RE.test(userId)) {
+  if (!session.valid || session.isGuest) {
     return fail(401, 'Sign in to manage your team.');
+  }
+  // বাংলা মন্তব্য: সেশন বৈধ কিন্তু Supabase UUID নেই (যেমন RBAC অ্যাডমিন) — এটা 401 নয়,
+  // তাহলে ক্লায়েন্ট ভুল করে সেশন কেটে দিত; 403 দিয়ে শুধু ফিচারটা বন্ধ থাকে।
+  if (!UUID_RE.test(userId)) {
+    return fail(403, 'Team features need a Supabase account.');
   }
   const myEmail = String(session.email || '').toLowerCase();
   if (!resolveSupabaseAdmin(env)) {

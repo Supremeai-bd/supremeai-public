@@ -84,6 +84,63 @@ class ApiClient {
     }
   }
 
+  private buildUrl(endpoint: string): string {
+    let base = (env.apiBaseUrl || '').trim().replace(/\/+$/, '');
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    if (base.endsWith('/api') && cleanEndpoint.startsWith('/api/')) {
+      base = base.slice(0, -4);
+    }
+    return endpoint.startsWith('http') ? endpoint : `${base}${cleanEndpoint}`;
+  }
+
+  private sessionProbeInFlight: Promise<boolean> | null = null;
+
+  /**
+   * বাংলা মন্তব্য: একটা ফিচার-এন্ডপয়েন্টের 401 মানেই সেশন শেষ নয় — লগইনের পরপরই কোনো
+   * ব্যাকগ্রাউন্ড কল (edge-এর সেশন-চেক টাইমআউট, ভিন্ন টোকেন চাওয়া রুট ইত্যাদি) 401 দিলে
+   * আগে ইউজারকে সাথে সাথে Guest-এ বের করে দেওয়া হতো। এখন canonical `/api/v1/auth/me`
+   * দিয়ে যাচাই করা হয়: সেটাও 401/403 দিলে তবেই সেশন সত্যিই শেষ। নেটওয়ার্ক/5xx = সেশন থাকে।
+   */
+  private probeSessionGone(): Promise<boolean> {
+    if (!this.sessionProbeInFlight) {
+      this.sessionProbeInFlight = (async () => {
+        const token = this.getAuthToken();
+        if (!token) return false;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        try {
+          const res = await fetch(this.buildUrl('/api/v1/auth/me'), {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          });
+          return res.status === 401 || res.status === 403;
+        } catch {
+          return false;
+        } finally {
+          clearTimeout(timer);
+        }
+      })().finally(() => {
+        this.sessionProbeInFlight = null;
+      });
+    }
+    return this.sessionProbeInFlight;
+  }
+
+  /** Emits session-expired only when the canonical session check agrees. */
+  private async expireSessionIfConfirmed(endpoint: string): Promise<void> {
+    if (!this.getAuthToken()) return;
+    const authoritative = /^\/api(?:\/v1)?\/auth\/me(?:\?|$)/.test(endpoint);
+    if (authoritative || (await this.probeSessionGone())) {
+      this.notifySessionExpired();
+      return;
+    }
+    logger.warn(
+      `apiClient: ${endpoint} answered 401 but the session is still valid — keeping the user signed in.`
+    );
+  }
+
   /** Single-flight refresh: concurrent 401s share one refresh round-trip. */
   private async refreshOnce(): Promise<string | null> {
     if (!this.refreshHandler) return null;
@@ -142,12 +199,7 @@ class ApiClient {
 
   public async request<T = unknown>(endpoint: string, options: ApiRequestOptions = {}): Promise<T> {
     const method = ((options.method as string) || 'GET').toUpperCase();
-    let base = (env.apiBaseUrl || '').trim().replace(/\/+$/, '');
-    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-    if (base.endsWith('/api') && cleanEndpoint.startsWith('/api/')) {
-      base = base.slice(0, -4);
-    }
-    const url = endpoint.startsWith('http') ? endpoint : `${base}${cleanEndpoint}`;
+    const url = this.buildUrl(endpoint);
 
     // Single-flight dedup: concurrent identical GETs share one network round
     // trip (the same pattern refreshOnce() uses for token refreshes). Internal
@@ -341,16 +393,15 @@ class ApiClient {
               retryError instanceof ApiError &&
               retryError.status === 401 &&
               !this.isAdminEndpoint(endpoint) &&
-              !options.skipSessionExpiry &&
-              this.getAuthToken()
+              !options.skipSessionExpiry
             ) {
-              this.notifySessionExpired();
+              await this.expireSessionIfConfirmed(endpoint);
             }
             throw retryError;
           }
         }
-        if (!this.isAdminEndpoint(endpoint) && !options.skipSessionExpiry && this.getAuthToken()) {
-          this.notifySessionExpired();
+        if (!this.isAdminEndpoint(endpoint) && !options.skipSessionExpiry) {
+          await this.expireSessionIfConfirmed(endpoint);
         }
       }
 

@@ -93,16 +93,31 @@ describe('statusForDbError', () => {
 });
 
 describe('handleUserTeamRequest — auth', () => {
-  it('rejects guests and sessions without a Supabase user id', async () => {
+  it('rejects guests and invalid sessions with 401', async () => {
     const { impl, calls } = fakeDb();
     for (const verify of [
       async () => ({ valid: false, isGuest: false }),
       async () => ({ valid: true, isGuest: true, user_id: ME }),
-      async () => ({ valid: true, isGuest: false, user_id: 'api-key-user' }),
     ]) {
       const res = await handleUserTeamRequest(req(''), ENV, { verify, fetchImpl: impl });
       expect(res.status).toBe(401);
     }
+    expect(calls).toHaveLength(0);
+  });
+
+  it('answers 403 (not 401) for a valid session without a Supabase user id, so the client keeps the session', async () => {
+    const { impl, calls } = fakeDb();
+    const verify = async () => ({ valid: true, isGuest: false, user_id: 'api-key-user' });
+    const res = await handleUserTeamRequest(req(''), ENV, { verify, fetchImpl: impl });
+    expect(res.status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('answers 503 when the session check itself is unavailable', async () => {
+    const { impl, calls } = fakeDb();
+    const verify = async () => ({ valid: false, isGuest: false, unavailable: true, status: 503 });
+    const res = await handleUserTeamRequest(req(''), ENV, { verify, fetchImpl: impl });
+    expect(res.status).toBe(503);
     expect(calls).toHaveLength(0);
   });
 
