@@ -6,9 +6,7 @@ import {
   Trash2,
   Edit2,
   Check,
-  Users,
   Zap,
-  CreditCard,
   LogOut,
   PanelLeft,
   Pin,
@@ -480,38 +478,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {showMoreWorkspace && (
               <div className="mt-0.5 space-y-0.5 pl-2">
-                <button
-                  type="button"
-                  onClick={() => onSelectTab('user-billing')}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    activeTab === 'user-billing'
-                      ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-900 dark:text-white font-medium'
-                      : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <CreditCard className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>{t.planUsage}</span>
-                  </div>
-                  {isGuest && <Lock className="w-3 h-3 text-slate-400" />}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => onSelectTab('user-team')}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    activeTab === 'user-team'
-                      ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-900 dark:text-white font-medium'
-                      : 'hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Users className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>{t.teamMembers}</span>
-                  </div>
-                  {isGuest && <Lock className="w-3 h-3 text-slate-400" />}
-                </button>
-
+                {/* বাংলা মন্তব্য: Plan & Usage ও Team & Members সাইডবার থেকে সরানো হয়েছে —
+                    পেজ দুটো কোটা-বার, Boost limit ও Ctrl+K থেকে খোলা যায়। */}
                 <button
                   type="button"
                   onClick={() => onSelectTab('user-projects')}
