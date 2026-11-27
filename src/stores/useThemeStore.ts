@@ -53,13 +53,13 @@ const loadPersistedConfig = (): PersistedThemeConfig => {
       localStorage.getItem(THEME_STORAGE_KEY) || localStorage.getItem('supremeai_studio_theme_v2');
     if (raw) {
       const parsed = JSON.parse(raw);
-      const validModes: ThemeMode[] = ['system', 'light', 'dark'];
       const validThemes: LiveThemeId[] = LIVE_THEMES.map((t) => t.id);
       const validSpeeds: MotionSpeed[] = ['calm', 'normal', 'dynamic'];
       const validTones: SurfaceTone[] = ['adaptive', 'monochrome'];
       const validScrims: ScrimIntensity[] = ['subtle', 'balanced', 'focus'];
       return {
-        themeMode: validModes.includes(parsed.themeMode) ? parsed.themeMode : 'system',
+        // Legacy manual Light/Dark → smart Auto (Light/Dark are no longer separate options).
+        themeMode: 'system',
         liveTheme: validThemes.includes(parsed.liveTheme) ? parsed.liveTheme : 'alpine-dunes',
         liveMotion: typeof parsed.liveMotion === 'boolean' ? parsed.liveMotion : true,
         overrideReducedMotion:
@@ -91,6 +91,38 @@ const savePersistedConfig = (cfg: PersistedThemeConfig) => {
     // Ignore storage write failures
   }
 };
+
+/**
+ * Smart theme-based Auto (the only colour mode now).
+ * বাংলা: প্রতিটা থিম নিজেই ঠিক করে কোন মোডে সবচেয়ে ভালো দেখায় — ডার্ক-থিম → ডার্ক,
+ * লাইট-থিম → লাইট, দুই মোডেই ভালো (`both`) → ডিভাইসের (OS) পছন্দ। টেক্সটের রঙ
+ * `getThemeChatTokens(theme, scheme)` থেকে সেই অনুযায়ী আপনাআপনি আসে।
+ */
+export const resolveSmartScheme = (
+  liveTheme: LiveThemeId,
+  osPrefersDark: boolean
+): ResolvedColorScheme => {
+  const theme = LIVE_THEMES.find((t) => t.id === liveTheme);
+  if (theme?.recommendedScheme === 'dark' || theme?.recommendedScheme === 'light') {
+    return theme.recommendedScheme;
+  }
+  return osPrefersDark ? 'dark' : 'light';
+};
+
+/** Theme config fields the user can preview and then Save / Undo. */
+const pickPersistable = (s: PersistedThemeConfig): PersistedThemeConfig => ({
+  themeMode: 'system',
+  liveTheme: s.liveTheme,
+  liveMotion: s.liveMotion,
+  overrideReducedMotion: s.overrideReducedMotion,
+  motionSpeed: s.motionSpeed,
+  surfaceTone: s.surfaceTone,
+  scrimIntensity: s.scrimIntensity,
+  themeOptions: { ...s.themeOptions },
+});
+
+export const isThemeConfigEqual = (a: PersistedThemeConfig, b: PersistedThemeConfig): boolean =>
+  JSON.stringify(pickPersistable(a)) === JSON.stringify(pickPersistable(b));
 
 let themeTransitionTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -203,6 +235,15 @@ interface ThemeStoreState {
   lastSyncedAt: number | null;
   accentTokens: ThemeAccentTokens;
 
+  /** Snapshot taken when the theme panel opens; non-null = previewing (nothing is saved). */
+  previewSnapshot: PersistedThemeConfig | null;
+  beginThemePreview: () => void;
+  /** Keep the previewed theme (persist + sync). */
+  saveThemePreview: () => void;
+  /** Throw the preview away and restore the previous theme. */
+  undoThemePreview: () => void;
+
+  /** Voice/chat "dark mode"/"light mode": picks a theme that looks best in that mode. */
   setThemeMode: (mode: ThemeMode) => void;
   cycleThemeMode: () => void;
   setLiveTheme: (theme: LiveThemeId) => void;
@@ -220,12 +261,10 @@ interface ThemeStoreState {
 const initialConfig = loadPersistedConfig();
 const initialOsDark = getInitialOsDark();
 const initialReducedMotion = getInitialReducedMotion();
-const initialResolved: ResolvedColorScheme =
-  initialConfig.themeMode === 'system'
-    ? initialOsDark
-      ? 'dark'
-      : 'light'
-    : initialConfig.themeMode;
+const initialResolved: ResolvedColorScheme = resolveSmartScheme(
+  initialConfig.liveTheme,
+  initialOsDark
+);
 
 applyThemeToDom(
   initialResolved,
@@ -241,6 +280,8 @@ applyThemeToDom(
 );
 
 const persistFromState = (s: ThemeStoreState) => {
+  // বাংলা: প্রিভিউ চলাকালীন কিছু সেভ হয় না — Save চাপলে তবেই।
+  if (s.previewSnapshot) return;
   const payload: PersistedThemeConfig = {
     themeMode: s.themeMode,
     liveTheme: s.liveTheme,
@@ -276,43 +317,66 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
   lastSyncedAt: Date.now(),
   accentTokens: getThemeTokens(initialConfig.liveTheme, initialResolved),
 
-  setThemeMode: (themeMode) => {
-    const state = get();
-    const resolvedScheme: ResolvedColorScheme =
-      themeMode === 'system' ? (state.osPrefersDark ? 'dark' : 'light') : themeMode;
+  previewSnapshot: null,
 
-    applyThemeToDom(resolvedScheme, themeMode, state.liveTheme, true, state.surfaceTone, {
-      motionSpeed: state.motionSpeed,
+  beginThemePreview: () => {
+    const state = get();
+    if (state.previewSnapshot) return;
+    set({ previewSnapshot: pickPersistable(state) });
+  },
+
+  saveThemePreview: () => {
+    const state = get();
+    if (!state.previewSnapshot) return;
+    const next = { ...state, previewSnapshot: null };
+    set({ previewSnapshot: null });
+    persistFromState(next);
+  },
+
+  undoThemePreview: () => {
+    const state = get();
+    const snap = state.previewSnapshot;
+    if (!snap) return;
+    const resolvedScheme = resolveSmartScheme(snap.liveTheme, state.osPrefersDark);
+    applyThemeToDom(resolvedScheme, 'system', snap.liveTheme, true, snap.surfaceTone, {
+      motionSpeed: snap.motionSpeed,
       isAnimating: computeIsAnimating(
-        state.liveMotion,
+        snap.liveMotion,
         state.prefersReducedMotion,
-        state.overrideReducedMotion
+        snap.overrideReducedMotion
       ),
     });
-    const nextState = {
-      ...state,
-      themeMode,
+    set({
+      ...snap,
+      themeMode: 'system',
       resolvedScheme,
-      accentTokens: getThemeTokens(state.liveTheme, resolvedScheme),
-      lastSyncedAt: Date.now(),
-    };
-    persistFromState(nextState);
-    set(nextState);
+      accentTokens: getThemeTokens(snap.liveTheme, resolvedScheme),
+      previewSnapshot: null,
+    });
+  },
+
+  setThemeMode: (mode) => {
+    // Smart Auto only: "dark"/"light" requests switch to a theme that looks best in
+    // that mode (the current theme is kept when it already resolves to it).
+    const state = get();
+    if (mode === 'system') return;
+    if (resolveSmartScheme(state.liveTheme, state.osPrefersDark) === mode) return;
+    const match =
+      LIVE_THEMES.find((t) => t.recommendedScheme === mode) ||
+      LIVE_THEMES.find((t) => resolveSmartScheme(t.id, state.osPrefersDark) === mode);
+    if (match) get().setLiveTheme(match.id);
   },
 
   cycleThemeMode: () => {
-    const current = get().themeMode;
-    const nextOrder: Record<ThemeMode, ThemeMode> = {
-      system: 'light',
-      light: 'dark',
-      dark: 'system',
-    };
-    get().setThemeMode(nextOrder[current]);
+    const state = get();
+    const current = resolveSmartScheme(state.liveTheme, state.osPrefersDark);
+    get().setThemeMode(current === 'dark' ? 'light' : 'dark');
   },
 
   setLiveTheme: (liveTheme) => {
     const state = get();
-    applyThemeToDom(state.resolvedScheme, state.themeMode, liveTheme, true, state.surfaceTone, {
+    const resolvedScheme = resolveSmartScheme(liveTheme, state.osPrefersDark);
+    applyThemeToDom(resolvedScheme, 'system', liveTheme, true, state.surfaceTone, {
       motionSpeed: state.motionSpeed,
       isAnimating: computeIsAnimating(
         state.liveMotion,
@@ -322,8 +386,11 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
     });
     const nextState = {
       ...state,
+      themeMode: 'system' as const,
       liveTheme,
-      accentTokens: getThemeTokens(liveTheme, state.resolvedScheme),
+      resolvedScheme,
+      accentTokens: getThemeTokens(liveTheme, resolvedScheme),
+      lastSyncedAt: Date.now(),
     };
     persistFromState(nextState);
     set(nextState);
@@ -428,16 +495,13 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
   applyRemoteThemeConfig: (remote) => {
     if (!remote || typeof remote !== 'object') return;
     const state = get();
-    const validModes: ThemeMode[] = ['system', 'light', 'dark'];
     const validThemes: LiveThemeId[] = LIVE_THEMES.map((t) => t.id);
     const validSpeeds: MotionSpeed[] = ['calm', 'normal', 'dynamic'];
     const validTones: SurfaceTone[] = ['adaptive', 'monochrome'];
     const validScrims: ScrimIntensity[] = ['subtle', 'balanced', 'focus'];
 
-    const themeMode =
-      remote.themeMode && validModes.includes(remote.themeMode)
-        ? remote.themeMode
-        : state.themeMode;
+    // Legacy remote Light/Dark collapse to smart Auto.
+    const themeMode: ThemeMode = 'system';
     const liveTheme =
       remote.liveTheme && validThemes.includes(remote.liveTheme)
         ? remote.liveTheme
@@ -467,8 +531,24 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
         : {}),
     };
 
-    const resolvedScheme: ResolvedColorScheme =
-      themeMode === 'system' ? (state.osPrefersDark ? 'dark' : 'light') : themeMode;
+    const resolvedScheme = resolveSmartScheme(liveTheme, state.osPrefersDark);
+
+    const incoming: PersistedThemeConfig = {
+      themeMode,
+      liveTheme,
+      liveMotion,
+      overrideReducedMotion,
+      motionSpeed,
+      surfaceTone,
+      scrimIntensity,
+      themeOptions,
+    };
+    if (state.previewSnapshot) {
+      // বাংলা: প্রিভিউ চলছে — স্ক্রিন বদলাবো না; Undo করলে এই নতুন সেভ-করা থিমে ফিরবে।
+      savePersistedConfig(incoming);
+      set({ previewSnapshot: incoming, lastSyncedAt: Date.now() });
+      return;
+    }
 
     applyThemeToDom(resolvedScheme, themeMode, liveTheme, true, surfaceTone, {
       motionSpeed,
@@ -500,8 +580,7 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
 
   setOsPrefersDark: (osPrefersDark, animate = true) => {
     const state = get();
-    const resolvedScheme: ResolvedColorScheme =
-      state.themeMode === 'system' ? (osPrefersDark ? 'dark' : 'light') : state.themeMode;
+    const resolvedScheme = resolveSmartScheme(state.liveTheme, osPrefersDark);
 
     applyThemeToDom(resolvedScheme, state.themeMode, state.liveTheme, animate, state.surfaceTone, {
       motionSpeed: state.motionSpeed,

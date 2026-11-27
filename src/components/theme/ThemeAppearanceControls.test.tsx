@@ -23,14 +23,54 @@ describe('ThemeAppearanceControls', () => {
       surfaceTone: 'adaptive',
       scrimIntensity: 'balanced',
       themeOptions: { ...DEFAULT_THEME_OPTIONS },
+      previewSnapshot: null,
     });
+    localStorage.clear();
   });
   afterEach(cleanup);
 
-  it('switches the colour mode with the segmented control', () => {
+  it('has no Auto/Dark/Light picker — the theme sets its own best mode (smart Auto)', () => {
     render(<ThemeAppearanceControls />);
-    fireEvent.click(screen.getByTestId('theme-mode-dark'));
-    expect(useThemeStore.getState().themeMode).toBe('dark');
+    expect(screen.queryByTestId('theme-mode')).toBeNull();
+    const dark = LIVE_THEMES.find((th) => th.recommendedScheme === 'dark')!;
+    const light = LIVE_THEMES.find((th) => th.recommendedScheme === 'light')!;
+    pick('theme-select', dark.id);
+    expect(useThemeStore.getState().resolvedScheme).toBe('dark');
+    expect(screen.getByTestId('theme-smart-auto').getAttribute('data-scheme')).toBe('dark');
+    pick('theme-select', light.id);
+    expect(useThemeStore.getState().resolvedScheme).toBe('light');
+  });
+
+  it('previews without saving; Save keeps the theme', () => {
+    const before = useThemeStore.getState().liveTheme;
+    const target = LIVE_THEMES.find((th) => th.id !== before)!;
+    render(<ThemeAppearanceControls />);
+    expect(screen.queryByTestId('theme-preview-bar')).toBeNull();
+    pick('theme-select', target.id);
+    expect(useThemeStore.getState().liveTheme).toBe(target.id);
+    expect(localStorage.getItem('supremeai_studio_theme_v3') ?? '').not.toContain(target.id);
+    fireEvent.click(screen.getByTestId('theme-preview-save'));
+    expect(JSON.parse(localStorage.getItem('supremeai_studio_theme_v3')!).liveTheme).toBe(
+      target.id
+    );
+    expect(screen.queryByTestId('theme-preview-bar')).toBeNull();
+    cleanup();
+    expect(useThemeStore.getState().liveTheme).toBe(target.id);
+  });
+
+  it('Undo button and closing without Save both restore the previous theme', () => {
+    const before = useThemeStore.getState().liveTheme;
+    const target = LIVE_THEMES.find((th) => th.id !== before)!;
+    render(<ThemeAppearanceControls />);
+    pick('theme-select', target.id);
+    fireEvent.click(screen.getByTestId('theme-preview-undo'));
+    expect(useThemeStore.getState().liveTheme).toBe(before);
+
+    pick('theme-select', target.id);
+    expect(useThemeStore.getState().liveTheme).toBe(target.id);
+    cleanup(); // panel / popover closed without Save
+    expect(useThemeStore.getState().liveTheme).toBe(before);
+    expect(useThemeStore.getState().previewSnapshot).toBeNull();
   });
 
   it('lists every live theme in the dropdown and applies the pick', () => {

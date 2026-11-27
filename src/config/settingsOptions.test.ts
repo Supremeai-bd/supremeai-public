@@ -19,7 +19,6 @@ import {
   readToggle,
   SCRIM_CHOICES,
   SURFACE_TONE_CHOICES,
-  THEME_MODE_CHOICES,
   THEME_OPTION_GROUPS,
   themeOptionGroupsFor,
   type ThemeChoiceGroup,
@@ -83,8 +82,7 @@ describe('theme option groups', () => {
       }
     }
     for (const list of [
-      THEME_MODE_CHOICES,
-      SURFACE_TONE_CHOICES,
+          SURFACE_TONE_CHOICES,
       MOTION_SPEED_CHOICES,
       SCRIM_CHOICES,
     ]) {

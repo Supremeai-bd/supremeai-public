@@ -135,7 +135,8 @@ describe('Cross-Device User Preferences Sync', () => {
     expect(customerSettings.contentLayout).toBe('centered');
 
     const themeState = useThemeStore.getState();
-    expect(themeState.themeMode).toBe('light');
+    // Smart Auto: a legacy 'light' mode from the server collapses to 'system'.
+    expect(themeState.themeMode).toBe('system');
     expect(themeState.liveTheme).toBe('aurora-borealis');
     expect(themeState.liveMotion).toBe(false);
 

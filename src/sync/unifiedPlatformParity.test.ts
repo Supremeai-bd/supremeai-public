@@ -190,7 +190,8 @@ describe('4-Platform Canonical Feature & Real-Time Sync Parity', () => {
     applyIncomingSyncEnvelope(prefEnv);
     expect(useCustomerStore.getState().userSettings.language).toBe('bn');
     expect(useAppPreferencesStore.getState().language).toBe('bn');
-    expect(useThemeStore.getState().themeMode).toBe('dark');
+    // Smart Auto: legacy 'dark' collapses to 'system'; the theme picks its own scheme.
+    expect(useThemeStore.getState().themeMode).toBe('system');
     expect(useThemeStore.getState().liveTheme).toBe('midnight-peaks');
 
     const merged = mergeSyncedSessions(
