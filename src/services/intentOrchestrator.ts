@@ -25,8 +25,6 @@ export type DashboardActionType =
   | 'open_projects'
   | 'open_workspace_dock'
   | 'run_last_code'
-  | 'enable_dev_mode'
-  | 'disable_dev_mode'
   | 'disable_jarvis'
   | 'open_usage'
   | 'open_settings'
@@ -195,22 +193,6 @@ export function recordUserMemory(update: {
   return next;
 }
 
-/**
- * বাংলা মন্তব্য: ব্যবহারকারী নিজে ডেভেলপার টুলস অন করলে বা তার প্রম্পটে বারবার
- * কোডিং/ডেভেলপার কাজের ধারা থাকলে স্মার্টভাবে ডেভ-টুলস আনলক হয় — সাধারণ ইউজারদের
- * জন্য ইন্টারফেস সবসময় পরিষ্কার থাকে।
- */
-export function shouldEnableSmartDeveloperMode(params: {
-  explicitDeveloperMode?: boolean;
-  isAdmin?: boolean;
-  memory?: UserMemoryProfile;
-}): boolean {
-  if (params.isAdmin) return true;
-  if (typeof params.explicitDeveloperMode === 'boolean') return params.explicitDeveloperMode;
-  const score = params.memory?.developerAffinityScore ?? 0;
-  return score >= 2;
-}
-
 export function clearUserMemory(): void {
   if (typeof localStorage !== 'undefined') {
     try {
@@ -361,18 +343,13 @@ export function detectDirectDashboardActionWithPayload(
     return { action: 'toggle_voice' };
   }
 
-  // Developer Tools toggle on command (replaces permanently cluttered sidebar/settings)
+  // বাংলা মন্তব্য: আর কোনো Developer Mode নেই — সব টুল সবার জন্য খোলা। "developer tools খোলো"
+  // বললে শুধু ওয়ার্কস্পেস ডক খুলে যায় (Sandbox/Terminal/Graph সেখানেই আছে)।
   if (
     /\b(enable|turn\s*on|show|open)\s+(dev|developer)\s*(mode|tools?)\b/i.test(t) ||
-    /(ডেভেলপার\s*(মোড|টুলস?)\s*(চালু|অন|দেখাও))/i.test(promptText)
+    /(ডেভেলপার\s*(মোড|টুলস?)\s*(চালু|অন|দেখাও|খোলো))/i.test(promptText)
   ) {
-    return { action: 'enable_dev_mode' };
-  }
-  if (
-    /\b(disable|turn\s*off|hide)\s+(dev|developer)\s*(mode|tools?)\b/i.test(t) ||
-    /(ডেভেলপার\s*(মোড|টুলস?)\s*(বন্ধ|লুকাও))/i.test(promptText)
-  ) {
-    return { action: 'disable_dev_mode' };
+    return { action: 'open_workspace_dock' };
   }
 
   // বাংলা মন্তব্য: "চালাও / run it / preview dekhao" — কোড-ব্লকের নিচে আর কোনো Run/Preview

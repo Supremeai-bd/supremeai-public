@@ -19,20 +19,12 @@ interface PromptLibraryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectTemplate: (templateText: string) => void;
-  developerMode?: boolean;
 }
-
-const NON_DEV_CATEGORIES = new Set<PromptTemplateItem['category']>([
-  'writing',
-  'research',
-  'general',
-]);
 
 export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
   isOpen,
   onClose,
   onSelectTemplate,
-  developerMode = false,
 }) => {
   const [templates, setTemplates] = useState<PromptTemplateItem[]>(() => {
     const saved = localStorage.getItem('supremeai_custom_prompts');
@@ -54,24 +46,28 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
 
   // New template form state
   const [newTitle, setNewTitle] = useState('');
-  const [newCategory, setNewCategory] = useState<PromptTemplateItem['category']>(
-    developerMode ? 'code' : 'general'
-  );
+  const [newCategory, setNewCategory] = useState<PromptTemplateItem['category']>('code');
   const [newDescription, setNewDescription] = useState('');
   const [newTemplate, setNewTemplate] = useState('');
   const [newTags, setNewTags] = useState('');
 
   if (!isOpen) return null;
 
-  const categories = developerMode
-    ? ['all', 'security', 'code', 'architecture', 'review', 'writing', 'research', 'general']
-    : ['all', 'writing', 'research', 'general'];
+  const categories = [
+    'all',
+    'security',
+    'code',
+    'architecture',
+    'review',
+    'writing',
+    'research',
+    'general',
+  ];
 
   const activeCategory = categories.includes(selectedCategory) ? selectedCategory : 'all';
 
-  const visibleTemplates = developerMode
-    ? templates
-    : templates.filter((t) => NON_DEV_CATEGORIES.has(t.category));
+  // বাংলা মন্তব্য: সাধারণ/ডেভেলপার ভাগ নেই — সব টেমপ্লেট সবার জন্য।
+  const visibleTemplates = templates;
 
   const filteredTemplates = visibleTemplates.filter((t) => {
     const matchesCategory = activeCategory === 'all' || t.category === activeCategory;
@@ -138,9 +134,7 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
                   {visibleTemplates.length} {t.promptLibSavedSuffix}
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
-                {developerMode ? t.promptLibDevDesc : t.promptLibStdDesc}
-              </p>
+              <p className="text-xs text-slate-400">{t.promptLibDevDesc}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -189,26 +183,16 @@ export const PromptLibraryModal: React.FC<PromptLibraryModalProps> = ({
                     {t.pluginCategoryLabel}
                   </label>
                   <select
-                    value={
-                      developerMode
-                        ? newCategory
-                        : NON_DEV_CATEGORIES.has(newCategory)
-                          ? newCategory
-                          : 'general'
-                    }
+                    value={newCategory}
                     onChange={(e) =>
                       setNewCategory(e.target.value as PromptTemplateItem['category'])
                     }
                     className="w-full bg-[#0a0d14] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
                   >
-                    {developerMode && (
-                      <>
-                        <option value="code">Code & Syntax</option>
-                        <option value="security">Security & Audit</option>
-                        <option value="architecture">Architecture</option>
-                        <option value="review">Code Review</option>
-                      </>
-                    )}
+                    <option value="code">Code & Syntax</option>
+                    <option value="security">Security & Audit</option>
+                    <option value="architecture">Architecture</option>
+                    <option value="review">Code Review</option>
                     <option value="writing">Writing & Comms</option>
                     <option value="research">Research & Summaries</option>
                     <option value="general">General Custom</option>

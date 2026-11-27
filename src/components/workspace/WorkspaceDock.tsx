@@ -24,14 +24,10 @@ import { WorkspaceGraphTab } from './WorkspaceGraphTab';
 import { useI18n } from '../../utils/i18n';
 
 interface WorkspaceDockProps {
-  developerMode?: boolean;
   isGuest?: boolean;
 }
 
-export const WorkspaceDock: React.FC<WorkspaceDockProps> = ({
-  developerMode = true,
-  isGuest = false,
-}) => {
+export const WorkspaceDock: React.FC<WorkspaceDockProps> = ({ isGuest = false }) => {
   const {
     isDockOpen,
     dockWidthPercent,
@@ -117,7 +113,8 @@ export const WorkspaceDock: React.FC<WorkspaceDockProps> = ({
     label: string;
     icon: React.ComponentType<{ className?: string }>;
   }[] =
-    developerMode && !isGuest
+    // বাংলা মন্তব্য: Developer Mode নেই — সাইন-ইন করা সবার জন্য Sandbox/Terminal/Graph খোলা।
+    !isGuest
       ? [
           { id: 'sandbox', label: t.dockSandbox, icon: FlaskConical },
           { id: 'terminal', label: t.dockTerminal, icon: Terminal },
@@ -287,9 +284,9 @@ export const WorkspaceDock: React.FC<WorkspaceDockProps> = ({
         {effectiveTab === 'code' && <WorkspaceCodeTab />}
         {effectiveTab === 'browser' && !isGuest && <WorkspaceBrowserTab />}
         {effectiveTab === 'schedule' && !isGuest && <WorkspaceScheduleTab />}
-        {effectiveTab === 'sandbox' && developerMode && !isGuest && <WorkspaceSandboxTab />}
-        {effectiveTab === 'terminal' && developerMode && !isGuest && <WorkspaceTerminalTab />}
-        {effectiveTab === 'graph' && developerMode && !isGuest && <WorkspaceGraphTab />}
+        {effectiveTab === 'sandbox' && !isGuest && <WorkspaceSandboxTab />}
+        {effectiveTab === 'terminal' && !isGuest && <WorkspaceTerminalTab />}
+        {effectiveTab === 'graph' && !isGuest && <WorkspaceGraphTab />}
       </div>
     </aside>
   );

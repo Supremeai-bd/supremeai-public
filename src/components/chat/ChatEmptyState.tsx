@@ -9,14 +9,12 @@ interface ChatEmptyStateProps {
   activeRole: RolePersona;
   activeModel: ModelDetail;
   userName?: string;
-  developerMode?: boolean;
 }
 
 export const ChatEmptyState: React.FC<ChatEmptyStateProps> = ({
   activeRole,
   activeModel,
   userName = 'Guest',
-  developerMode = false,
 }) => {
   const [isKeyPulse, setIsKeyPulse] = useState(false);
   const liveTheme = useThemeStore((s) => s.liveTheme);

@@ -12,9 +12,6 @@ import {
   Palette,
   Play,
   Pause,
-  Columns3,
-  Maximize2,
-  Minimize2,
   Terminal,
   MessageSquareCode,
   Code2,
@@ -32,7 +29,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { AppLanguage, UserAccountSettings, UserRole, WorkspaceContentLayout } from '../../types';
+import { AppLanguage, UserAccountSettings, UserRole } from '../../types';
 import { APP_LANGUAGE_OPTIONS, TranslationKeys, useI18n } from '../../utils/i18n';
 import { AccountSettingsPanel } from './settings/AccountSettingsPanel';
 import { PersonalMcpHubCard } from './PersonalMcpHubCard';
@@ -86,9 +83,6 @@ interface UserSettingsViewProps {
   currentRole?: UserRole;
   isAdminEligible?: boolean;
   onOpenAdminConsole?: () => void;
-  isDeveloperEligible?: boolean;
-  effectiveDeveloperMode?: boolean;
-  onToggleDeveloperMode?: () => void;
   onToggleDeveloperEligibility?: (eligible: boolean) => void;
   trustedUntil?: number | null;
   onRevokeTrustedBrowser?: () => void;
@@ -119,9 +113,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   currentRole: currentRoleProp,
   isAdminEligible = false,
   onOpenAdminConsole,
-  isDeveloperEligible = false,
-  effectiveDeveloperMode,
-  onToggleDeveloperMode,
   onToggleDeveloperEligibility,
   trustedUntil = null,
   onRevokeTrustedBrowser,
@@ -178,9 +169,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   const [defaultModel, setDefaultModel] = useState(settings.defaultModel);
   const [autoModelRouting, setAutoModelRouting] = useState(settings.autoModelRouting !== false);
   const [customInstructions, setCustomInstructions] = useState(settings.customInstructions || '');
-  const [contentLayout, setContentLayout] = useState<WorkspaceContentLayout>(
-    settings.contentLayout || 'fluid'
-  );
   const [savedSuccess, setSavedSuccess] = useState(false);
   const language = useAppPreferencesStore((s) => s.language);
   const setCentralizedLanguage = useAppPreferencesStore((s) => s.setLanguage);
@@ -217,7 +205,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
     setDefaultModel(settings.defaultModel);
     setAutoModelRouting(settings.autoModelRouting !== false);
     setCustomInstructions(settings.customInstructions || '');
-    setContentLayout(settings.contentLayout || 'fluid');
   }, [settings]);
 
   useEffect(() => {
@@ -243,11 +230,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
       if (crossFadeTimeoutRef.current) clearTimeout(crossFadeTimeoutRef.current);
     };
   }, []);
-
-  const devModeActive =
-    effectiveDeveloperMode !== undefined
-      ? effectiveDeveloperMode
-      : Boolean(settings.developerMode && (isDeveloperEligible || currentRole === 'admin'));
 
   const setChatCustomInstruction = useChatStore((s) => s.setCustomInstruction);
   const setIsRoleModalOpen = useChatStore((s) => s.setIsRoleModalOpen);
@@ -303,7 +285,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
       defaultModel,
       autoModelRouting,
       language,
-      contentLayout,
       customInstructions,
     });
     setChatCustomInstruction(customInstructions);
@@ -451,7 +432,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
             {t.settingsTitle}
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {devModeActive ? t.settingsSubtitleDev : t.settingsSubtitleUser}
+            {t.settingsSubtitleUser}
           </p>
         </div>
 
@@ -564,13 +545,13 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                 <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Gauge className="w-4 h-4 text-slate-500" />
                   <span>
-                    {devModeActive ? t.monthlyTokenQuotaTitle : t.monthlyUsageAllowanceTitle}
+                    {t.monthlyUsageAllowanceTitle}
                   </span>
                 </h2>
                 <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
                   {settings.monthlyTokensUsed.toLocaleString()} /{' '}
                   {settings.monthlyTokensLimit.toLocaleString()}{' '}
-                  {devModeActive ? t.tokensWord : t.creditsWord}
+                  {t.creditsWord}
                 </span>
               </div>
 
@@ -799,83 +780,10 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
                   setCustomInstructions(e.target.value);
                   setChatCustomInstruction(e.target.value);
                 }}
-                placeholder={
-                  devModeActive
-                    ? 'Example: Always answer concisely with bullet points. Prefer TypeScript examples over JavaScript.'
-                    : 'Example: Always keep answers brief with clear bullet points and simple language.'
-                }
+                placeholder="Example: Always keep answers brief with clear bullet points and simple language."
                 className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-[var(--theme-accent)]"
               />
             </div>
-
-            {devModeActive && (
-              <>
-                {/* Workspace Content Width Layout Switcher (Compact / Fluid / Maximized) */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                      {t.workspaceLayoutTitle}
-                    </label>
-                    <span className="text-[11px] font-mono text-slate-400">
-                      {contentLayout === 'compact'
-                        ? '800px focused column'
-                        : contentLayout === 'fluid'
-                          ? '1088px balanced width'
-                          : '100% full-bleed canvas'}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {[
-                      {
-                        id: 'compact' as WorkspaceContentLayout,
-                        title: 'Compact',
-                        desc: 'Narrow reading column for distraction-free focus (~800px).',
-                        icon: <Minimize2 className="w-4 h-4" />,
-                      },
-                      {
-                        id: 'fluid' as WorkspaceContentLayout,
-                        title: 'Fluid',
-                        desc: 'Balanced adaptive container across chats and views (~1088px).',
-                        icon: <Columns3 className="w-4 h-4" />,
-                      },
-                      {
-                        id: 'maximized' as WorkspaceContentLayout,
-                        title: 'Maximized',
-                        desc: 'Edge-to-edge full workspace width for wide monitors (100%).',
-                        icon: <Maximize2 className="w-4 h-4" />,
-                      },
-                    ].map((opt) => {
-                      const active = contentLayout === opt.id;
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => {
-                            setContentLayout(opt.id);
-                            onUpdateSettings({ contentLayout: opt.id });
-                          }}
-                          className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                            active
-                              ? 'theme-accent-active text-slate-900 dark:text-white shadow-xs'
-                              : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600'
-                          }`}
-                        >
-                          <div
-                            className={`mt-0.5 shrink-0 ${active ? 'theme-accent-text' : 'text-slate-400'}`}
-                          >
-                            {opt.icon}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-semibold">{opt.title}</div>
-                            <div className="text-[11px] opacity-80 mt-0.5">{opt.desc}</div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
-            )}
 
             {/* Streamlined Preferences (Streaming SSE & Smart RAG are always active automatically) */}
             <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">

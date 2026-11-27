@@ -112,7 +112,6 @@ export const DEFAULT_USER_SETTINGS: UserAccountSettings = {
   language: 'en',
   layoutMode: 'sidebar-focus',
   contentLayout: 'fluid',
-  developerMode: false,
   autoModelRouting: true,
   enableKnowledgeGrounding: true,
   showWorkspaceTips: true,

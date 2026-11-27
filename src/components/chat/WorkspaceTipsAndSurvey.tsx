@@ -150,7 +150,6 @@ type SurveyRating = 'great' | 'good' | 'okay' | 'needs_work';
 interface WorkspaceMicroSurveyProps {
   totalUserMessages: number;
   userEmail?: string;
-  developerMode: boolean;
   forceOpen?: boolean;
   onCloseForceOpen?: () => void;
 }
@@ -158,7 +157,6 @@ interface WorkspaceMicroSurveyProps {
 export const WorkspaceMicroSurvey: React.FC<WorkspaceMicroSurveyProps> = ({
   totalUserMessages,
   userEmail,
-  developerMode,
   forceOpen = false,
   onCloseForceOpen,
 }) => {
@@ -235,7 +233,6 @@ export const WorkspaceMicroSurvey: React.FC<WorkspaceMicroSurveyProps> = ({
           rating,
           suggestion: suggestion.trim(),
           userEmail,
-          developerMode,
         }),
       });
       savePersisted({ ...persisted, lastSubmittedAt: Date.now() });

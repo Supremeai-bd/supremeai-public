@@ -31,7 +31,6 @@ interface UserPlanUsageViewProps {
   sessions: ChatSession[];
   darkMode?: boolean;
   onTopUpTokens: (addedTokens: number, costUsd: number) => void;
-  developerMode?: boolean;
 }
 
 interface DayActivity {
@@ -51,7 +50,6 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
   sessions,
   darkMode,
   onTopUpTokens,
-  developerMode = false,
 }) => {
   const { t, lang } = useI18n();
   const [sectionTab, setSectionTab] = useState<'overview' | 'activity' | 'invoices'>('overview');
@@ -233,7 +231,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
               <span className="font-mono font-semibold tabular-nums">{data.assistantMessages}</span>
             </div>
             <div className="flex items-center justify-between text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-700">
-              <span>{developerMode ? t.tokensWord : t.creditsWord}:</span>
+              <span>{t.creditsWord}:</span>
               <span className="font-mono tabular-nums">
                 ~{(data.estimatedTokens / 1000).toFixed(1)}k
               </span>
@@ -251,11 +249,9 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 pb-5">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {developerMode ? t.planUsageDevTitle : t.planUsageStdTitle}
+            {t.planUsageStdTitle}
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {developerMode ? t.planUsageDevDesc : t.planUsageStdDesc}
-          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{t.planUsageStdDesc}</p>
         </div>
 
         <button
@@ -331,13 +327,13 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {developerMode ? t.monthlyTokenConsumption : t.monthlyCreditsTitle}
+                    {t.monthlyCreditsTitle}
                   </h3>
                   <p className="text-xs text-slate-400">{t.activeBillingQuota}</p>
                 </div>
                 <span className="text-xs font-mono tabular-nums font-bold theme-accent-text">
                   {currentTokensUsed.toLocaleString()} / {tokensLimit.toLocaleString()}{' '}
-                  {developerMode ? t.tokensWord : t.creditsWord}
+                  {t.creditsWord}
                 </span>
               </div>
 
@@ -355,15 +351,15 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
                   {usagePercent}% {t.utilizedLabel}
                 </span>
                 <span>
-                  {Math.max(0, tokensLimit - currentTokensUsed).toLocaleString()}{' '}
-                  {developerMode ? t.tokensWord : t.creditsWord} {t.remainingLabel}
+                  {Math.max(0, tokensLimit - currentTokensUsed).toLocaleString()} {t.creditsWord}{' '}
+                  {t.remainingLabel}
                 </span>
               </div>
 
               <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
                 <span className="text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-emerald-500" />
-                  {developerMode ? t.needExtraDev : t.needExtraStd}
+                  {t.needExtraStd}
                 </span>
                 <button
                   type="button"
@@ -406,8 +402,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
                       </span>
                       <div className="flex items-center gap-3 font-mono tabular-nums text-[11px]">
                         <span className="text-slate-400">
-                          {item.tokens.toLocaleString()}{' '}
-                          {developerMode ? t.tokensWord : t.creditsWord} ({item.percentage}%)
+                          {item.tokens.toLocaleString()} {t.creditsWord} ({item.percentage}%)
                         </span>
                         <span className="font-semibold text-slate-700 dark:text-slate-300">
                           {item.cost}
@@ -435,7 +430,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
             <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-500">
                 <span className="text-xs font-semibold uppercase tracking-wider">
-                  {developerMode ? t.walletBalanceLabel : t.accountCreditLabel}
+                  {t.accountCreditLabel}
                 </span>
                 <Wallet className="w-4 h-4 text-emerald-500" />
               </div>
@@ -452,7 +447,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
             <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-500">
                 <span className="text-xs font-semibold uppercase tracking-wider">
-                  {developerMode ? t.modelSpendLabel : t.usageCostLabel}
+                  {t.usageCostLabel}
                 </span>
                 <TrendingUp className="w-4 h-4 text-blue-500" />
               </div>
@@ -461,7 +456,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
                   ${(analytics?.totalSpent ?? 0).toFixed(2)}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1 font-mono">
-                  {developerMode ? t.cacheSavedLabel : t.smartSavingsLabel}: +$
+                  {t.smartSavingsLabel}: +$
                   {(analytics?.totalSaved ?? 0).toFixed(2)}
                 </div>
               </div>
@@ -470,18 +465,16 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
             <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-500">
                 <span className="text-xs font-semibold uppercase tracking-wider">
-                  {developerMode ? t.ingestion7DayLabel : t.messages7DayLabel}
+                  {t.messages7DayLabel}
                 </span>
                 <Sparkles className="w-4 h-4 text-purple-500" />
               </div>
               <div className="mt-3">
                 <div className="text-2xl font-bold font-mono tabular-nums text-slate-900 dark:text-white">
-                  {developerMode ? `${(totalTokens7Days / 1000).toFixed(1)}k` : totalMessages7Days}
+                  {totalMessages7Days}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">
-                  {developerMode
-                    ? `${t.peakLabel}: ${peakDay?.dayName || '—'} (${((peakDay?.estimatedTokens ?? 0) / 1000).toFixed(1)}k)`
-                    : `${t.peakLabel}: ${peakDay?.dayName || '—'} (${peakDay?.totalMessages ?? 0} ${t.messagesWord})`}
+                  {`${t.peakLabel}: ${peakDay?.dayName || '—'} (${peakDay?.totalMessages ?? 0} ${t.messagesWord})`}
                 </div>
               </div>
             </div>
@@ -489,7 +482,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
             <div className="p-5 rounded-2xl bg-white/80 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-500">
                 <span className="text-xs font-semibold uppercase tracking-wider">
-                  {developerMode ? t.dailyRateLabel : t.dailyAverageLabel}
+                  {t.dailyAverageLabel}
                 </span>
                 <Activity className="w-4 h-4 text-cyan-500" />
               </div>
@@ -501,7 +494,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1 font-mono tabular-nums">
-                  {totalMessages7Days} {developerMode ? t.totalTurnsLabel : t.totalMessagesLabel}
+                  {totalMessages7Days} {t.totalMessagesLabel}
                 </div>
               </div>
             </div>
@@ -515,7 +508,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
                   {t.dailyActivityTitle}
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {developerMode ? t.dailyActivityDevDesc : t.dailyActivityStdDesc}
+                  {t.dailyActivityStdDesc}
                 </p>
               </div>
               <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs">
@@ -528,7 +521,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
                       : 'text-slate-500'
                   }`}
                 >
-                  {developerMode ? t.userVsAiBtn : t.youVsAssistantBtn}
+                  {t.youVsAssistantBtn}
                 </button>
                 <button
                   type="button"
@@ -605,9 +598,7 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
               <CreditCard className="w-4 h-4 text-slate-500" />
               <span>{t.invoiceHistoryTitle}</span>
             </h3>
-            <span className="text-xs text-slate-400">
-              {developerMode ? t.processedViaStripe : t.billingReceiptsLabel}
-            </span>
+            <span className="text-xs text-slate-400">{t.billingReceiptsLabel}</span>
           </div>
 
           <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/70 overflow-hidden">
