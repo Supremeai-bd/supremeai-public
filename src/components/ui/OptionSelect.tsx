@@ -32,6 +32,11 @@ export interface OptionSelectProps<T extends string = string> {
   testId?: string;
   /** Visually hide the label (still announced to screen readers). */
   hideLabel?: boolean;
+  /**
+   * `overlay` (default) floats the list above the page; `inline` pushes content
+   * down — use it inside scrollable popovers where an overlay would be clipped.
+   */
+  menuPlacement?: 'overlay' | 'inline';
 }
 
 function Thumbnail({ thumb, size }: { thumb?: OptionSelectItem['thumbnail']; size: 'sm' | 'md' }) {
@@ -69,6 +74,7 @@ export function OptionSelect<T extends string = string>({
   disabled = false,
   testId,
   hideLabel = false,
+  menuPlacement = 'overlay',
 }: OptionSelectProps<T>) {
   const baseId = useId();
   const labelId = `${baseId}-label`;
@@ -224,7 +230,9 @@ export function OptionSelect<T extends string = string>({
           aria-labelledby={labelId}
           aria-activedescendant={`${baseId}-opt-${activeIndex}`}
           onKeyDown={onListKeyDown}
-          className="absolute z-50 mt-1.5 w-full max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg p-1 focus:outline-none"
+          className={`${
+            menuPlacement === 'inline' ? 'relative max-h-56' : 'absolute z-50 max-h-72 shadow-lg'
+          } mt-1.5 w-full overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1 focus:outline-none`}
         >
           {options.map((opt, index) => {
             const isSelected = opt.value === value;
