@@ -65,6 +65,30 @@ describe('useAppPreferencesStore (centralized language & role state)', () => {
     expect(ttsService.getConfig().language).toBe('en');
   });
 
+  it('keeps a Bangla regional dialect instead of snapping back to English', () => {
+    for (const dialect of ['bn-ctg', 'bn-syl', 'bn-raj', 'bn-nkh'] as const) {
+      useAppPreferencesStore.getState().setLanguage(dialect, { silent: true });
+      expect(useAppPreferencesStore.getState().language).toBe(dialect);
+      expect(useCustomerStore.getState().userSettings.language).toBe(dialect);
+      expect(
+        JSON.parse(localStorage.getItem('supremeai_studio_user_settings') || '{}').language
+      ).toBe(dialect);
+      // TTS has only Bangla/English voices — every dialect speaks Bangla.
+      expect(ttsService.getConfig().language).toBe('bn');
+    }
+  });
+
+  it('accepts a dialect from cross-device sync and ignores unknown codes', () => {
+    useCustomerStore.getState().applyRemoteSettings({ language: 'bn-syl' });
+    expect(useAppPreferencesStore.getState().language).toBe('bn-syl');
+
+    useCustomerStore.getState().applyRemoteSettings({ language: 'xx-unknown' });
+    expect(useAppPreferencesStore.getState().language).toBe('bn-syl');
+
+    useCustomerStore.getState().applyRemoteSettings({ language: 'fr' });
+    expect(useAppPreferencesStore.getState().language).toBe('fr');
+  });
+
   it('enforces RBAC and 2FA trust when switching role via centralized store', () => {
     useAppPreferencesStore.getState().setRole('admin');
     expect(useAppPreferencesStore.getState().role).toBe('user');

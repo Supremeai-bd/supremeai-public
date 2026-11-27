@@ -77,6 +77,7 @@ import {
   type PendingTaskApproval,
 } from '../shared/agentTypes';
 import { isAutoModelRoutingActive } from '../utils/modelRouting';
+import { dialectInstructionFor, toChatLanguage } from '../utils/appLanguage';
 
 const STORAGE_KEY = 'supremeai_studio_sessions_v1';
 const RUN_SETTINGS_STORAGE_KEY = 'supremeai_workbench_run_settings_v1';
@@ -810,7 +811,10 @@ export const useChatStore = create<ChatState>((set, get) => {
               .join('\n\n')
           : undefined;
 
-      const preferredLanguage = useCustomerStore.getState().userSettings.language || 'en';
+      // বাংলা মন্তব্য: সেটিংসে আঞ্চলিক বাংলা (bn-ctg …) থাকতে পারে; চ্যাট ব্যাকএন্ড শুধু
+      // en/bn বোঝে — তাই এখানে base ভাষা, আর ডায়ালেক্ট যায় system instruction-এ।
+      const savedLanguage = useCustomerStore.getState().userSettings.language || 'en';
+      const preferredLanguage = toChatLanguage(savedLanguage);
 
       if (effectiveDeepResearch) {
         set({
@@ -880,7 +884,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         customInstruction.trim() ||
         customerSettings.customInstructions?.trim() ||
         activeRole.systemInstruction
-      }${userMemoryContext}`;
+      }${userMemoryContext}${dialectInstructionFor(savedLanguage)}`;
 
       const schedulePrompt = hasSchedulingIntent(text);
       const browserIntent = !schedulePrompt ? detectBrowserNavigationIntent(text) : null;
