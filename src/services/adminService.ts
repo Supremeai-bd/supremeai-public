@@ -496,13 +496,20 @@ export const adminService = {
     return apiClient.post('/api/admin/providers/probe', { providerId });
   },
 
-  async probeAllProviders(): Promise<{
+  /**
+   * One batch of Probe All. The edge returns `nextCursor` while keys remain (Cloudflare caps
+   * subrequests per request); callers loop until it is null/undefined.
+   */
+  async probeAllProviders(cursor: number = 0): Promise<{
     success: boolean;
     message: string;
     providers: ProviderKeyItem[];
     vaultKeys: import('../types').InfisicalVaultKeyLatency[];
+    nextCursor?: number | null;
+    probedThrough?: number;
+    total?: number;
   }> {
-    return apiClient.post('/api/admin/providers/probe-all', {});
+    return apiClient.post('/api/admin/providers/probe-all', { cursor });
   },
 
   async updateProviderPriority(

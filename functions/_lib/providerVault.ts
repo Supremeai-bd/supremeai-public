@@ -403,6 +403,24 @@ export interface ProbeResult {
   latencyMs: number;
   message: string;
   checkedAt: string;
+  /** Not the key's fault (edge subrequest budget) — never cached, re-probed next batch. */
+  retryable?: boolean;
+}
+
+/**
+ * বাংলা মন্তব্য: Cloudflare Pages/Workers এক রিকোয়েস্টে সর্বোচ্চ ৫০টি subrequest দেয়।
+ * Infisical (২টি) + সেশন যাচাইয়ের পর বাকি বাজেট রেখে প্রতি রিকোয়েস্টে এর বেশি কী প্রোব নয়।
+ * আগে সব কী একসাথে প্রোব হতো — ৫০-এর পরের fetch সাথে সাথে throw করত, ফলে
+ * সুস্থ OpenRouter কী-ও "1 ms · unhealthy" দেখাত।
+ */
+export const PROBE_BATCH_SIZE = 20;
+
+const SUBREQUEST_LIMIT_RE = /too many subrequests|subrequest limit/i;
+
+function describeFetchError(err: unknown): string {
+  const raw = err instanceof Error ? `${err.name}: ${err.message}` : String(err ?? 'unknown error');
+  // fetch errors never include request headers, but strip anything key-like defensively
+  return raw.replace(/(sk|key|Bearer)[-_ ]?[A-Za-z0-9_-]{8,}/gi, '$1-***').slice(0, 160);
 }
 
 const PROBE_CACHE_TTL_MS = 5 * 60_000;
@@ -463,12 +481,22 @@ export async function probeProviderKey(
     };
   } catch (err) {
     const aborted = err instanceof Error && err.name === 'AbortError';
+    const detail = describeFetchError(err);
+    if (!aborted && SUBREQUEST_LIMIT_RE.test(detail)) {
+      return {
+        status: 'untested',
+        latencyMs: 0,
+        message: 'Skipped — edge subrequest limit reached; re-probed in the next batch.',
+        checkedAt,
+        retryable: true,
+      };
+    }
     return {
       status: 'unhealthy',
       latencyMs: Math.max(1, Date.now() - started),
       message: aborted
         ? `Timed out after ${Math.round(timeoutMs / 1000)}s`
-        : 'Network error reaching provider',
+        : `Network error reaching provider (${detail})`,
       checkedAt,
     };
   } finally {
@@ -517,6 +545,10 @@ export async function buildProviderKeys(
   options: {
     probe?: 'none' | 'stale' | 'all';
     onlyId?: string;
+    /** Probe only these ids (one batch of a client-driven Probe All). */
+    onlyIds?: ReadonlySet<string>;
+    /** Hard cap on live probes in this invocation (edge subrequest budget). */
+    maxProbes?: number;
     fetchImpl?: typeof fetch;
     concurrency?: number;
   } = {}
@@ -528,21 +560,37 @@ export async function buildProviderKeys(
     .filter((e): e is { s: VaultSecret; def: ProviderDefinition } => Boolean(e.def));
 
   const now = Date.now();
-  const toProbe = entries.filter(({ s }) => {
+  const candidates = entries.filter(({ s }) => {
     if (mode === 'none') return false;
     const id = secretId(s);
     if (options.onlyId) return id === options.onlyId;
+    if (options.onlyIds) return options.onlyIds.has(id);
     if (mode === 'all') return true;
     const cached = probeCache.get(id);
     return !cached || now - cached.at > PROBE_CACHE_TTL_MS;
   });
 
+  // The same key stored under several secret names is probed once per call.
+  const byKey = new Map<string, Array<{ s: VaultSecret; def: ProviderDefinition }>>();
+  for (const e of candidates) {
+    const k = `${e.def.id}\u0000${e.s.value.trim()}`;
+    const group = byKey.get(k);
+    if (group) group.push(e);
+    else byKey.set(k, [e]);
+  }
+  const maxProbes = Math.max(0, options.maxProbes ?? PROBE_BATCH_SIZE);
+  const groups = [...byKey.values()].slice(0, maxProbes);
+
   const limit = Math.max(1, options.concurrency ?? 6);
-  for (let i = 0; i < toProbe.length; i += limit) {
+  for (let i = 0; i < groups.length; i += limit) {
     await Promise.all(
-      toProbe.slice(i, i + limit).map(async ({ s, def }) => {
+      groups.slice(i, i + limit).map(async (group) => {
+        const { s, def } = group[0];
         const result = await probeProviderKey(def, s.value, fetchImpl);
-        probeCache.set(secretId(s), { ...result, at: Date.now() });
+        if (result.retryable) return; // keep the previous verdict; next batch re-probes
+        const { retryable: _r, ...stored } = result;
+        void _r;
+        for (const member of group) probeCache.set(secretId(member.s), { ...stored, at: Date.now() });
       })
     );
   }

@@ -29,6 +29,7 @@ import { logger } from '../../utils/logger';
 import { useI18n } from '../../utils/i18n';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useDataSource } from '../../hooks/useDataSource';
+import { mergeProbeRows } from '../../utils/mergeProbeRows';
 
 type AdminSubTab = 'providers' | 'infisical';
 
@@ -181,7 +182,20 @@ export const AdminProviderKeysView: React.FC = () => {
   const handleProbeAll = async () => {
     setIsProbingAll(true);
     try {
-      const res = await adminService.probeAllProviders();
+      // বাংলা মন্তব্য: এজ ব্যাচে প্রোব করে; nextCursor থাকলে পরের ব্যাচ চাই (সর্বোচ্চ ৫০ ব্যাচ)।
+      // প্রতিটা ব্যাচ আলাদা isolate-এ যেতে পারে, তাই আগের ব্যাচের রায় মার্জ করে রাখা হয়।
+      let res = await adminService.probeAllProviders(0);
+      let mergedProviders: typeof res.providers | undefined = res.providers;
+      let mergedVault: typeof res.vaultKeys | undefined = res.vaultKeys;
+      for (let guard = 0; guard < 50 && typeof res.nextCursor === 'number'; guard += 1) {
+        if (mergedProviders) setProviders(mergedProviders);
+        if (mergedVault) setVaultKeys(mergedVault);
+        showBanner(true, res.message);
+        res = await adminService.probeAllProviders(res.nextCursor);
+        mergedProviders = mergeProbeRows(mergedProviders, res.providers);
+        mergedVault = mergeProbeRows(mergedVault, res.vaultKeys);
+      }
+      res = { ...res, providers: mergedProviders ?? [], vaultKeys: mergedVault ?? [] };
       if (res.providers) setProviders(res.providers);
       if (res.vaultKeys) {
         setVaultKeys(res.vaultKeys);
