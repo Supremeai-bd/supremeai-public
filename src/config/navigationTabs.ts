@@ -27,6 +27,7 @@ export const ADMIN_ONLY_TABS = new Set([
   'usage-limits',
   'sessions',
   'alerts',
+  'packages',
 ]);
 
 // বাংলা মন্তব্য: সব ফিচার সবার জন্য উন্মুক্ত — কোনো ট্যাব কৃত্রিমভাবে লক থাকবে না
@@ -65,6 +66,7 @@ export const SUBVIEW_TITLES: Record<string, string> = {
   'usage-limits': 'Usage Limits',
   sessions: 'Sessions',
   alerts: 'Alerts',
+  packages: 'Plans & Packages',
   'mcp-tower': 'MCP Service Tower',
 };
 

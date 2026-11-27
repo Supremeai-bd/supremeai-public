@@ -58,6 +58,7 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
       { id: 'customers', label: 'Customers' },
       { id: 'team-access', label: 'Team & Access' },
       { id: 'sessions', label: 'Sessions' },
+      { id: 'packages', label: 'Plans & Packages' },
     ],
   },
   {
