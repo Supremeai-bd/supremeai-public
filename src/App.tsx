@@ -212,6 +212,7 @@ const ControlCenterHealthMonitorView = React.lazy(() =>
 import { useAuthStore } from './stores/useAuthStore';
 import { useAppPreferencesStore } from './stores/useAppPreferencesStore';
 import { useChatStore } from './stores/useChatStore';
+import { runLatestCodeFromMessages } from './utils/runLatestCode';
 import { useAdminStore } from './stores/useAdminStore';
 import { useCustomerStore } from './stores/useCustomerStore';
 import { useWorkspaceStore } from './stores/useWorkspaceStore';
@@ -875,6 +876,18 @@ export default function App() {
         setActiveTab('chat');
         setDockOpen(true);
         return true;
+      case 'run_last_code': {
+        // বাংলা মন্তব্য: "চালাও / run it" — শেষ উত্তরের কোড নিজে থেকেই ঠিক ট্যাবে চলে।
+        // কোনো কোড না থাকলে false → সাধারণ চ্যাট হিসেবে AI-এর কাছে যায়।
+        const chatState = useChatStore.getState();
+        const session =
+          chatState.sessions.find((s) => s.id === chatState.activeSessionId) ||
+          chatState.sessions[0];
+        const ran = runLatestCodeFromMessages(session?.messages);
+        if (ran === 'none') return false;
+        setActiveTab('chat');
+        return true;
+      }
       case 'enable_dev_mode':
         handleToggleDeveloperMode(true);
         return true;
@@ -1079,15 +1092,19 @@ export default function App() {
         handleToggleJarvis(false);
         return;
       }
-      executeDashboardAction(
+      const actionHandled = executeDashboardAction(
         action,
         classification.language,
         classification.dashboardMatch.payload
       );
       const bn = classification.language === 'bn';
-      const confirmMsg = bn
-        ? 'ঠিক আছে, পরিবর্তনটি সম্পন্ন করা হয়েছে।'
-        : 'Done — updated your workspace right away.';
+      const confirmMsg = !actionHandled && action === 'run_last_code'
+        ? bn
+          ? 'চালানোর মতো কোনো কোড এখনো পাইনি। কী বানাতে চান, বলুন।'
+          : "I couldn't find any code to run yet. Tell me what to build."
+        : bn
+          ? 'ঠিক আছে, পরিবর্তনটি সম্পন্ন করা হয়েছে।'
+          : 'Done — updated your workspace right away.';
       appendVoiceTurn(classification.cleanedTranscript, confirmMsg);
       liveVoice.speakFallbackText(confirmMsg);
       return;

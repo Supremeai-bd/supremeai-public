@@ -491,6 +491,7 @@ export const EN_DICT = {
   testBanglaAccentBtn: 'Test Bangla Accent',
   // Workspace Tabs (Sandbox, Preview, Terminal, Browser, Code, Graph)
   wsIsolatedVm: 'Isolated VM',
+  wsAutoDetectedRuntime: 'Language detected automatically from the code',
   wsRun: 'Run',
   wsStop: 'Stop',
   wsTemplates: 'Templates:',
@@ -569,7 +570,7 @@ export const EN_DICT = {
     'No preview loaded yet. Generate code from chat or write code in the Code tab.',
   wsPreviewChatCardTitle: 'Generate code from chat',
   wsPreviewChatCardDesc:
-    'Ask SupremeAI for HTML, React TSX, SVG, or Mermaid code, then click Preview on the response block.',
+    'Just ask SupremeAI to build something — the result opens here automatically. Say "run it" to run the latest code again.',
   wsPreviewChatCardAction: 'Prompt in Chat',
   wsPreviewCodeCardTitle: 'Write code in the Code tab',
   wsPreviewCodeCardDesc:
@@ -758,7 +759,6 @@ export const EN_DICT = {
   wsGmailLoadingInbox: 'Loading Gmail messages...',
   wsProjectCardReady: 'Production Project Ready',
   wsDownloadProjectZip: 'Download .zip',
-  wsOpenPreviewBtn: 'Live Preview',
   wsPhpRouteLabel: 'Route',
   wsRunProjectBtn: 'Run Project',
   wsRunningProject: 'Running...',
@@ -943,7 +943,6 @@ export const EN_DICT = {
   wsOpenInTerminalBtn: 'Open Terminal',
   wsScriptRunnerBtn: 'Sandbox VM',
   wsLiveAutoPreviewHint: 'Auto-synced with Preview',
-  wsChatTerminalBtn: 'Terminal',
   opsConsoleTitle: 'Ops & Admin Console',
   autoModelTitle: 'SupremeAI · Auto',
   autoModelSettingLabel: 'Smart Auto Model Routing',

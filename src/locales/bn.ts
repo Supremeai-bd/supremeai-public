@@ -479,6 +479,7 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   testBanglaAccentBtn: 'বাংলা ভয়েস শুনুন',
   // Workspace Tabs (Sandbox, Preview, Terminal, Browser, Code, Graph)
   wsIsolatedVm: 'আইসোলেটেড VM',
+  wsAutoDetectedRuntime: 'কোড দেখে ভাষা নিজে থেকেই চেনা হয়েছে',
   wsRun: 'রান করুন',
   wsStop: 'থামান',
   wsTemplates: 'টেমপ্লেট:',
@@ -557,7 +558,7 @@ export const BN_DICT: Record<TranslationKeys, string> = {
     'এখনো কোনো প্রিভিউ লোড করা নেই। চ্যাট থেকে কোড তৈরি করুন অথবা Code ট্যাবে নিজে লিখুন।',
   wsPreviewChatCardTitle: 'চ্যাট থেকে তৈরি করুন',
   wsPreviewChatCardDesc:
-    'SupremeAI-কে HTML, React TSX, SVG বা Mermaid তৈরি করতে বলুন, তারপর কোড ব্লকে Preview চাপুন।',
+    'SupremeAI-কে শুধু বলুন কী বানাতে চান — ফলাফল এখানে নিজে থেকেই খুলবে। আবার চালাতে বলুন "চালাও"।',
   wsPreviewChatCardAction: 'চ্যাটে লিখুন',
   wsPreviewCodeCardTitle: 'Code ট্যাবে লিখুন',
   wsPreviewCodeCardDesc:
@@ -743,7 +744,6 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsGmailLoadingInbox: 'Gmail লোড হচ্ছে...',
   wsProjectCardReady: 'প্রোডাকশন প্রজেক্ট প্রস্তুত',
   wsDownloadProjectZip: '.zip ডাউনলোড',
-  wsOpenPreviewBtn: 'লাইভ প্রিভিউ',
   wsPhpRouteLabel: 'রুট',
   wsRunProjectBtn: 'প্রজেক্ট রান করুন',
   wsRunningProject: 'চলছে...',
@@ -927,7 +927,6 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   wsOpenInTerminalBtn: 'টার্মিনাল খুলুন',
   wsScriptRunnerBtn: 'স্যান্ডবক্স VM',
   wsLiveAutoPreviewHint: 'প্রিভিউ-এর সাথে স্বয়ংক্রিয় সিঙ্ক',
-  wsChatTerminalBtn: 'টার্মিনাল',
   opsConsoleTitle: 'অপস ও অ্যাডমিন কনসোল',
   autoModelTitle: 'SupremeAI · অটো',
   autoModelSettingLabel: 'স্মার্ট অটো মডেল রাউটিং',

@@ -20,8 +20,12 @@ import {
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore';
 import { EXTERNAL_URLS } from '../../config/externalUrls';
 import { useI18n } from '../../utils/i18n';
+import {
+  resolveSandboxLanguage as normalizeSandboxLang,
+  SANDBOX_RUNTIME_LABELS,
+  type SandboxRuntime,
+} from '../../utils/sandboxLanguage';
 
-type SandboxRuntime = 'javascript' | 'typescript' | 'tsx' | 'html' | 'json';
 type OutputViewMode = 'console' | 'dom' | 'split';
 
 interface SandboxLogEntry {
@@ -178,50 +182,6 @@ console.log('Pending tasks:', queue.filter((t) => t.status === 'ready'));`,
 </div>`,
   },
 ];
-
-function normalizeSandboxLang(
-  lang: string,
-  code: string
-): {
-  runtime: SandboxRuntime | 'unsupported';
-  originalLang: string;
-} {
-  const raw = (lang || '').toLowerCase().trim();
-  const trimmed = code.trim();
-
-  if (raw === 'js' || raw === 'javascript' || raw === 'mjs' || raw === 'node') {
-    return { runtime: 'javascript', originalLang: raw || 'javascript' };
-  }
-  if (raw === 'ts' || raw === 'typescript') {
-    return { runtime: 'typescript', originalLang: raw };
-  }
-  if (raw === 'tsx' || raw === 'jsx' || raw === 'react') {
-    return { runtime: 'tsx', originalLang: raw };
-  }
-  if (raw === 'html' || raw === 'htm' || raw === 'svg' || raw === 'xml') {
-    return { runtime: 'html', originalLang: raw };
-  }
-  if (raw === 'json') {
-    return { runtime: 'json', originalLang: 'json' };
-  }
-
-  // Heuristic inference if markdown code block had generic or missing lang tag
-  if (!raw || raw === 'code' || raw === 'text' || raw === 'plaintext') {
-    if (trimmed.startsWith('<')) return { runtime: 'html', originalLang: 'html' };
-    if (
-      /export\s+default\s+function|React|useState\(|<\w+[\s>]/.test(trimmed) &&
-      /return\s*\(?\s*</.test(trimmed)
-    ) {
-      return { runtime: 'tsx', originalLang: 'tsx' };
-    }
-    if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && /"[^"]+"\s*:/.test(trimmed)) {
-      return { runtime: 'json', originalLang: 'json' };
-    }
-    return { runtime: 'javascript', originalLang: 'javascript' };
-  }
-
-  return { runtime: 'unsupported', originalLang: raw };
-}
 
 function escapeScriptClose(code: string): string {
   return code.replace(/<\/script>/gi, '<\\/script>');
@@ -677,6 +637,12 @@ export const WorkspaceSandboxTab: React.FC = () => {
     setIsSavingSnippet(false);
   };
 
+  const detectedRuntime = normalizeSandboxLang(selectedLang, codeDraft);
+  const detectedRuntimeLabel =
+    detectedRuntime.runtime === 'unsupported'
+      ? (detectedRuntime.originalLang || 'code').toUpperCase()
+      : SANDBOX_RUNTIME_LABELS[detectedRuntime.runtime];
+
   const handleCopy = () => {
     navigator.clipboard.writeText(codeDraft);
     setCopied(true);
@@ -693,18 +659,14 @@ export const WorkspaceSandboxTab: React.FC = () => {
             <span>{t.wsIsolatedVm}</span>
           </span>
 
-          <select
-            value={selectedLang}
-            onChange={(e) => setSelectedLang(e.target.value)}
-            aria-label="Sandbox language runtime"
-            className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-700/80 text-[11px] font-mono text-cyan-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+          {/* বাংলা মন্তব্য: ভাষা বাছাইয়ের ড্রপডাউন নেই — কোড দেখে সিস্টেম নিজেই রানটাইম ঠিক করে। */}
+          <span
+            data-testid="sandbox-detected-runtime"
+            title={t.wsAutoDetectedRuntime}
+            className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-700/80 text-[10px] font-mono text-cyan-300"
           >
-            <option value="javascript">JavaScript</option>
-            <option value="typescript">TypeScript</option>
-            <option value="tsx">React / TSX</option>
-            <option value="html">HTML / Tailwind</option>
-            <option value="json">JSON</option>
-          </select>
+            {detectedRuntimeLabel}
+          </span>
 
           {lastDurationMs !== null && (
             <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono text-slate-400">

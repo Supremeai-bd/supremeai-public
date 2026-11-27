@@ -24,6 +24,7 @@ export type DashboardActionType =
   | 'new_chat'
   | 'open_projects'
   | 'open_workspace_dock'
+  | 'run_last_code'
   | 'enable_dev_mode'
   | 'disable_dev_mode'
   | 'disable_jarvis'
@@ -258,6 +259,22 @@ const LIVE_THEME_VOICE_ALIASES: Array<{ id: string; pattern: RegExp }> = [
   { id: 'cyber-studio', pattern: /\b(cyber\s*studio|neural\s*mesh|studio\s*grid)\b/i },
 ];
 
+const RUN_LAST_CODE_EN =
+  /^(?:(?:please|pls|now|ok(?:ay)?|hey\s+\w+)[,\s]+)?(?:(?:run|execute|preview|test)(?:\s+(?:it|this|that|again|the\s+(?:code|app|project|site|website|page|script)|my\s+(?:code|app|project)|code|app|project))?|(?:open|show|launch|start)(?:\s+me)?\s+(?:it|this|that|the\s+(?:preview|app|project|site|website|result|output)|(?:the\s+)?preview))(?:\s+(?:again|now|please|pls))?[.!?]*$/i;
+const RUN_LAST_CODE_BN =
+  /^(?:(?:এটা|এটি|ওটা|কোডটা|কোডটি|অ্যাপটা|অ্যাপটি|প্রজেক্টটা|সাইটটা)\s*)?(?:চালাও|চালিয়ে\s*দেখাও|চালু\s*করো|রান\s*করো?|প্রিভিউ\s*(?:দেখাও|খোলো|দাও|করো)|আউটপুট\s*দেখাও)(?:\s*(?:তো|এখন|আবার|প্লিজ))?[।.!?]*$/;
+const RUN_LAST_CODE_BANGLISH =
+  /^(?:(?:eta|eita|code\s*ta|app\s*ta|project\s*ta|site\s*ta)\s+)?(?:chalao|chalaw|chaliye\s*dekhao|run\s*(?:koro|kor|dao)|preview\s*(?:dekhao|koro|kor|dao|kholo)|output\s*dekhao)(?:\s+(?:to|ekhon|abar|plz|please))?[.!?]*$/i;
+
+/** বাংলা মন্তব্য: ছোট, সরাসরি "চালাও/run it" কমান্ড কিনা — নতুন কোড লেখার অনুরোধ নয়। */
+export function isRunLastCodeCommand(promptText: string): boolean {
+  const text = promptText.trim();
+  if (!text || text.split(/\s+/).length > 6) return false;
+  return (
+    RUN_LAST_CODE_EN.test(text) || RUN_LAST_CODE_BN.test(text) || RUN_LAST_CODE_BANGLISH.test(text)
+  );
+}
+
 export function detectDirectDashboardActionWithPayload(
   promptText: string,
   isAdmin: boolean
@@ -356,6 +373,12 @@ export function detectDirectDashboardActionWithPayload(
     /(ডেভেলপার\s*(মোড|টুলস?)\s*(বন্ধ|লুকাও))/i.test(promptText)
   ) {
     return { action: 'disable_dev_mode' };
+  }
+
+  // বাংলা মন্তব্য: "চালাও / run it / preview dekhao" — কোড-ব্লকের নিচে আর কোনো Run/Preview
+  // বাটন নেই; ইউজার মুখে বা চ্যাটে বললেই শেষ উত্তরের কোড/প্রজেক্ট ওয়ার্কস্পেসে চলে।
+  if (isRunLastCodeCommand(promptText)) {
+    return { action: 'run_last_code' };
   }
 
   // Quick Workspace actions
