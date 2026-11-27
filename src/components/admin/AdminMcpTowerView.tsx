@@ -25,6 +25,7 @@ import TowerIllustration from './TowerIllustration';
 import { useI18n } from '../../utils/i18n';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
+import { guardAdminAction } from '../../utils/adminGuard';
 
 interface AdminMcpTowerViewProps {
   services: McpTowerService[];
@@ -149,13 +150,21 @@ export const AdminMcpTowerView: React.FC<AdminMcpTowerViewProps> = ({
     });
   }, [services, searchTerm, categoryFilter, statusFilter]);
 
-  const handleTriggerReboot = async (serviceId: string) => {
-    setRebootingId(serviceId);
-    try {
-      await onRebootService(serviceId);
-    } finally {
-      setTimeout(() => setRebootingId(null), 800);
-    }
+  const handleTriggerReboot = (serviceId: string) => {
+    guardAdminAction({
+      title: `সার্ভিস রিবুট: ${serviceId}`,
+      description: 'রিবুটের সময় এই সার্ভিসের চলমান কাজ থেমে যেতে পারে।',
+      impactSummary: `service=${serviceId}`,
+      riskLevel: 'high',
+      run: async () => {
+        setRebootingId(serviceId);
+        try {
+          await onRebootService(serviceId);
+        } finally {
+          setTimeout(() => setRebootingId(null), 800);
+        }
+      },
+    });
   };
 
   const handleCopyStackTrace = (text: string, logId: string) => {
@@ -266,7 +275,15 @@ export const AdminMcpTowerView: React.FC<AdminMcpTowerViewProps> = ({
             {towerTab === 'mesh' && issuesCount > 0 && (
               <button
                 type="button"
-                onClick={onRebootAll}
+                onClick={() =>
+                  guardAdminAction({
+                    title: 'সব দুর্বল সার্ভিস রিবুট',
+                    description: 'unhealthy/degraded সব সার্ভিস একসাথে রিস্টার্ট হবে।',
+                    impactSummary: 'scope=all degraded MCP services',
+                    riskLevel: 'critical',
+                    run: onRebootAll,
+                  })
+                }
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition-all cursor-pointer active:scale-98 animate-pulse hover:animate-none whitespace-nowrap shrink-0"
               >
                 <Zap className="w-3.5 h-3.5" />

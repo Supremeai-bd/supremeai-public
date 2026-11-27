@@ -3,6 +3,7 @@ import { RotateCcw, Eye, Trash2 } from 'lucide-react';
 import { TaskQueueJob } from '../../types';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
+import { guardAdminAction } from '../../utils/adminGuard';
 
 interface AdminTaskQueueViewProps {
   jobs: TaskQueueJob[];
@@ -67,7 +68,15 @@ export const AdminTaskQueueView: React.FC<AdminTaskQueueViewProps> = ({
           {dlqCount > 0 && (
             <button
               type="button"
-              onClick={onRetryAllDlq}
+              onClick={() =>
+                guardAdminAction({
+                  title: 'সব DLQ জব আবার চালান',
+                  description: 'dead-letter কিউর সব জব আবার active কিউতে যাবে।',
+                  impactSummary: 'scope=all DLQ jobs',
+                  riskLevel: 'high',
+                  run: onRetryAllDlq,
+                })
+              }
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
@@ -76,7 +85,15 @@ export const AdminTaskQueueView: React.FC<AdminTaskQueueViewProps> = ({
           )}
           <button
             type="button"
-            onClick={onClearCompleted}
+            onClick={() =>
+              guardAdminAction({
+                title: 'সম্পন্ন জব মুছে ফেলুন',
+                description: 'সম্পন্ন জবের ইতিহাস স্থায়ীভাবে মুছে যাবে।',
+                impactSummary: 'scope=completed jobs',
+                riskLevel: 'medium',
+                run: onClearCompleted,
+              })
+            }
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition-colors cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" />

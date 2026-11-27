@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { adminService } from '../services/adminService';
 import { toast } from './useToastStore';
+import { adminWriteErrorMessage } from '../utils/adminWriteError';
 import { logger } from '../utils/logger';
 
 const MCP_SERVICES_KEY = 'supremeai_studio_mcp_services';
@@ -94,6 +95,15 @@ interface AdminState {
 }
 
 export const useAdminStore = create<AdminState>((set, get) => {
+  // বাংলা মন্তব্য: ব্যাকএন্ড ব্যর্থ হলে optimistic বদল ফিরিয়ে আনা — মিথ্যা "সফল" নয়।
+  const rollback = <K extends 'swarmWorkers' | 'queueJobs' | 'blockedIps'>(
+    storageKey: string,
+    previous: AdminState[K],
+    field: K
+  ) => {
+    localStorage.setItem(storageKey, JSON.stringify(previous));
+    set({ [field]: previous } as Pick<AdminState, K>);
+  };
   // Helpers to read from localStorage with fallbacks
   const getInitialStorage = <T>(key: string, fallback: T): T => {
     try {
@@ -376,6 +386,7 @@ export const useAdminStore = create<AdminState>((set, get) => {
     },
 
     toggleSwarmWorker: (id: string) => {
+      const prev = get().swarmWorkers;
       set((state) => {
         const updated = state.swarmWorkers.map((w) =>
           w.id === id
@@ -385,11 +396,20 @@ export const useAdminStore = create<AdminState>((set, get) => {
         localStorage.setItem(SWARM_KEY, JSON.stringify(updated));
         return { swarmWorkers: updated };
       });
-      adminService.toggleSwarmWorker(id).catch(() => {});
-      toast.info('Swarm Worker Updated', 'Worker state modified.');
+      adminService
+        .toggleSwarmWorker(id)
+        .then(() => {
+          get().fetchAuditRecords();
+          toast.info('Swarm Worker Updated', 'Worker state modified.');
+        })
+        .catch((err) => {
+          rollback(SWARM_KEY, prev, 'swarmWorkers');
+          toast.error('ওয়ার্কার বদলানো যায়নি', adminWriteErrorMessage(err, 'Worker toggle failed.'));
+        });
     },
 
     scaleWorker: (id: string, delta: number) => {
+      const prev = get().swarmWorkers;
       set((state) => {
         const updated = state.swarmWorkers.map((w) =>
           w.id === id
@@ -399,10 +419,14 @@ export const useAdminStore = create<AdminState>((set, get) => {
         localStorage.setItem(SWARM_KEY, JSON.stringify(updated));
         return { swarmWorkers: updated };
       });
-      adminService.scaleSwarmWorker(id, delta).catch(() => {});
+      adminService.scaleSwarmWorker(id, delta).catch((err) => {
+        rollback(SWARM_KEY, prev, 'swarmWorkers');
+        toast.error('স্কেল করা যায়নি', adminWriteErrorMessage(err, 'Worker scale failed.'));
+      });
     },
 
     retryQueueJob: (id: string) => {
+      const prev = get().queueJobs;
       set((state) => {
         const updated = state.queueJobs.map((j) =>
           j.id === id
@@ -412,11 +436,20 @@ export const useAdminStore = create<AdminState>((set, get) => {
         localStorage.setItem(QUEUE_KEY, JSON.stringify(updated));
         return { queueJobs: updated };
       });
-      adminService.retryQueueJob(id).catch(() => {});
-      toast.info('Job Re-queued', 'Task moved back to active ingestion queue.');
+      adminService
+        .retryQueueJob(id)
+        .then(() => {
+          get().fetchAuditRecords();
+          toast.info('Job Re-queued', 'Task moved back to active ingestion queue.');
+        })
+        .catch((err) => {
+          rollback(QUEUE_KEY, prev, 'queueJobs');
+          toast.error('আবার চালানো যায়নি', adminWriteErrorMessage(err, 'Job retry failed.'));
+        });
     },
 
     retryAllDlq: () => {
+      const prev = get().queueJobs;
       set((state) => {
         const updated = state.queueJobs.map((j) =>
           j.status === 'dlq'
@@ -428,19 +461,33 @@ export const useAdminStore = create<AdminState>((set, get) => {
       });
       adminService
         .flushDlq()
-        .then(() => get().fetchAuditRecords())
-        .catch(() => {});
-      toast.success('DLQ Reprocessed', 'All dead-letter jobs moved to active execution.');
+        .then(() => {
+          get().fetchAuditRecords();
+          toast.success('DLQ Reprocessed', 'All dead-letter jobs moved to active execution.');
+        })
+        .catch((err) => {
+          rollback(QUEUE_KEY, prev, 'queueJobs');
+          toast.error('DLQ চালানো যায়নি', adminWriteErrorMessage(err, 'DLQ flush failed.'));
+        });
     },
 
     clearCompletedJobs: () => {
+      const prev = get().queueJobs;
       set((state) => {
         const updated = state.queueJobs.filter((j) => j.status !== 'completed');
         localStorage.setItem(QUEUE_KEY, JSON.stringify(updated));
         return { queueJobs: updated };
       });
-      adminService.clearCompletedQueueJobs().catch(() => {});
-      toast.info('Queue Cleaned', 'Completed tasks purged from history.');
+      adminService
+        .clearCompletedQueueJobs()
+        .then(() => {
+          get().fetchAuditRecords();
+          toast.info('Queue Cleaned', 'Completed tasks purged from history.');
+        })
+        .catch((err) => {
+          rollback(QUEUE_KEY, prev, 'queueJobs');
+          toast.error('কিউ পরিষ্কার হয়নি', adminWriteErrorMessage(err, 'Queue cleanup failed.'));
+        });
     },
 
     runParitySync: async () => {
@@ -497,6 +544,7 @@ export const useAdminStore = create<AdminState>((set, get) => {
     },
 
     addBlockedIp: (ip: string, reason: string) => {
+      const prev = get().blockedIps;
       set((state) => {
         const updated = [{ ip, reason, date: 'Just now' }, ...state.blockedIps];
         localStorage.setItem(BLOCKED_IPS_KEY, JSON.stringify(updated));
@@ -508,12 +556,16 @@ export const useAdminStore = create<AdminState>((set, get) => {
           localStorage.setItem(BLOCKED_IPS_KEY, JSON.stringify(blockedIps));
           set({ blockedIps });
           get().fetchAuditRecords();
+          toast.warning('IP Blocked', `${ip} has been added to Gateway WAF blacklist.`);
         })
-        .catch(() => {});
-      toast.warning('IP Blocked', `${ip} has been added to Gateway WAF blacklist.`);
+        .catch((err) => {
+          rollback(BLOCKED_IPS_KEY, prev, 'blockedIps');
+          toast.error('IP ব্লক হয়নি', adminWriteErrorMessage(err, 'Failed to block IP.'));
+        });
     },
 
     removeBlockedIp: (ip: string) => {
+      const prev = get().blockedIps;
       set((state) => {
         const updated = state.blockedIps.filter((b) => b.ip !== ip);
         localStorage.setItem(BLOCKED_IPS_KEY, JSON.stringify(updated));
@@ -525,9 +577,12 @@ export const useAdminStore = create<AdminState>((set, get) => {
           localStorage.setItem(BLOCKED_IPS_KEY, JSON.stringify(blockedIps));
           set({ blockedIps });
           get().fetchAuditRecords();
+          toast.info('IP Unblocked', `${ip} removed from WAF blacklist.`);
         })
-        .catch(() => {});
-      toast.info('IP Unblocked', `${ip} removed from WAF blacklist.`);
+        .catch((err) => {
+          rollback(BLOCKED_IPS_KEY, prev, 'blockedIps');
+          toast.error('IP আনব্লক হয়নি', adminWriteErrorMessage(err, 'Failed to unblock IP.'));
+        });
     },
 
     addCustomer: (newCust) => {

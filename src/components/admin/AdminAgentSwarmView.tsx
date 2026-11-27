@@ -5,6 +5,7 @@ import { toast } from '../../stores/useToastStore';
 import { useI18n } from '../../utils/i18n';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
+import { guardAdminAction } from '../../utils/adminGuard';
 
 interface AdminAgentSwarmViewProps {
   workers: SwarmWorker[];
@@ -63,13 +64,15 @@ export const AdminAgentSwarmView: React.FC<AdminAgentSwarmViewProps> = ({
       toast.info(t.swarmTitle, 'সোয়ার্মে কোনো ওয়ার্কার নেই।');
       return;
     }
-    workers.forEach((w) => onToggleWorkerStatus(w.id));
-    toast.info(
-      isSwarmRunning ? t.pauseSwarmBtn : t.resumeSwarmBtn,
-      isSwarmRunning
-        ? `সব ${workers.length}টি ওয়ার্কার pause করা হচ্ছে।`
-        : `সব ${workers.length}টি ওয়ার্কার resume করা হচ্ছে।`
-    );
+    guardAdminAction({
+      title: isSwarmRunning ? t.pauseSwarmBtn : t.resumeSwarmBtn,
+      description: isSwarmRunning
+        ? `সব ${workers.length}টি ওয়ার্কার pause হবে — চলমান কাজ থেমে যাবে।`
+        : `সব ${workers.length}টি ওয়ার্কার আবার চালু হবে।`,
+      impactSummary: `workers=${workers.length}`,
+      riskLevel: isSwarmRunning ? 'critical' : 'medium',
+      run: () => workers.forEach((w) => onToggleWorkerStatus(w.id)),
+    });
   };
 
   return (

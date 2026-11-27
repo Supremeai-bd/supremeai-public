@@ -5,6 +5,7 @@ import { adminService } from '../../services/adminService';
 import { useI18n } from '../../utils/i18n';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
+import { guardAdminAction } from '../../utils/adminGuard';
 
 interface AdminSecurityViewProps {
   securityEvents: SecurityEventLog[];
@@ -52,7 +53,15 @@ export const AdminSecurityView: React.FC<AdminSecurityViewProps> = ({
   const handleBlockIp = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newIp.trim()) return;
-    onAddBlockedIp(newIp.trim(), newReason.trim() || 'Manual administrative block');
+    const ip = newIp.trim();
+    const reason = newReason.trim() || 'Manual administrative block';
+    guardAdminAction({
+      title: `IP ব্লক: ${ip}`,
+      description: 'এই IP থেকে আসা সব অনুরোধ গেটওয়েতে আটকে যাবে।',
+      impactSummary: `ip=${ip}\nreason=${reason}`,
+      riskLevel: 'high',
+      run: () => onAddBlockedIp(ip, reason),
+    });
     setNewIp('');
     setNewReason('');
     setIsBlockModalOpen(false);
@@ -267,7 +276,15 @@ export const AdminSecurityView: React.FC<AdminSecurityViewProps> = ({
                     <td className="px-4 py-3.5 text-right">
                       <button
                         type="button"
-                        onClick={() => onRemoveBlockedIp(b.ip)}
+                        onClick={() =>
+                          guardAdminAction({
+                            title: `IP আনব্লক: ${b.ip}`,
+                            description: 'এই IP আবার সিস্টেমে ঢুকতে পারবে।',
+                            impactSummary: `ip=${b.ip}\nreason=${b.reason}`,
+                            riskLevel: 'medium',
+                            run: () => onRemoveBlockedIp(b.ip),
+                          })
+                        }
                         className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                         title="Unblock IP"
                       >

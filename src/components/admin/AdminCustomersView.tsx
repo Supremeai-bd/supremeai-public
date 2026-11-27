@@ -5,6 +5,7 @@ import { PLAN_CATALOG, getPlanSpec } from '../../config/plans';
 import { useI18n } from '../../utils/i18n';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useAdminCollectionSource } from '../../hooks/useAdminCollectionSource';
+import { guardAdminAction } from '../../utils/adminGuard';
 
 interface AdminCustomersViewProps {
   customers: CustomerRecord[];
@@ -427,7 +428,16 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({
                           {onImpersonateCustomer && (
                             <button
                               type="button"
-                              onClick={() => onImpersonateCustomer(cust)}
+                              onClick={() =>
+                                guardAdminAction({
+                                  title: `${cust.name} হিসেবে লগইন`,
+                                  description:
+                                    'এই কাস্টমারের ওয়ার্কস্পেস তার চোখে দেখবেন। টোকেন ১৫ মিনিট পর বাতিল হয়।',
+                                  impactSummary: `customer=${cust.email || cust.id}`,
+                                  riskLevel: 'high',
+                                  run: () => onImpersonateCustomer(cust),
+                                })
+                              }
                               aria-label="Login as this customer"
                               title="Impersonate (Switch to Customer Workspace)"
                               className="px-2 py-1 rounded-md bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-500 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1 border border-cyan-500/20"
@@ -447,7 +457,15 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => onDeleteCustomer(cust.id)}
+                            onClick={() =>
+                              guardAdminAction({
+                                title: `কাস্টমার মুছবেন: ${cust.name}`,
+                                description: 'অ্যাকাউন্টটি ওয়ার্কস্পেস থেকে সরানো হবে।',
+                                impactSummary: `customer=${cust.email || cust.id}`,
+                                riskLevel: 'critical',
+                                run: () => onDeleteCustomer(cust.id),
+                              })
+                            }
                             aria-label="Delete customer"
                             title="Remove Customer"
                             className="p-1.5 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"

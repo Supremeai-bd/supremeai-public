@@ -412,29 +412,19 @@ export const adminService = {
   },
 
   async blockIp(ip: string, reason: string): Promise<BlockedIpRecord[]> {
-    try {
-      const res = await apiClient.post<{ blockedIps: BlockedIpRecord[] }>(
-        '/api/admin/security/block-ip',
-        {
-          ip,
-          reason,
-        }
-      );
-      return res.blockedIps || [];
-    } catch {
-      throw new Error('Failed to block IP');
-    }
+    const res = await apiClient.post<{ blockedIps: BlockedIpRecord[] }>(
+      '/api/admin/security/block-ip',
+      { ip, reason }
+    );
+    return res.blockedIps || [];
   },
 
   async unblockIp(ip: string): Promise<BlockedIpRecord[]> {
-    try {
-      const res = await apiClient.delete<{ blockedIps: BlockedIpRecord[] }>(
-        `/api/admin/security/block-ip/${encodeURIComponent(ip)}`
-      );
-      return res.blockedIps || [];
-    } catch {
-      return [];
-    }
+    // বাংলা মন্তব্য: আগে ব্যর্থ হলে [] দিত — store পুরো ব্লক-লিস্ট মুছে ফেলত। এখন error ছোড়ে।
+    const res = await apiClient.delete<{ blockedIps: BlockedIpRecord[] }>(
+      `/api/admin/security/block-ip/${encodeURIComponent(ip)}`
+    );
+    return res.blockedIps || [];
   },
 
   async fetchAuditRecords(): Promise<SystemAuditRecord[]> {
@@ -448,11 +438,7 @@ export const adminService = {
   },
 
   async flushDlq(): Promise<void> {
-    try {
-      await apiClient.post('/api/admin/queue/flush-dlq');
-    } catch (error) {
-      logger.debug('adminService: suppressed non-fatal error', error);
-    }
+    await apiClient.post('/api/admin/queue/flush-dlq');
   },
 
   /**
@@ -577,14 +563,10 @@ export const adminService = {
       }
       return null;
     }
-    try {
-      const res = await apiClient.post<{ success: boolean; worker: SwarmWorker }>(
-        `/api/admin/swarm/${encodeURIComponent(workerId)}/toggle`
-      );
-      return res.worker;
-    } catch {
-      return null;
-    }
+    const res = await apiClient.post<{ success: boolean; worker: SwarmWorker }>(
+      `/api/admin/swarm/${encodeURIComponent(workerId)}/toggle`
+    );
+    return res.worker;
   },
 
   async scaleSwarmWorker(workerId: string, delta: number): Promise<SwarmWorker | null> {
@@ -596,15 +578,11 @@ export const adminService = {
       }
       return null;
     }
-    try {
-      const res = await apiClient.post<{ success: boolean; worker: SwarmWorker }>(
-        `/api/admin/swarm/${encodeURIComponent(workerId)}/scale`,
-        { delta }
-      );
-      return res.worker;
-    } catch {
-      return null;
-    }
+    const res = await apiClient.post<{ success: boolean; worker: SwarmWorker }>(
+      `/api/admin/swarm/${encodeURIComponent(workerId)}/scale`,
+      { delta }
+    );
+    return res.worker;
   },
 
   async fetchQueueJobs(): Promise<TaskQueueJob[]> {
@@ -630,24 +608,16 @@ export const adminService = {
       }
       return null;
     }
-    try {
-      const res = await apiClient.post<{ success: boolean; job: TaskQueueJob }>(
-        `/api/admin/queue/retry/${encodeURIComponent(jobId)}`
-      );
-      return res.job;
-    } catch {
-      return null;
-    }
+    const res = await apiClient.post<{ success: boolean; job: TaskQueueJob }>(
+      `/api/admin/queue/retry/${encodeURIComponent(jobId)}`
+    );
+    return res.job;
   },
 
   async clearCompletedQueueJobs(): Promise<void> {
     if (env.isMockEnabled) {
       return;
     }
-    try {
-      await apiClient.delete('/api/admin/queue/completed');
-    } catch (error) {
-      logger.debug('adminService: suppressed non-fatal error', error);
-    }
+    await apiClient.delete('/api/admin/queue/completed');
   },
 };
