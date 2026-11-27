@@ -33,7 +33,6 @@ import { ControlCenterSafetyBar } from './ControlCenterSafetyGateModal';
 import { AdminQuickStatsCard } from './AdminQuickStatsCard';
 import { AdminD3TelemetryWidgets } from './AdminD3TelemetryWidgets';
 import { AdminLiveServicesCommandMatrix } from './AdminLiveServicesCommandMatrix';
-import { AdminProviderPoolsOverviewCard } from './AdminProviderPoolsOverviewCard';
 import { useI18n } from '../../utils/i18n';
 import { DataSourceBadge } from '../common/DataSourceBadge';
 import { useControlCenterDomainSource } from '../../hooks/useControlCenterDomainSource';
@@ -307,9 +306,6 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
           onRefreshHealth={() => void loadServiceHealth(true)}
           onNavigateTab={onNavigateTab}
         />
-
-        {/* Multi-Account Provider Pools, Quota Runway & 1-Click Failover Watch */}
-        <AdminProviderPoolsOverviewCard />
 
         {/* Live 5-Layer Deep Diagnose TruthMatrix & ReleaseGate Strip */}
         <div className="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
@@ -830,7 +826,7 @@ export const AdminOverviewView: React.FC<AdminOverviewViewProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => onNavigateTab('models')}
+                onClick={() => onNavigateTab('llm-gateway')}
                 className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
               >
                 {t.ovModelMatrix}

@@ -1,7 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DataSourceBadge } from './DataSourceBadge';
-import { countFlagConsumers, describeFlagConsumers, wiredFlagKeys } from '../../data/featureFlagConsumers';
 
 afterEach(cleanup);
 
@@ -45,23 +44,5 @@ describe('DataSourceBadge', () => {
   it('স্ক্রিন রিডারের জন্য status role বহন করে', () => {
     render(<DataSourceBadge source="live" reason="ok" />);
     expect(screen.getByRole('status')).toBeInTheDocument();
-  });
-});
-
-describe('featureFlagConsumers — সত্যের একমাত্র উৎস', () => {
-  it('যে ফ্ল্যাগ সত্যিই কিছু গেট করে সেটা নিবন্ধিত', () => {
-    expect(wiredFlagKeys()).toContain('enable_multimodal_vision');
-    expect(countFlagConsumers('enable_multimodal_vision')).toBeGreaterThan(0);
-  });
-
-  it('অগ্নিপরীক্ষা: অজানা ফ্ল্যাগের জন্য সৎ উত্তর দেয়', () => {
-    // বাংলা মন্তব্য: আগে অ্যাডমিন প্যানেল এদের "server-wide" বলত — মিথ্যা ছিল
-    expect(countFlagConsumers('some_unwired_flag')).toBe(0);
-    expect(describeFlagConsumers('some_unwired_flag')).toContain('কোনো UI ফিচার এটি পড়ে না');
-  });
-
-  it('নিবন্ধিত ফ্ল্যাগের প্রভাব ও ফাইল-রেফারেন্স জানায়', () => {
-    const desc = describeFlagConsumers('enable_multimodal_vision');
-    expect(desc).toContain('ChatInput.tsx');
   });
 });

@@ -427,14 +427,10 @@ export const EN_DICT = {
   customInstructionsTitle: 'Custom Instructions & AI Persona',
   activePersonaLabel: 'Active Persona:',
   workspaceLayoutTitle: 'Workspace Layout',
-  autoPrReviewLabel: 'Automatic Pull Request Review',
-  autoPrReviewDesc: 'Trigger automated AI code audits when branches are pushed.',
   manageDocsBtn: 'Manage Docs',
   workspaceTipsSettingLabel: 'Workspace Discovery Tips',
   workspaceTipsSettingDesc:
     'Show helpful rotating tips in Chat for shortcuts, research tools, and developer options.',
-  emailDigestSettingLabel: 'Email Notifications & Digest',
-  emailDigestSettingDesc: 'Receive weekly summary of workspace activity and updates.',
   appearanceHeaderTitle: 'Appearance, OS Sync & Live Screens',
   appearanceHeaderDesc:
     'Real-time animated screens, theme-tinted glass surfaces, and per-theme atmospheric controls.',
@@ -1004,7 +1000,6 @@ export const EN_DICT = {
   visionOcrPreviewLabel: 'Extracted OCR Text (Inspect & Edit before sending)',
   visionOcrDismiss: 'Dismiss',
   // Live Data Fabric (Federation auto-sync)
-  subviewLiveSync: 'Live Data Fabric & Sync',
   syncTier1Title: 'Tier 1: Core & Mission-Critical',
   syncTier1Desc:
     'Chat engine, model catalogue, and core runtime health. Required 100% live for normal operation.',

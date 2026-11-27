@@ -418,13 +418,9 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   customInstructionsTitle: 'কাস্টম নির্দেশনা ও AI পারসোনা',
   activePersonaLabel: 'সক্রিয় পারসোনা:',
   workspaceLayoutTitle: 'ওয়ার্কস্পেস লেআউট',
-  autoPrReviewLabel: 'স্বয়ংক্রিয় পুল রিকোয়েস্ট রিভিউ',
-  autoPrReviewDesc: 'নতুন ব্রাঞ্চ পুশ করলে স্বয়ংক্রিয়ভাবে AI কোড অডিট চালু হবে।',
   manageDocsBtn: 'ডকুমেন্ট দেখুন',
   workspaceTipsSettingLabel: 'ওয়ার্কস্পেস ডিসকভারি টিপস',
   workspaceTipsSettingDesc: 'শর্টকাট, রিসার্চ টুলস ও ডেভেলপার অপশন সম্পর্কে চ্যাটে সহায়ক টিপস দেখান।',
-  emailDigestSettingLabel: 'ইমেইল নোটিফিকেশন ও ডাইজেস্ট',
-  emailDigestSettingDesc: 'ওয়ার্কস্পেস কার্যক্রমের সাপ্তাহিক সারাংশ ও আপডেট পান।',
   appearanceHeaderTitle: 'থিম, OS সিঙ্ক ও লাইভ স্ক্রিন',
   appearanceHeaderDesc: 'রিয়েল-টাইম অ্যানিমেটেড স্ক্রিন, থিম-টিন্টেড গ্লাস সারফেস এবং দৃশ্যপট নিয়ন্ত্রণ।',
   colorSchemeSyncLabel: 'কালার স্কিম সিঙ্ক্রোনাইজেশন',
@@ -984,7 +980,6 @@ export const BN_DICT: Record<TranslationKeys, string> = {
   visionOcrPreviewLabel: 'OCR থেকে পাওয়া লেখা (পাঠানোর আগে যাচাই/এডিট করুন)',
   visionOcrDismiss: 'বন্ধ করুন',
   // Live Data Fabric (Federation auto-sync)
-  subviewLiveSync: 'লাইভ ডেটা ফ্যাব্রিক ও সিঙ্ক',
   syncTier1Title: 'Tier 1: কোর ও অপরিহার্য সার্ভিস',
   syncTier1Desc:
     'চ্যাট ইঞ্জিন, এআই মডেল ড্রপডাউন এবং কোর রানটাইম হেলথ — স্বাভাবিক ব্যবহারের জন্য এগুলো ১০০% লাইভ থাকা আবশ্যক।',

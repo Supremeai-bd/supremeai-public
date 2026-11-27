@@ -49,6 +49,7 @@ import {
   ADMIN_ONLY_TABS,
   DEV_ONLY_TABS,
   getLocalizedSubviewTitle,
+  isRoutableTab,
   SUBVIEW_TITLES,
 } from './config/navigationTabs';
 import { detectPlatform } from './bridge/platform';
@@ -641,8 +642,9 @@ export default function App() {
 
   // Route & dock safety guard for Guest, Standard, and Admin workspaces
   useEffect(() => {
-    // বাংলা মন্তব্য: লাইভ ডেটা ফ্যাব্রিক (live-sync) গেস্ট, সাধারণ ইউজার বা অ্যাডমিন—কারও জন্যই প্রয়োজন নেই।
-    if (activeTab === 'live-sync') {
+    // বাংলা মন্তব্য: অচেনা/অপসারিত ট্যাব (পুরনো বুকমার্ক `?tab=repos`, `?tab=models`,
+    // `live-sync` ইত্যাদি) এলে ফাঁকা পেজ নয় — history replace করে chat-এ ফেরত।
+    if (!isRoutableTab(activeTab)) {
       setActiveTab('chat', true);
       return;
     }
@@ -714,7 +716,7 @@ export default function App() {
   }, [isGuest, t.wsScheduleRunHistoryToast]);
 
   const handleSelectTab = (tab: string) => {
-    if (tab === 'live-sync') {
+    if (!isRoutableTab(tab)) {
       setActiveTab('chat');
       return;
     }
