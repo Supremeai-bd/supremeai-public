@@ -402,7 +402,6 @@ export const EN_DICT = {
   monthlyUsageAllowanceTitle: 'Monthly Usage Allowance',
   resetsMonthlyLabel: 'Resets monthly',
   preferencesAiModeTitle: 'Preferences, AI Persona & Workspace Mode',
-  defaultModelLabel: 'Default SupremeAI Model',
   customInstructionsTitle: 'Custom Instructions & AI Persona',
   activePersonaLabel: 'Active Persona:',
   manageDocsBtn: 'Manage Docs',
@@ -920,9 +919,6 @@ export const EN_DICT = {
   wsLiveAutoPreviewHint: 'Auto-synced with Preview',
   opsConsoleTitle: 'Ops & Admin Console',
   autoModelTitle: 'SupremeAI · Auto',
-  autoModelSettingLabel: 'Smart Auto Model Routing',
-  autoModelSettingDesc:
-    'Automatically route between Spark, Core, Reason, and Deep based on prompt intent.',
   quickStartersHeader: 'Quick Starters',
   starterBuildAppTitle: 'Build Web App',
   starterBuildAppPrompt:

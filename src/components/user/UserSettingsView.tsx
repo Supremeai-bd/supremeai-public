@@ -33,7 +33,6 @@ import { AppLanguage, UserAccountSettings, UserRole } from '../../types';
 import { APP_LANGUAGE_OPTIONS, TranslationKeys, useI18n } from '../../utils/i18n';
 import { AccountSettingsPanel } from './settings/AccountSettingsPanel';
 import { PersonalMcpHubCard } from './PersonalMcpHubCard';
-import { SUPREMEAI_MODELS } from '../../data/models';
 import {
   useThemeStore,
   LIVE_THEMES,
@@ -166,8 +165,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   const [name, setName] = useState(settings.name);
   const [email, setEmail] = useState(settings.email);
   const [showWorkspaceTips, setShowWorkspaceTips] = useState(settings.showWorkspaceTips !== false);
-  const [defaultModel, setDefaultModel] = useState(settings.defaultModel);
-  const [autoModelRouting, setAutoModelRouting] = useState(settings.autoModelRouting !== false);
   const [customInstructions, setCustomInstructions] = useState(settings.customInstructions || '');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const language = useAppPreferencesStore((s) => s.language);
@@ -202,8 +199,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
     setName(settings.name);
     setEmail(settings.email);
     setShowWorkspaceTips(settings.showWorkspaceTips !== false);
-    setDefaultModel(settings.defaultModel);
-    setAutoModelRouting(settings.autoModelRouting !== false);
     setCustomInstructions(settings.customInstructions || '');
   }, [settings]);
 
@@ -270,18 +265,12 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    const matchedModel = SUPREMEAI_MODELS.find((m) => m.id === defaultModel);
-    if (matchedModel) {
-      useChatStore.getState().selectModel(matchedModel);
-    }
     onUpdateSettings({
       name,
       email,
       streamResponses: settings.streamResponses ?? true,
       enableKnowledgeGrounding: settings.enableKnowledgeGrounding ?? true,
       showWorkspaceTips,
-      defaultModel,
-      autoModelRouting,
       language,
       customInstructions,
     });
@@ -702,57 +691,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
               </p>
             </div>
 
-            {/* Smart Auto Model Routing + Fallback Model */}
-            <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 space-y-3">
-                <label className="flex items-center justify-between gap-4 cursor-pointer">
-                  <div>
-                    <span className="text-xs font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 theme-accent-text" />
-                      <span>{t.autoModelSettingLabel}</span>
-                    </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                      {t.autoModelSettingDesc}
-                    </span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={autoModelRouting}
-                    onChange={(e) => {
-                      const next = e.target.checked;
-                      setAutoModelRouting(next);
-                      onUpdateSettings({ autoModelRouting: next });
-                    }}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
-                  />
-                </label>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    {t.defaultModelLabel}
-                  </label>
-                  <select
-                    value={defaultModel}
-                    onChange={(e) => {
-                      const nextId = e.target.value;
-                      setDefaultModel(nextId);
-                      const matched = SUPREMEAI_MODELS.find((m) => m.id === nextId);
-                      if (matched) {
-                        useChatStore.getState().selectModel(matched);
-                      } else {
-                        onUpdateSettings({ defaultModel: nextId });
-                      }
-                    }}
-                    className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-slate-400"
-                  >
-                    {SUPREMEAI_MODELS.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.tagline})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
+            {/* বাংলা মন্তব্য: মডেল পিকার ও Auto Routing টগল নেই — সিস্টেম প্রতিটি অনুরোধে নিজেই সেরা মডেল বাছে */}
             {/* Custom Instructions & Persona Section */}
             <div className="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/70 space-y-2.5">
               <div className="flex items-center justify-between gap-2">
