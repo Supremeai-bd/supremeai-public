@@ -52,9 +52,11 @@ permissions:
   contents: read
 
 concurrency:
-  # বাংলা মন্তব্য: PR-এ নতুন কমিট এলে পুরোনো রান ক্যান্সেল হবে (সময় ও রানার বাঁচাতে),
-  # কিন্তু main/tag পুশে চলমান রিলিজ/ডিপ্লয় কখনোই ক্যান্সেল হবে না।
-  group: supremeai-release-${{ github.ref }}
+  # বাংলা মন্তব্য: PR-এ নতুন কমিট এলে পুরোনো পুরো রান ক্যান্সেল হয়। main/tag পুশে
+  # workflow-স্তরে কোনো queue নেই (প্রতি রানের নিজস্ব group) — নইলে নতুন পুশ এসে
+  # pending রানকে (Cross-Repo Sync সহ) বাতিল করে দিত। main-এ পুরোনো Build/Deploy
+  # ক্যান্সেল হয় job-স্তরের concurrency দিয়ে; Cross-Repo Sync কখনো ক্যান্সেল হয় না।
+  group: ${{ github.event_name == 'pull_request' && format('supremeai-pr-{0}', github.ref) || format('supremeai-run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -86,6 +88,10 @@ jobs:
 
   build-web:
     name: '1/4 Build & Deploy Web Studio'
+    # Newer push on the same ref supersedes this build/deploy (see top-level note).
+    concurrency:
+      group: supremeai-build-web-${{ github.ref }}
+      cancel-in-progress: true
     needs: [smart-pr-guard]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -142,6 +148,10 @@ jobs:
 
   build-desktop-windows:
     name: '2/4 Auto-Build Desktop Installers (Windows NSIS & MSI)'
+    # Newer push on the same ref supersedes this build/deploy (see top-level note).
+    concurrency:
+      group: supremeai-build-desktop-windows-${{ github.ref }}
+      cancel-in-progress: true
     # বাংলা মন্তব্য: ভারী Windows নেটিভ বিল্ড শুধু main/tag পুশ বা ম্যানুয়াল রিলিজে চলবে;
     # PR-এ শুধু ফাস্ট Web + VSIX + CodeQL চেক চালিয়ে ফিডব্যাক দ্রুত রাখা হয়েছে।
     if: github.event_name != 'pull_request'
@@ -192,6 +202,10 @@ jobs:
 
   build-android-tauri-apk:
     name: '3/4 Auto-Build Tauri v2 Android APK (Same React UI + Rust Core)'
+    # Newer push on the same ref supersedes this build/deploy (see top-level note).
+    concurrency:
+      group: supremeai-build-android-tauri-apk-${{ github.ref }}
+      cancel-in-progress: true
     # বাংলা মন্তব্য: ভারী Android APK নেটিভ বিল্ড শুধু main/tag পুশ বা ম্যানুয়াল রিলিজে চলবে।
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -356,6 +370,10 @@ jobs:
 
   build-vscode-vsix:
     name: '4/4 Auto-Build VS Code Extension (.vsix)'
+    # Newer push on the same ref supersedes this build/deploy (see top-level note).
+    concurrency:
+      group: supremeai-build-vscode-vsix-${{ github.ref }}
+      cancel-in-progress: true
     needs: [smart-pr-guard]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -389,6 +407,10 @@ jobs:
 
   publish-unified-release:
     name: 'Publish Coordinated Release (Web + Desktop + Android + VSIX)'
+    # Newer push on the same ref supersedes this build/deploy (see top-level note).
+    concurrency:
+      group: supremeai-publish-unified-release-${{ github.ref }}
+      cancel-in-progress: true
     needs: [build-web, build-desktop-windows, build-android-tauri-apk, build-vscode-vsix]
     if: github.event_name == 'push' || inputs.publish_release
     runs-on: ubuntu-latest
@@ -460,6 +482,10 @@ jobs:
     # যা মূল স্টুডিওর অ্যাডমিন প্যানেলে (?tab=admin-overview) 301 redirect করে।
     # শুধু redirect ফোল্ডার বদলালে অথবা হাতে workflow_dispatch চালালে চলে।
     name: "Deploy Admin Redirect (supremeai-admin → studio)"
+    # Newer push on the same ref supersedes this build/deploy (see top-level note).
+    concurrency:
+      group: supremeai-deploy-admin-redirect-${{ github.ref }}
+      cancel-in-progress: true
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -537,6 +563,10 @@ jobs:
 
   sync-cross-repo-patches:
     name: 'Sync cross-repo patches to supremeai (Auto-PR)'
+    # Never cancel an in-flight cross-repo sync; later syncs wait their turn.
+    concurrency:
+      group: supremeai-cross-repo-sync
+      cancel-in-progress: false
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
