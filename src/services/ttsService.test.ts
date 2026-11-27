@@ -90,6 +90,17 @@ describe('Unified Language Preference & Global ttsService', () => {
     expect(ttsService.getSamplePhrase('en')).toContain('global TTS voice settings');
   });
 
+  it('speaks regional Bangla dialects with a Bangla voice instead of falling back to English', () => {
+    for (const dialect of ['bn-ctg', 'bn-syl', 'bn-raj', 'bn-nkh']) {
+      const cfg = ttsService.setLanguage(dialect);
+      expect(cfg.language).toBe('bn');
+      expect(cfg.locale).toBe('bn-BD');
+      expect(ttsService.getSamplePhrase(dialect)).toContain('SupremeAI');
+      expect(ttsService.getSamplePhrase(dialect)).not.toContain('Hello');
+    }
+    ttsService.setLanguage('en');
+  });
+
   it('notifies subscribers when global TTS settings change and stops after unsubscribe', () => {
     const events: string[] = [];
     const unsubscribe = ttsService.subscribe((cfg) => {
