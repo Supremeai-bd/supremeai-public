@@ -12,6 +12,11 @@ import {
 } from '../../_lib/edgeHelpers';
 import { extractCiErrorSnippet } from '../../../src/utils/githubPipelineMetrics';
 import { handleAdminRealDataRoute } from '../../_lib/adminRealDataRoutes';
+import {
+  handleAdminAuditLogRoute,
+  withAdminAudit,
+  type AdminAuditContext,
+} from '../../_lib/adminAudit';
 
 // বাংলা মন্তব্য: ফ্রন্টএন্ডের SchemaParityTable এবং LlmGatewayRoute ইন্টারফেসের সাথে শতভাগ সামঞ্জস্যপূর্ণ এজ প্যারিটি ডেটা।
 const DEFAULT_SCHEMA_TABLES = [
@@ -122,9 +127,35 @@ const DEFAULT_GATEWAY_ROUTES = [
   },
 ];
 
+/**
+ * বাংলা মন্তব্য (Admin Step 1): প্রতিটি অ্যাডমিন write — সফল/ব্যর্থ/প্রত্যাখ্যাত —
+ * সার্ভার-সাইডে `audit_logs`-এ রেকর্ড হয়।
+ */
 export async function onRequest(context: PagesContext): Promise<Response> {
+  if (context.request.method === 'OPTIONS') {
+    return handleCorsPreflight(context.request, context.env);
+  }
+  return withAdminAudit(context, (audit) => handleAdminRequest(context, audit));
+}
+
+/** Fail-honest reply for write routes the backend has not implemented yet. */
+function notWired(request: Request, what: string): Response {
+  return jsonEdgeResponse(
+    {
+      success: false,
+      notWired: true,
+      error: `${what} is not available yet — the backend does not implement it.`,
+    },
+    501,
+    request
+  );
+}
+
+async function handleAdminRequest(
+  context: PagesContext,
+  audit: AdminAuditContext
+): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
 
   const incomingUrl = new URL(request.url);
   const path = incomingUrl.pathname;
@@ -132,6 +163,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
 
   // বাংলা মন্তব্য: অ্যাডমিন-যাচাই এখন edgeHelpers.authorizeAdminRequest-এ (control-plane ও mcp-tower একই নিয়ম)
   const auth = await authorizeAdminRequest(request, env, upstreamOrigin);
+  if (auth.actor) audit.actor = auth.actor;
   const effectiveToken = auth.hasToken;
   const hasAdminCredential = auth.isAdmin;
 
@@ -442,6 +474,9 @@ export async function onRequest(context: PagesContext): Promise<Response> {
 
   // 1b. বাংলা মন্তব্য: Render-এ যেগুলো স্টাব (providers, vault, customers, connections) —
   // সেগুলো edge-এ আসল উৎস (Infisical, Supabase Auth, লাইভ প্রোব) থেকে।
+  const auditLog = await handleAdminAuditLogRoute(path, request, env);
+  if (auditLog) return auditLog;
+
   const realData = await handleAdminRealDataRoute(path, request, env, upstreamOrigin);
   if (realData) return realData;
 
@@ -471,12 +506,9 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   if (path === '/api/admin/schema-parity') {
     return jsonEdgeResponse({ tables: DEFAULT_SCHEMA_TABLES, source: 'edge-parity' }, 200, request);
   }
+  // বাংলা মন্তব্য (fail-honest): আগে এই write-গুলো কিছু না করেই success: true বলত।
   if (path === '/api/admin/schema-parity/sync' && request.method === 'POST') {
-    return jsonEdgeResponse(
-      { success: true, syncedCount: 0, tables: DEFAULT_SCHEMA_TABLES },
-      200,
-      request
-    );
+    return notWired(request, 'Schema sync');
   }
   if (path === '/api/admin/llm-gateway') {
     return jsonEdgeResponse(
@@ -489,46 +521,27 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       request
     );
   }
-  if (
-    path.startsWith('/api/admin/llm-gateway/') &&
-    path.endsWith('/failover') &&
-    request.method === 'POST'
-  ) {
-    const id = path.split('/')[4] || '';
-    const updated = DEFAULT_GATEWAY_ROUTES.map((r) =>
-      r.id === id ? { ...r, autoFailoverActive: !r.autoFailoverActive } : r
-    );
-    return jsonEdgeResponse({ success: true, routes: updated }, 200, request);
+  const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
+  if (isWrite && path.startsWith('/api/admin/llm-gateway/')) {
+    return notWired(request, 'Changing gateway routing or pricing');
   }
-  if (
-    path.startsWith('/api/admin/llm-gateway/') &&
-    path.endsWith('/price') &&
-    request.method === 'PATCH'
-  ) {
-    const id = path.split('/')[4] || '';
-    const body = (await request.json().catch(() => ({}))) as { customerPricePer1M?: number };
-    const updated = DEFAULT_GATEWAY_ROUTES.map((r) =>
-      r.id === id && typeof body.customerPricePer1M === 'number'
-        ? { ...r, customerPricePer1M: body.customerPricePer1M }
-        : r
-    );
-    return jsonEdgeResponse({ success: true, routes: updated }, 200, request);
-  }
-
   if (path.startsWith('/api/admin/customers/')) {
+    if (isWrite) return notWired(request, 'This customer action');
     return jsonEdgeResponse({ success: true, customers: [] }, 200, request);
   }
   if (path.startsWith('/api/admin/security/block-ip/')) {
+    if (isWrite) return notWired(request, 'Blocking or unblocking an IP');
     return jsonEdgeResponse({ success: true, blockedIps: [] }, 200, request);
   }
   if (path.startsWith('/api/admin/providers/')) {
+    if (isWrite) return notWired(request, 'This provider action');
     return jsonEdgeResponse({ success: true, providers: [] }, 200, request);
   }
-  if (path.startsWith('/api/admin/swarm/') && request.method === 'POST') {
-    return jsonEdgeResponse({ success: true, worker: null }, 200, request);
+  if (isWrite && path.startsWith('/api/admin/swarm/')) {
+    return notWired(request, 'This agent worker action');
   }
-  if (path.startsWith('/api/admin/queue/') && request.method === 'POST') {
-    return jsonEdgeResponse({ success: true, job: null }, 200, request);
+  if (isWrite && path.startsWith('/api/admin/queue/')) {
+    return notWired(request, 'This task queue action');
   }
 
   return jsonEdgeResponse({ error: `Admin endpoint ${path} unavailable upstream.` }, 404, request);

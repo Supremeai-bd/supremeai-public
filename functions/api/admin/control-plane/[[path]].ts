@@ -18,6 +18,7 @@ import {
   parseEcosystemDiagnosticsResult,
   computeEvidenceFingerprint,
 } from '../../../../src/shared/controlPlaneShared';
+import { withAdminAudit, type AdminAuditContext } from '../../../_lib/adminAudit';
 
 async function fetchGithubHead(env?: Record<string, string | undefined>) {
   try {
@@ -204,11 +205,20 @@ async function probeServiceMesh(origin: string, env?: Record<string, string | un
 }
 
 export async function onRequest(context: PagesContext): Promise<Response> {
+  if (context.request.method === 'OPTIONS') return handleCorsPreflight(context.request);
+  // বাংলা মন্তব্য (Admin Step 1): প্রতিটি control-plane write সার্ভার-সাইডে অডিট হয়।
+  return withAdminAudit(context, (audit) => handleControlPlaneRequest(context, audit));
+}
+
+async function handleControlPlaneRequest(
+  context: PagesContext,
+  audit: AdminAuditContext
+): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
 
   // বাংলা মন্তব্য: একই অ্যাডমিন-যাচাই (আগে এখানে ADMIN_PASSKEY বাদ ছিল — পাসকি দিয়ে ঢোকা অ্যাডমিন 401 পেতেন)
   const auth = await authorizeAdminRequest(request, env);
+  if (auth.actor) audit.actor = auth.actor;
   if (!auth.isAdmin) {
     return jsonEdgeResponse(
       {
