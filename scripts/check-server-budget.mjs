@@ -128,7 +128,10 @@ const TARGET = 'server.ts';
 //         and POST /api/telemetry/client-error now live in src/api/routes (shared with
 //         Cloudflare Pages), mounted via mountApiOnExpress (docs/HONO_MIGRATION.md).
 // বাংলা মন্তব্য: models Hono-তে; Node catalog cache helper extraction-এ bootstrap ছোট হয়েছে।
-const BUDGET = 2508;
+// 2508 → 2209 after moving the pure bootstrap helpers (isHttpsRequest, SSRF-safe fetch,
+//         per-IP rate limiter) into src/server/httpGuards.ts and the MCP Tower service
+//         data array into src/server/mcpClusterServices.ts (−299 lines).
+const BUDGET = 2209;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');
