@@ -37,6 +37,13 @@ function renderSidebar(sessions: ChatSession[], overrides: Record<string, unknow
 describe('Sidebar chat search (replaces the All Conversations tab)', () => {
   afterEach(() => cleanup());
 
+  it('has no Plan & Usage or Team & Members tab (even with Workspace expanded)', () => {
+    renderSidebar([]);
+    fireEvent.click(screen.getByText('Workspace'));
+    expect(screen.queryByText('Plan & Usage')).toBeNull();
+    expect(screen.queryByText('Team & Members')).toBeNull();
+  });
+
   it('has no All Conversations tab button', () => {
     renderSidebar([]);
     expect(screen.queryByText('All Conversations')).toBeNull();
