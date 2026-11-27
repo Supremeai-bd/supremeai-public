@@ -122,7 +122,9 @@ export const AdminMcpTowerView: React.FC<AdminMcpTowerViewProps> = ({
 
   const avgLatency =
     total > 0 ? Math.round(services.reduce((acc, s) => acc + s.latencyMs, 0) / total) : 0;
-  const totalMemory = services.reduce((acc, s) => acc + s.memoryMb, 0);
+  // বাংলা মন্তব্য: শুধু যেসব সার্ভিস আসলেই মেমরি রিপোর্ট করে সেগুলো যোগ হয়; কেউ না করলে "—"
+  const measuredMemory = services.filter((s) => typeof s.memoryMb === 'number');
+  const totalMemory = measuredMemory.reduce((acc, s) => acc + (s.memoryMb ?? 0), 0);
   const totalErrors = services.reduce((acc, s) => acc + s.errorCount, 0);
 
   // Filtered Services
@@ -345,8 +347,14 @@ export const AdminMcpTowerView: React.FC<AdminMcpTowerViewProps> = ({
               <HardDrive className="w-3.5 h-3.5 text-purple-500" />
             </div>
             <div className="text-xl font-bold font-mono tracking-tight mt-1 text-slate-900 dark:text-slate-100 tabular-nums">
-              {(totalMemory / 1024).toFixed(2)}{' '}
-              <span className="text-xs font-normal text-slate-500">GB</span>
+              {measuredMemory.length > 0 ? (
+                <>
+                  {(totalMemory / 1024).toFixed(2)}{' '}
+                  <span className="text-xs font-normal text-slate-500">GB</span>
+                </>
+              ) : (
+                <span title="Remote services do not report memory to the edge">—</span>
+              )}
             </div>
             <div className="text-[10px] text-slate-500 mt-0.5">{totalErrors} alert traces</div>
           </div>
@@ -769,24 +777,24 @@ export const AdminMcpTowerView: React.FC<AdminMcpTowerViewProps> = ({
                               <span className="text-slate-400 w-7">CPU</span>
                               <span
                                 className={`font-mono font-medium tabular-nums ${
-                                  service.cpuPercent > 80
+                                  (service.cpuPercent ?? 0) > 80
                                     ? 'text-rose-600 dark:text-rose-400 font-bold'
                                     : 'text-slate-700 dark:text-slate-300'
                                 }`}
                               >
-                                {service.cpuPercent}%
+                                {service.cpuPercent === null ? '—' : `${service.cpuPercent}%`}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 text-[11px]">
                               <span className="text-slate-400 w-7">RAM</span>
                               <span
                                 className={`font-mono font-medium tabular-nums ${
-                                  service.memoryMb > 1500
+                                  (service.memoryMb ?? 0) > 1500
                                     ? 'text-rose-600 dark:text-rose-400 font-bold'
                                     : 'text-slate-700 dark:text-slate-300'
                                 }`}
                               >
-                                {service.memoryMb} MB
+                                {service.memoryMb === null ? '—' : `${service.memoryMb} MB`}
                               </span>
                             </div>
                           </div>

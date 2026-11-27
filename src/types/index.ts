@@ -231,8 +231,10 @@ export interface McpTowerService {
   status: 'healthy' | 'degraded' | 'unhealthy' | 'rebooting';
   uptime: string;
   latencyMs: number;
-  cpuPercent: number;
-  memoryMb: number;
+  /** null = মাপা হয়নি (রিমোট সার্ভিস; edge থেকে CPU মাপা যায় না) */
+  cpuPercent: number | null;
+  /** null = মাপা হয়নি */
+  memoryMb: number | null;
   lastChecked: string;
   version: string;
   endpoint: string;

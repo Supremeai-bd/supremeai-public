@@ -89,19 +89,41 @@ export const FALLBACK_GITHUB_COMMIT = {
 };
 
 /**
+ * বাংলা মন্তব্য: প্রমাণের (summary + truth matrix ইত্যাদি) কনটেন্ট-ফিঙ্গারপ্রিন্ট — একই প্রমাণ = একই হ্যাশ।
+ * আগে `evidenceHash` ছিল শুধু `Date.now()`-এর hex, যা কিছুই প্রমাণ করত না। এটা সিঙ্ক্রোনাস
+ * (Edge ও Node দুই রানটাইমেই চলে) দুই-সিডের FNV-1a — নিরাপত্তা-সিগনেচার নয়, পরিবর্তন শনাক্তের জন্য।
+ */
+export function computeEvidenceFingerprint(evidence: unknown): string {
+  const text = JSON.stringify(evidence ?? null);
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193 ^ text.length;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0;
+  }
+  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+}
+
+/**
  * বাংলা মন্তব্য: MCP Tower-এর system_deep_diagnose টুল আউটপুটকে স্ট্যান্ডার্ড DeepDiagnoseReport আকারে পার্স করা।
+ * টাওয়ার উত্তর না দিলে বা রায় (releaseGate) বোঝা না গেলে আর "GO" ধরে নেওয়া হয় না — DEGRADED।
  */
 export function parseDeepDiagnoseResult(
   mcpResult: any,
   service: string = 'api',
-  intent: string = 'is_healthy'
+  intent: string = 'is_healthy',
+  latencyMs: number = 0
 ): DeepDiagnoseReport {
   let provenance: DataProvenance = 'live-mcp';
-  let summary = `Diagnostic check executed for ${service}`;
-  let releaseGate: 'GO' | 'NO_GO' | 'DEGRADED' = 'GO';
+  let summary = `MCP Tower did not answer — diagnosis for ${service} is unavailable.`;
+  let releaseGate: 'GO' | 'NO_GO' | 'DEGRADED' = 'DEGRADED';
 
   const contentText = mcpResult?.content?.[0]?.text;
-  if (typeof contentText === 'string') {
+  if (typeof contentText !== 'string') {
+    provenance = 'local-snapshot';
+  } else {
+    summary = `Diagnostic check executed for ${service}`;
     try {
       const parsed = JSON.parse(contentText);
       if (parsed?.summary) summary = String(parsed.summary);
@@ -118,7 +140,7 @@ export function parseDeepDiagnoseResult(
       dimension: 'serviceHealth',
       label: '5-Layer Probe',
       status: releaseGate === 'GO' ? 'pass' : 'warn',
-      latencyMs: 42,
+      latencyMs: Math.max(0, Math.round(latencyMs)),
       summary,
       evidence: `${service} · ${intent}`,
     },
@@ -130,7 +152,7 @@ export function parseDeepDiagnoseResult(
     intent,
     releaseGate,
     summary,
-    evidenceHash: Date.now().toString(16),
+    evidenceHash: computeEvidenceFingerprint({ service, intent, releaseGate, summary, truthMatrix }),
     checkedAt: new Date().toISOString(),
     provenance,
     truthMatrix,

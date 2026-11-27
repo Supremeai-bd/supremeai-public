@@ -92,8 +92,9 @@ export const adminService = {
       status: raw.status || 'healthy',
       uptime: raw.uptime || '—',
       latencyMs: typeof raw.latencyMs === 'number' ? raw.latencyMs : 0,
-      cpuPercent: typeof raw.cpuPercent === 'number' ? raw.cpuPercent : 0,
-      memoryMb: typeof raw.memoryMb === 'number' ? raw.memoryMb : 0,
+      // বাংলা মন্তব্য: না মাপা মান 0 দেখালে "সব ঠিক আছে" মনে হয় — null রাখি, UI "—" দেখায়
+      cpuPercent: typeof raw.cpuPercent === 'number' ? raw.cpuPercent : null,
+      memoryMb: typeof raw.memoryMb === 'number' ? raw.memoryMb : null,
       lastChecked: raw.lastChecked || 'Just now',
       version: raw.version || raw.deployStatus || 'live',
       endpoint: raw.endpoint || '',

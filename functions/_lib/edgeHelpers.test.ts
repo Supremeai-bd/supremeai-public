@@ -2,7 +2,7 @@
 // বাংলা মন্তব্য: প্রোডাকশনে test-token bypass বন্ধ, cache bounded, এবং
 // origin/token/cookie context আলাদা থাকে; একই context শুধু TTL পর্যন্ত cache hit পায়।
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { verifyUpstreamSession } from './edgeHelpers';
+import { authorizeAdminRequest, verifyUpstreamSession } from './edgeHelpers';
 
 const UPSTREAM = 'https://upstream.example';
 
@@ -124,5 +124,36 @@ describe('verifyUpstreamSession', () => {
     // সীমা পেরোনোর পর প্রথম টোকেন evict হয়েছে → আবার upstream-এ যাচাই হয়
     await verifyUpstreamSession(requestWith(first), UPSTREAM);
     expect(fetchMock.mock.calls.length).toBe(callsBefore + 1);
+  });
+});
+
+describe('authorizeAdminRequest (shared by admin, control-plane, mcp-tower)', () => {
+  it('accepts ADMIN_PASSKEY via X-Admin-Token and rejects a missing token', async () => {
+    const ok = await authorizeAdminRequest(
+      new Request('https://x.test/', { headers: { 'X-Admin-Token': 'pass-1' } }),
+      { ADMIN_PASSKEY: 'pass-1' },
+      'https://upstream.test'
+    );
+    expect(ok).toEqual({ hasToken: true, isAdmin: true });
+    const none = await authorizeAdminRequest(new Request('https://x.test/'), {}, 'https://upstream.test');
+    expect(none).toEqual({ hasToken: false, isAdmin: false });
+  });
+
+  it('does not trust a client-sent admin email header', async () => {
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response('{}', { status: 401 }));
+    try {
+      const res = await authorizeAdminRequest(
+        new Request('https://x.test/', {
+          headers: { Authorization: 'Bearer forged', 'X-Admin-Email': 'boss@x.test' },
+        }),
+        { ADMIN_EMAIL: 'boss@x.test', ADMIN_PASSKEY: 'real' },
+        'https://upstream.test'
+      );
+      expect(res).toEqual({ hasToken: true, isAdmin: false });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
