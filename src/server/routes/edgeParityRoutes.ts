@@ -17,6 +17,7 @@ import { handleUserMemoriesRequest } from '../../../functions/_lib/userMemories'
 import { onRequest as handlePoolRequest } from '../../../functions/api/pool/[[path]]';
 import { onRequest as handleDeepResearchRequest } from '../../../functions/api/research/deep';
 import { onRequest as handleResearchPathRequest } from '../../../functions/api/research/[[path]]';
+import { routeRateLimit } from '../httpGuards';
 import type { PlanTier } from '../platformState';
 
 export interface EdgeParityRoutesContext {
@@ -98,35 +99,54 @@ export function registerEdgeParityRoutes(app: Express, ctx: EdgeParityRoutesCont
     return verifyUpstreamSession(request, upstreamOrigin);
   };
 
-  app.use('/api/pool', async (req: ExpressRequest, res: ExpressResponse) => {
-    const webRes = await handlePoolRequest(
-      { request: toWebRequest(req), env: getEnv() },
-      verifyNodeOrUpstreamSession
-    );
-    await sendWebResponse(res, webRes);
-  });
+  app.use(
+    '/api/pool',
+    routeRateLimit(120, { scope: 'area' }),
+    async (req: ExpressRequest, res: ExpressResponse) => {
+      const webRes = await handlePoolRequest(
+        { request: toWebRequest(req), env: getEnv() },
+        verifyNodeOrUpstreamSession
+      );
+      await sendWebResponse(res, webRes);
+    }
+  );
 
-  app.use('/api/user/memories', async (req: ExpressRequest, res: ExpressResponse) => {
-    const env = getEnv();
-    const upstreamOrigin = resolveUpstreamOrigin(env);
-    const webRes = await handleUserMemoriesRequest(toWebRequest(req), env, {
-      verify: (r) => verifyNodeOrUpstreamSession(r, upstreamOrigin),
-    });
-    await sendWebResponse(res, webRes);
-  });
+  app.use(
+    '/api/user/memories',
+    routeRateLimit(120, { scope: 'area' }),
+    async (req: ExpressRequest, res: ExpressResponse) => {
+      const env = getEnv();
+      const upstreamOrigin = resolveUpstreamOrigin(env);
+      const webRes = await handleUserMemoriesRequest(toWebRequest(req), env, {
+        verify: (r) => verifyNodeOrUpstreamSession(r, upstreamOrigin),
+      });
+      await sendWebResponse(res, webRes);
+    }
+  );
 
-  app.all('/api/research/deep', async (req: ExpressRequest, res: ExpressResponse) => {
-    const webRes = await handleDeepResearchRequest({ request: toWebRequest(req), env: getEnv() });
-    await sendWebResponse(res, webRes);
-  });
+  app.all(
+    '/api/research/deep',
+    routeRateLimit(30, { scope: 'area' }),
+    async (req: ExpressRequest, res: ExpressResponse) => {
+      const webRes = await handleDeepResearchRequest({ request: toWebRequest(req), env: getEnv() });
+      await sendWebResponse(res, webRes);
+    }
+  );
 
-  app.use('/api/research', async (req: ExpressRequest, res: ExpressResponse) => {
-    const webRes = await handleResearchPathRequest({ request: toWebRequest(req), env: getEnv() });
-    await sendWebResponse(res, webRes);
-  });
+  app.use(
+    '/api/research',
+    routeRateLimit(60, { scope: 'area' }),
+    async (req: ExpressRequest, res: ExpressResponse) => {
+      const webRes = await handleResearchPathRequest({ request: toWebRequest(req), env: getEnv() });
+      await sendWebResponse(res, webRes);
+    }
+  );
 
   // Admin Supabase-backed routes (`app.use('/api/admin', requireAdminMiddleware)` already verified RBAC)
-  app.use('/api/admin', async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
+  app.use(
+    '/api/admin',
+    routeRateLimit(600, { scope: 'area' }),
+    async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
     const env = getEnv();
     const webReq = toWebRequest(req);
     const path = new URL(webReq.url).pathname.replace(/\/+$/, '');

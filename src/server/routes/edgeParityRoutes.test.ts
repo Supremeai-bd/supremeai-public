@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { registerEdgeParityRoutes } from './edgeParityRoutes';
 import { registerMcpTowerRoutes } from './mcpTowerRoutes';
 import { createMcpClusterServices } from '../mcpClusterServices';
+import { routeRateLimit } from '../httpGuards';
 import { createServerIdentityManager } from '../userDirectory';
 import { wrapUntrustedWebContent } from '../../shared/agentToolContracts';
 
@@ -51,7 +52,7 @@ describe('Edge ↔ Node parity routes & identity manager', () => {
     });
 
     const srv = await startTestApp((app) => {
-      app.use('/api/admin', identity.requireAdminMiddleware);
+      app.use('/api/admin', routeRateLimit(600, { scope: 'area' }), identity.requireAdminMiddleware);
       registerEdgeParityRoutes(app, {
         verifyBearerIdentity: identity.verifyBearerIdentity,
         resolveAuditActor: () => 'admin@supremeai.local',
