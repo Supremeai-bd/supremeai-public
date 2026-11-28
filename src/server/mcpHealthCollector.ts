@@ -209,7 +209,57 @@ export function sampleHostRuntime(): HostRuntimeSnapshot {
   };
 }
 
-function parseSseOrJson(raw: string): any {
+// Upstream health payloads are unversioned JSON: every field is optional and narrowed on read.
+
+/** `GET {backend}/healthz`. */
+interface BackendHealthJson {
+  status?: string;
+  version?: string;
+  chat_ready?: unknown;
+  timestamp?: string;
+}
+
+/** `GET {tower}/health`. */
+interface TowerHealthJson {
+  status?: string;
+  services?: { healthy?: number; total?: number };
+  sweepCompletions?: number;
+  timestamp?: string;
+  lastCompletedSweepAt?: string;
+}
+
+/** JSON-RPC envelope of the Tower `tools/call` response. */
+interface McpCallEnvelope {
+  result?: { content?: Array<{ text?: unknown } | undefined> };
+}
+
+/** One provider entry of the Tower `status` tool's `health` map. */
+interface McpProviderHealth {
+  latencyMs?: unknown;
+  status?: unknown;
+  checkedAt?: unknown;
+  consecutiveFailures?: unknown;
+  error?: unknown;
+  evidence?: { summary?: unknown };
+}
+
+/** One service of the Tower `status` tool's `system.services` list. */
+interface McpSystemService {
+  id?: unknown;
+  name?: unknown;
+  displayName?: unknown;
+  provider?: unknown;
+  available?: boolean;
+}
+
+/** Parsed text payload of the Tower `status` tool. */
+interface McpStatusPayload {
+  health?: Record<string, McpProviderHealth | undefined>;
+  system?: { services?: unknown };
+  timestamp?: unknown;
+}
+
+function parseSseOrJson(raw: string): unknown {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
@@ -230,11 +280,12 @@ function parseSseOrJson(raw: string): any {
   return null;
 }
 
-async function fetchTimedJson(
+/** Fetches JSON (or the last SSE `data:` frame). `T` documents the expected optional-field shape. */
+async function fetchTimedJson<T extends object>(
   url: string,
   init: RequestInit = {},
   timeoutMs: number = 7000
-): Promise<{ ok: boolean; status: number; latencyMs: number; json: any; error?: string }> {
+): Promise<{ ok: boolean; status: number; latencyMs: number; json: T | null; error?: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const start = performance.now();
@@ -242,9 +293,10 @@ async function fetchTimedJson(
     const res = await fetch(url, { ...init, signal: controller.signal });
     const latencyMs = Math.round(performance.now() - start);
     const text = await res.text();
-    let json: any = null;
+    let json: T | null;
     try {
-      json = parseSseOrJson(text);
+      const parsed = parseSseOrJson(text);
+      json = parsed && typeof parsed === 'object' ? (parsed as T) : null;
     } catch {
       json = null;
     }
@@ -271,7 +323,7 @@ async function fetchTimedJson(
 async function fetchMcpStatusPayload(): Promise<{
   ok: boolean;
   latencyMs: number;
-  payload: any;
+  payload: McpStatusPayload | null;
   error?: string;
 }> {
   const start = performance.now();
@@ -352,7 +404,7 @@ async function fetchMcpStatusPayload(): Promise<{
       }
     }
 
-    const callRes = await fetchTimedJson(
+    const callRes = await fetchTimedJson<McpCallEnvelope>(
       activeMcpEndpointUrl,
       {
         method: 'POST',
@@ -372,7 +424,8 @@ async function fetchMcpStatusPayload(): Promise<{
       return fetchMcpStatusPayload();
     }
 
-    if (!callRes.ok || !callRes.json?.result?.content?.[0]?.text) {
+    const statusText = callRes.json?.result?.content?.[0]?.text;
+    if (!callRes.ok || typeof statusText !== 'string' || !statusText) {
       return {
         ok: false,
         latencyMs: Math.round(performance.now() - start),
@@ -381,11 +434,14 @@ async function fetchMcpStatusPayload(): Promise<{
       };
     }
 
-    const parsedPayload = JSON.parse(callRes.json.result.content[0].text);
+    const parsedPayload: unknown = JSON.parse(statusText);
     return {
       ok: true,
       latencyMs: callRes.latencyMs,
-      payload: parsedPayload,
+      payload:
+        parsedPayload && typeof parsedPayload === 'object'
+          ? (parsedPayload as McpStatusPayload)
+          : null,
     };
   } catch (err: unknown) {
     cachedSessionId = null;
@@ -534,9 +590,9 @@ export async function collectLiveServiceHealth(
     // Execute real parallel network probes against live endpoints & MCP Tower
     const [mcpStatusRes, towerHealthRes, backendHealthRes, githubRes] = await Promise.all([
       fetchMcpStatusPayload(),
-      fetchTimedJson(MCP_TOWER_HEALTH_URL, {}, 6500),
-      fetchTimedJson(`${BACKEND_GATEWAY_URL}/healthz`, {}, 6500),
-      fetchTimedJson(
+      fetchTimedJson<TowerHealthJson>(MCP_TOWER_HEALTH_URL, {}, 6500),
+      fetchTimedJson<BackendHealthJson>(`${BACKEND_GATEWAY_URL}/healthz`, {}, 6500),
+      fetchTimedJson<object>(
         GITHUB_COMMITS_URL,
         { headers: { 'User-Agent': 'SupremeAI-HealthMonitor' } },
         5000
@@ -635,7 +691,7 @@ export async function collectLiveServiceHealth(
     seenIds.add('live-probe-supremeai-api');
 
     // 3. Direct Live HTTP Probe: MCP Control Tower (/health)
-    const towerHealthJson = towerHealthRes.json || {};
+    const towerHealthJson: TowerHealthJson = towerHealthRes.json || {};
     const towerStatus = normalizeStatus(
       towerHealthRes.ok ? String(towerHealthJson.status || 'healthy') : 'unreachable',
       towerHealthRes.latencyMs,
@@ -679,10 +735,12 @@ export async function collectLiveServiceHealth(
 
     // 4. All Services Discovered via Live MCP Tower JSON-RPC `status` Tool
     const mcpPayload = mcpStatusRes.payload;
-    const mcpHealthMap: Record<string, any> = (mcpPayload && mcpPayload.health) || {};
-    const mcpSystemServices: any[] = Array.isArray(mcpPayload?.system?.services)
-      ? mcpPayload.system.services
-      : [];
+    const mcpHealthMap: Record<string, McpProviderHealth | undefined> =
+      (mcpPayload && mcpPayload.health) || {};
+    const rawSystemServices = mcpPayload?.system?.services;
+    const mcpSystemServices: McpSystemService[] = (
+      Array.isArray(rawSystemServices) ? rawSystemServices : []
+    ).filter((svc): svc is McpSystemService => Boolean(svc && typeof svc === 'object'));
 
     for (const sysSvc of mcpSystemServices) {
       const id = String(sysSvc.id || sysSvc.name || '');
