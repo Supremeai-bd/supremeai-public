@@ -243,13 +243,6 @@ export const INITIAL_INVOICES: BillingInvoice[] = [
   },
 ];
 
-export const MODEL_USAGE_BREAKDOWN = [
-  { model: 'SupremeAI Core', tokens: 680000, percentage: 54, cost: '$0.68', color: '#3b82f6' },
-  { model: 'SupremeAI Reason', tokens: 340000, percentage: 27, cost: '$1.70', color: '#8b5cf6' },
-  { model: 'SupremeAI Spark', tokens: 190000, percentage: 15, cost: '$0.15', color: '#10b981' },
-  { model: 'SupremeAI Deep', tokens: 50000, percentage: 4, cost: '$0.40', color: '#f59e0b' },
-];
-
 export const INITIAL_PROMPT_TEMPLATES = [
   {
     id: 'tmpl_gen_01',
@@ -358,32 +351,3 @@ export const INITIAL_WEBHOOK_DELIVERIES = [
   },
 ];
 
-export const INITIAL_WORKSPACE_TEMPLATES = [
-  {
-    id: 'template_001',
-    name: 'AI Assistant Workspace',
-    description: 'বেসিক এআই অ্যাসিসটেন্ট ওয়ার্কস্পেস',
-    type: 'assistant',
-    tools: ['web_search', 'code_interpreter', 'file_io'],
-    defaultModel: 'gpt-4o',
-    maxTokens: 1000000,
-  },
-  {
-    id: 'template_002',
-    name: 'Data Analysis Workspace',
-    description: 'ডেটা এনালাইসিস ওয়ার্কস্পেস',
-    type: 'analysis',
-    tools: ['code_interpreter', 'database', 'file_io'],
-    defaultModel: 'gpt-4o',
-    maxTokens: 2000000,
-  },
-  {
-    id: 'template_003',
-    name: 'Development Workspace',
-    description: 'ডেভেলপমেন্ট ওয়ার্কস্পেস',
-    type: 'development',
-    tools: ['code_interpreter', 'file_io', 'http'],
-    defaultModel: 'gpt-4o',
-    maxTokens: 5000000,
-  },
-];

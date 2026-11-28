@@ -53,7 +53,7 @@ interface QueueJob {
 }
 
 export interface AdminSwarmQueueContext {
-  devSwarmWorkers: SwarmWorker[];
+  devSwarmWorkers?: SwarmWorker[];
   getRealGatewayTrafficSummary: () => { rpm: number; avgLatencyMs: number };
   resolveAuditActor: (req?: Request, explicitActor?: unknown) => string;
   recordAudit: (
@@ -65,8 +65,83 @@ export interface AdminSwarmQueueContext {
   ) => unknown;
 }
 
+export function createDefaultSwarmWorkers(): SwarmWorker[] {
+  return [
+    {
+      id: 'worker-solver-01',
+      name: 'Autonomous Solver Agent',
+      type: 'solver',
+      status: 'active',
+      currentTask: 'Resolving Issue #42: Backpressure handling in WebSocket stream broker',
+      currentIssueOrPr: 'Supremeai-bd/supremeai #42',
+      processedCount: 184,
+      successRate: 97.8,
+      cpuPercent: 18.4,
+      memoryMb: 412,
+      uptime: '14h 22m',
+      logs: [
+        'Identified unbounded buffer allocation in event emitter.',
+        'Generated patch applying bounded circular ring-buffer.',
+        'Unit test suite verified: 34 tests passing with 0 regressions.',
+      ],
+    },
+    {
+      id: 'worker-verifier-02',
+      name: 'AST Code Verifier & Validator',
+      type: 'verifier',
+      status: 'active',
+      currentTask: 'Running TypeScript AST graph verification on PR #94',
+      currentIssueOrPr: 'Supremeai-bd/supremeai-studio #94',
+      processedCount: 312,
+      successRate: 99.4,
+      cpuPercent: 9.2,
+      memoryMb: 280,
+      uptime: '28h 10m',
+      logs: [
+        'AST tree generated for 84 source modules.',
+        'Checked symbol cross-references: 0 circular dependencies.',
+        'Strict null check verification PASSED.',
+      ],
+    },
+    {
+      id: 'worker-scout-03',
+      name: 'Ecosystem Scout & Dependency Tracker',
+      type: 'ecosystem-scout',
+      status: 'idle',
+      currentTask: 'Awaiting scheduled 15-minute package index crawl',
+      currentIssueOrPr: 'Continuous background crawler',
+      processedCount: 94,
+      successRate: 100.0,
+      cpuPercent: 1.1,
+      memoryMb: 145,
+      uptime: '42h 50m',
+      logs: [
+        'Checked @google/genai SDK v3.2.0 compatibility.',
+        'Found 0 upstream security advisories in current node_modules lockfile.',
+      ],
+    },
+    {
+      id: 'worker-security-04',
+      name: 'Adversarial Prompt & Rules Breaker',
+      type: 'rules-breaker',
+      status: 'active',
+      currentTask: 'Fuzzing prompt boundaries with 500 adversarial jailbreak vectors',
+      currentIssueOrPr: 'Adversarial Test Suite #19',
+      processedCount: 780,
+      successRate: 99.8,
+      cpuPercent: 24.6,
+      memoryMb: 520,
+      uptime: '19h 45m',
+      logs: [
+        'Injected recursive delimiter extraction payload: Blocked by boundary shield.',
+        'Tested system instruction override vector: Sanitized by LLM gateway filter.',
+      ],
+    },
+  ];
+}
+
 export function registerAdminSwarmQueueRoutes(app: Express, ctx: AdminSwarmQueueContext): void {
-  const devSwarmWorkers = ctx.devSwarmWorkers;
+  const devSwarmWorkers = ctx.devSwarmWorkers ?? createDefaultSwarmWorkers();
 
   app.get('/api/agent-swarm/stream', (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/event-stream');

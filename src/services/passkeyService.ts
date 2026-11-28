@@ -428,10 +428,6 @@ export function mergePasskeyDevices(
   return [added, ...devices];
 }
 
-export async function listPasskeyDevices(userId: string): Promise<PasskeyDevice[]> {
-  return (await fetchPasskeyDevices(userId)).devices;
-}
-
 export async function revokePasskeyDevice(
   credentialId: string,
   userId: string

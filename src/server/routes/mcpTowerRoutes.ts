@@ -269,6 +269,122 @@ export function registerMcpTowerRoutes(app: Express, ctx: McpTowerRoutesContext)
     });
   });
 
+  // GET /api/mcp-tower/deployments - Live CI/CD & Pages/Render deployment metadata (Edge parity)
+  app.get('/api/mcp-tower/deployments', async (_req: Request, res: Response) => {
+    const mcpOrigin = (process.env.MCP_TOWER_URL || DEFAULT_MCP_TOWER_ORIGIN)
+      .trim()
+      .replace(/\/agents\/[^/]+\/mcp$/i, '')
+      .replace(/\/mcp$/i, '')
+      .replace(/\/+$/, '');
+    const upstreamOrigin = (
+      process.env.SUPREMEAI_BACKEND_URL?.trim() || 'https://supremeai-api-ulw0.onrender.com'
+    ).replace(/\/+$/, '');
+    const cfToken = (process.env.CLOUDFLARE_API_TOKEN || '').trim();
+    const cfAccountId = (process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+    const ghHeaders: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'SupremeAI-Admin-Dashboard',
+    };
+    const ghToken = (process.env.GITHUB_TOKEN || '').trim();
+    if (ghToken) ghHeaders.Authorization = `Bearer ${ghToken}`;
+
+    const fetchJson = async (url: string, headers: Record<string, string>) => {
+      try {
+        const r = await fetch(url, { headers, signal: AbortSignal.timeout(4500) });
+        return r.ok ? await r.json() : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const [cfData, ghPubRaw, ghCoreRaw, towerRel, gwData] = await Promise.all([
+      cfToken && cfAccountId
+        ? fetchJson(
+            `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/pages/projects/supremeai-studio/deployments?per_page=1`,
+            { Authorization: `Bearer ${cfToken}` }
+          )
+        : Promise.resolve(null),
+      fetchJson(
+        'https://api.github.com/repos/Supremeai-bd/supremeai-public/actions/runs?branch=main&per_page=1',
+        ghHeaders
+      ),
+      fetchJson(
+        'https://api.github.com/repos/Supremeai-bd/supremeai/actions/runs?branch=main&per_page=1',
+        ghHeaders
+      ),
+      fetchJson(`${mcpOrigin}/release`, { Accept: 'application/json' }),
+      fetchJson(`${upstreamOrigin}/api/health`, { Accept: 'application/json' }),
+    ]);
+
+    const cfLatest = (
+      cfData as {
+        result?: Array<{
+          created_on?: string;
+          latest_stage?: { status?: string };
+          deployment_trigger?: { metadata?: { commit_hash?: string } };
+        }>;
+      } | null
+    )?.result?.[0];
+    const ghPub = (
+      ghPubRaw as {
+        workflow_runs?: Array<{ updated_at?: string; conclusion?: string; head_sha?: string }>;
+      } | null
+    )?.workflow_runs?.[0];
+    const ghCore = (
+      ghCoreRaw as {
+        workflow_runs?: Array<{ updated_at?: string; conclusion?: string; head_sha?: string }>;
+      } | null
+    )?.workflow_runs?.[0];
+    const tower = towerRel as { deployedAt?: string; buildTime?: string; commit?: string } | null;
+    const gw = gwData as { deployedAt?: string; timestamp?: string; version?: string } | null;
+
+    res.json({
+      checkedAt: new Date().toISOString(),
+      deployments: [
+        {
+          id: 'cloudflare-studio',
+          provider: 'Cloudflare Pages',
+          service: 'supremeai-studio',
+          deployedAt: cfLatest?.created_on || null,
+          status: cfLatest?.latest_stage?.status || (cfToken ? 'unknown' : 'unconfigured'),
+          commit: cfLatest?.deployment_trigger?.metadata?.commit_hash?.slice(0, 7) || null,
+        },
+        {
+          id: 'github-public',
+          provider: 'GitHub Actions',
+          service: 'supremeai-public (main)',
+          deployedAt: ghPub?.updated_at || null,
+          status: ghPub?.conclusion || 'unknown',
+          commit: ghPub?.head_sha?.slice(0, 7) || null,
+        },
+        {
+          id: 'github-core',
+          provider: 'GitHub Actions',
+          service: 'supremeai (main)',
+          deployedAt: ghCore?.updated_at || null,
+          status: ghCore?.conclusion || 'unknown',
+          commit: ghCore?.head_sha?.slice(0, 7) || null,
+        },
+        {
+          id: 'render-tower',
+          provider: 'Render',
+          service: 'supremeai-mcp-tower-live',
+          deployedAt: tower?.deployedAt || tower?.buildTime || null,
+          status: tower ? 'live' : 'unreachable',
+          commit: tower?.commit?.slice(0, 7) || null,
+        },
+        {
+          id: 'render-gateway',
+          provider: 'Render',
+          service: 'supremeai-api (Gateway)',
+          deployedAt: gw?.deployedAt || gw?.timestamp || null,
+          status: gw ? 'live' : 'unreachable',
+          commit: gw?.version || null,
+        },
+      ],
+    });
+  });
+
   // GET /api/mcp-tower/stream - Live Server-Sent Events (SSE) using real MCP Tower & HTTP probes
   app.get('/api/mcp-tower/stream', async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/event-stream');

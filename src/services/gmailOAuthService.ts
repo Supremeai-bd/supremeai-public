@@ -405,10 +405,6 @@ export function getGmailCachedEmail(): string | null {
   return cachedSessionEmail || cachedCurrentUser?.email || null;
 }
 
-export function getGmailCurrentUser(): User | null {
-  return cachedCurrentUser;
-}
-
 export function notifyGmailBrowserRefresh(): void {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('supremeai-gmail-refresh'));
