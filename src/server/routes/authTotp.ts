@@ -7,6 +7,14 @@ import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import { buildOtpAuthUri, generateTotpSecret, verifyTotpToken } from '../totp';
 import { parseCookieHeader } from '../../shared/serverSecurity';
 import { parseBody, totpConfirmSchema, verify2faSchema } from '../validation';
+import type { PlanTier } from '../../types';
+import {
+  asUpstreamJson,
+  mergeUpstreamUser,
+  upstreamRbacRole,
+  upstreamString,
+  upstreamStringList,
+} from '../upstreamJson';
 
 /**
  * RFC 6238 TOTP — `GET/POST /api/auth/totp/*` + `POST /api/auth/verify-2fa`
@@ -37,13 +45,13 @@ interface TotpVaultEntry {
 export interface AuthTotpContext {
   activeAuthSessions: Map<string, string>;
   activeAdminSessions: Map<string, number>;
-  get customerDirectory(): readonly { email: string; tier?: string; id?: string }[];
+  get customerDirectory(): readonly { email: string; tier?: PlanTier; id?: string }[];
   get usersDb(): readonly { id: string; email: string; isAdminEligible?: boolean; rbacRole?: string; adminUserId?: string }[];
   verifyLocalSessionToken: (token: string) => { sub?: string; email: string; iat?: number; role?: string } | null;
   resolveRbacUserProfile: (
     email: string,
-    matchedUser: any,
-    matchedCustomer: any,
+    matchedUser?: { isAdminEligible?: boolean; rbacRole?: string; adminUserId?: string },
+    matchedCustomer?: { email: string; tier?: PlanTier; id?: string },
     adminEmails?: string[],
     rawRole?: string
   ) => { isAdminEligible: boolean };
@@ -148,7 +156,7 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
       const matchedCustomer = ctx.customerDirectory.find(
         (c) => c.email.toLowerCase() === verifiedEmail
       );
-      const rbac = ctx.resolveRbacUserProfile(verifiedEmail, matchedUser, matchedCustomer as any);
+      const rbac = ctx.resolveRbacUserProfile(verifiedEmail, matchedUser, matchedCustomer);
       return { cleanEmail: verifiedEmail, isEligible: rbac.isAdminEligible };
     }
 
@@ -162,28 +170,27 @@ export function registerAuthTotpRoutes(app: Express, ctx: AuthTotpContext): void
           signal: AbortSignal.timeout(4000),
         });
         if (upstreamRes.ok) {
-          const data: any = await upstreamRes.json().catch(() => null);
-          const raw =
-            data?.user && typeof data.user === 'object' ? { ...data, ...data.user } : data;
+          const data = asUpstreamJson(await upstreamRes.json().catch(() => null));
+          const raw = data ? mergeUpstreamUser(data) : null;
           const upEmail = String(raw?.email || '')
             .trim()
             .toLowerCase();
-          if (upEmail && (!requestedEmail || requestedEmail === upEmail)) {
+          if (raw && upEmail && (!requestedEmail || requestedEmail === upEmail)) {
             const matchedCustomer = ctx.customerDirectory.find(
               (c) => c.email.toLowerCase() === upEmail
             );
             const upRbac = ctx.resolveRbacUserProfile(
               upEmail,
               {
-                rbacRole: raw?.rbacRole || raw?.rbac_role || raw?.role,
+                rbacRole: upstreamRbacRole(raw),
                 isAdminEligible: Boolean(
-                  raw?.isAdminEligible ?? raw?.is_admin_eligible ?? raw?.is_admin
+                  raw.isAdminEligible ?? raw.is_admin_eligible ?? raw.is_admin
                 ),
-                adminUserId: raw?.adminUserId || raw?.admin_user_id,
+                adminUserId: upstreamString(raw.adminUserId) || upstreamString(raw.admin_user_id),
               },
-              matchedCustomer as any,
-              Array.isArray(data?.adminEmails) ? data.adminEmails : [],
-              raw?.rbacRole || raw?.rbac_role || raw?.role
+              matchedCustomer,
+              upstreamStringList(data?.adminEmails),
+              upstreamRbacRole(raw)
             );
             return { cleanEmail: upEmail, isEligible: upRbac.isAdminEligible };
           }
