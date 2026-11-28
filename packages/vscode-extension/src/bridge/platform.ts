@@ -5,7 +5,11 @@ export interface SecureStore {
 }
 
 export function createSecureStore(): SecureStore {
-  const vscode = (globalThis as any).acquireVsCodeApi?.();
+  const vscode = (
+    globalThis as unknown as {
+      acquireVsCodeApi?: () => { postMessage: (msg: unknown) => void };
+    }
+  ).acquireVsCodeApi?.();
   let reqSeq = 0;
   const pending = new Map<number, (value: string | null) => void>();
 

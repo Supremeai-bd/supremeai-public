@@ -183,9 +183,9 @@ export function registerWorkspaceBrowserSchedulesRoutes(
     record: StoredScheduleRecord
   ): Promise<StoredScheduleRecord> => {
     const nowIso = new Date().toISOString();
-    let status: 'ok' | 'error' = 'error';
-    let stage: ScheduleRunStage = 'failed';
-    let summary = 'Skipped invalid target URL';
+    let status: 'ok' | 'error';
+    let stage: ScheduleRunStage;
+    let summary: string;
     let aiReport: string | undefined;
 
     try {

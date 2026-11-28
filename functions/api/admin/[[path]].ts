@@ -284,7 +284,7 @@ async function handleAdminRequest(
           { headers: ghHeaders },
           5500
         );
-        const data = (await res.json().catch(() => ({}))) as any;
+        const data = (await res.json().catch(() => ({}))) as { workflow_runs?: unknown[] };
         const runs = Array.isArray(data.workflow_runs) ? data.workflow_runs : [];
         return jsonEdgeResponse(
           { runs, tokenConfigured: Boolean(token) },
@@ -475,7 +475,7 @@ async function handleAdminRequest(
           { headers: ghHeaders },
           5500
         );
-        const data = (await res.json().catch(() => [])) as any[];
+        const data = (await res.json().catch(() => [])) as unknown[];
         const pulls = Array.isArray(data) ? data : [];
         return jsonEdgeResponse(
           { pulls, tokenConfigured: Boolean(token) },

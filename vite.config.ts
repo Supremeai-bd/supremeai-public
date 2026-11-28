@@ -126,6 +126,7 @@ export default defineConfig(() => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
+      chunkSizeWarningLimit: 600,
       rollupOptions: {
         output: {
           manualChunks(id: string) {
@@ -136,15 +137,41 @@ export default defineConfig(() => {
             ) {
               return 'vendor-react';
             }
-            if (id.includes('node_modules/firebase/') || id.includes('node_modules/@firebase/')) {
-              return 'vendor-firebase';
+            if (id.includes('node_modules/@google/genai')) return 'vendor-genai';
+            if (id.includes('node_modules/motion') || id.includes('node_modules/framer-motion')) {
+              return 'vendor-motion';
+            }
+            if (
+              id.includes('node_modules/marked') ||
+              id.includes('node_modules/dompurify') ||
+              id.includes('node_modules/zod') ||
+              id.includes('node_modules/qrcode')
+            ) {
+              return 'vendor-content';
             }
             if (id.includes('node_modules/three')) return 'vendor-three';
-            if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) {
+            if (
+              id.includes('node_modules/recharts') ||
+              id.includes('node_modules/d3-') ||
+              id.includes('node_modules/d3/')
+            ) {
               return 'vendor-charts';
             }
             if (id.includes('node_modules/@xterm')) return 'vendor-xterm';
             if (id.includes('node_modules/lucide-react')) return 'vendor-icons';
+            if (id.includes('/src/locales/')) return 'i18n-locales';
+            if (
+              id.includes('/src/data/themePresets') ||
+              id.includes('/src/components/theme/LiveScreenBackdrop')
+            ) {
+              return 'theme-backdrops';
+            }
+            if (
+              id.includes('/src/hooks/useLiveVoiceSession') ||
+              id.includes('/src/utils/phpPreviewRuntime')
+            ) {
+              return 'workspace-runtimes';
+            }
           },
         },
       },

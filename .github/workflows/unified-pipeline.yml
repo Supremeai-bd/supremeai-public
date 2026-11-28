@@ -102,6 +102,7 @@ jobs:
         shell: bash
         run: |
           node scripts/smart-pr-guard.mjs
+          node scripts/sync-versions.mjs --check
           # বাংলা মন্তব্য: dependency ছাড়াই sync lifecycle regression বিদ্যমান gate-এ চলবে।
           python3 -m unittest discover -s scripts/ci -p 'test_*.py'
 
@@ -488,7 +489,7 @@ jobs:
           set -euo pipefail
           npm run version:sync
           cd packages/vscode-extension
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           npm run compile
           npm test
           VER=$(node -p "require('./package.json').version")
@@ -654,10 +655,11 @@ jobs:
           GH_TOKEN: ${{ secrets.SELF_HEAL_PAT || secrets.SYNC_PAT || secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RISK: ${{ needs.smart-pr-guard.outputs.risk_tier }}
         run: |
           # বাংলা মন্তব্য: প্রিফ্লাইট ও বিল্ড ভেরিফায়েড হলে স্বয়ংক্রিয়ভাবে squash merge সম্পন্ন করো (--admin বাইপাস ফ্ল্যাগ সহ)
           echo "🚀 Executing automated squash merge for PR #$PR_NUMBER (head: $HEAD_SHA)..."
-          gh pr review "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --approve -b "✅ Autonomous PR Guard verified: Risk Tier $RISK, Web & VSIX Build SUCCESS." 2>/dev/null || true
+          gh pr review "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --approve -b "✅ Autonomous PR Guard verified: Risk Tier ${RISK:-UNKNOWN}, Web & VSIX Build SUCCESS." 2>/dev/null || true
           gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --squash --delete-branch --match-head-commit "$HEAD_SHA" --admin
 
   sync-cross-repo-patches:

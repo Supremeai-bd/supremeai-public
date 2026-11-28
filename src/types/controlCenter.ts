@@ -44,7 +44,7 @@ export interface McpToolDescriptor {
     'system' | 'memory' | 'bridge' | 'github' | 'qdrant' | 'devtools' | 'compute' | 'notifications';
   readOnlyHint: boolean;
   destructiveHint: boolean;
-  inputSchema?: Record<string, any>;
+  inputSchema?: Record<string, unknown>;
 }
 
 export interface McpToolExecutionResult {
@@ -53,7 +53,7 @@ export interface McpToolExecutionResult {
   latencyMs: number;
   executedAt: string;
   dryRun: boolean;
-  output: any;
+  output: unknown;
   error?: string;
 }
 

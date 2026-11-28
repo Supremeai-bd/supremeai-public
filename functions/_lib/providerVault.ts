@@ -221,7 +221,7 @@ async function fetchJson(
   url: string,
   init: RequestInit,
   timeoutMs: number
-): Promise<{ ok: boolean; status: number; data: any }> {
+): Promise<{ ok: boolean; status: number; data: Record<string, unknown> | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

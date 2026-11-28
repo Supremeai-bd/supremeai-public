@@ -55,41 +55,68 @@ async function probeTarget(
 
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
+  // বাংলা মন্তব্য: এজ রানটাইমে ALLOWED_ORIGINS কার্যকর রাখতে env পাস করা হচ্ছে এবং ApiKeysTable কন্ট্রাক্ট সামঞ্জস্য রাখা হচ্ছে
+  if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
 
   const upstreamOrigin = resolveUpstreamOrigin(env);
   const mcpOrigin = resolveMcpTowerOrigin(env);
+  const edgeStarted = Date.now();
 
   const [gatewayProbe, mcpProbe] = await Promise.all([
     probeTarget('supremeai-gateway', 'SupremeAI Gateway', `${upstreamOrigin}/health`, 'render-us'),
     probeTarget('supremeai-mcp-tower', 'MCP Control Tower', `${mcpOrigin}/health`, 'render-us'),
   ]);
 
+  const updatedAt = new Date().toISOString();
+  const edgeElapsedMs = Math.max(0, Date.now() - edgeStarted);
+  const toProviderMetric = (
+    provider: string,
+    label: string,
+    probeStatus: ProbeResult['status'],
+    latencyMs: number,
+    httpStatus: number
+  ) => {
+    const status: 'healthy' | 'degraded' | 'unhealthy' =
+      probeStatus === 'online' ? 'healthy' : probeStatus === 'degraded' ? 'degraded' : 'unhealthy';
+    return {
+      provider,
+      label,
+      displayName: label,
+      status,
+      latencyMs,
+      avgLatencyMs: latencyMs,
+      p95LatencyMs: latencyMs,
+      successRate: probeStatus === 'offline' ? 0 : 100,
+      sampleCount: 1,
+      provenance: 'live-probe' as const,
+      lastChecked: updatedAt,
+      updatedAt,
+      httpStatus,
+    };
+  };
+
   const list = [
-    {
-      provider: 'supremeai',
-      label: 'SupremeAI Federation Gateway',
-      status: gatewayProbe.status === 'online' ? 'healthy' : gatewayProbe.status,
-      latencyMs: gatewayProbe.latencyMs,
-      lastChecked: new Date().toISOString(),
-      httpStatus: gatewayProbe.httpStatus,
-    },
-    {
-      provider: 'mcp-tower',
-      label: 'SupremeAI MCP Tower',
-      status: mcpProbe.status === 'online' ? 'healthy' : mcpProbe.status,
-      latencyMs: mcpProbe.latencyMs,
-      lastChecked: new Date().toISOString(),
-      httpStatus: mcpProbe.httpStatus,
-    },
-    {
-      provider: 'edge-proxy',
-      label: 'Cloudflare Pages Edge Runtime',
-      status: 'healthy',
-      latencyMs: 8,
-      lastChecked: new Date().toISOString(),
-      httpStatus: 200,
-    },
+    toProviderMetric(
+      'supremeai',
+      'SupremeAI Federation Gateway',
+      gatewayProbe.status,
+      gatewayProbe.latencyMs,
+      gatewayProbe.httpStatus
+    ),
+    toProviderMetric(
+      'mcp-tower',
+      'SupremeAI MCP Tower',
+      mcpProbe.status,
+      mcpProbe.latencyMs,
+      mcpProbe.httpStatus
+    ),
+    toProviderMetric(
+      'edge-proxy',
+      'Cloudflare Pages Edge Runtime',
+      'online',
+      edgeElapsedMs,
+      200
+    ),
   ];
 
   const providers: Record<string, unknown> = {};
@@ -100,11 +127,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   return jsonEdgeResponse(
     {
       gatewayStatus: gatewayProbe.status === 'online' ? 'healthy' : 'degraded',
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: updatedAt,
       providers,
       list,
     },
     200,
-    request
+    request,
+    {},
+    env
   );
 }

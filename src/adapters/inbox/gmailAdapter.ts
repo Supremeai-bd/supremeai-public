@@ -90,7 +90,7 @@ export class GmailAdapter implements InboxAdapter {
       if (msg.toLowerCase().includes('expired')) {
         await this.clearExpired();
       }
-      throw new Error(msg);
+      throw new Error(msg, { cause: err });
     }
   }
 

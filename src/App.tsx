@@ -470,7 +470,6 @@ export default function App() {
     } else {
       liveVoice.disconnect();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLiveVoiceOpen, appLanguage]);
   const [authModal, setAuthModal] = useState<{ open: boolean; reason?: string }>({ open: false });
   const [isSurveyForceOpen, setIsSurveyForceOpen] = useState<boolean>(false);
@@ -560,7 +559,6 @@ export default function App() {
     } catch {
       // Ignore history errors in restricted sandboxes
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync saved custom instructions into chat store on mount

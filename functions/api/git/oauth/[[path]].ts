@@ -209,7 +209,11 @@ export async function onRequest(context: PagesContext): Promise<Response> {
           redirect_uri: githubCallbackUrl,
         }),
       });
-      const tokenJson = (await tokenRes.json().catch(() => null)) as any;
+      const tokenJson = (await tokenRes.json().catch(() => null)) as {
+        access_token?: string;
+        error_description?: string;
+        error?: string;
+      } | null;
       if (tokenJson?.access_token) {
         return buildPopupHtml(
           {
@@ -302,7 +306,11 @@ export async function onRequest(context: PagesContext): Promise<Response> {
           redirect_uri: gitlabCallbackUrl,
         }),
       });
-      const tokenJson = (await tokenRes.json().catch(() => null)) as any;
+      const tokenJson = (await tokenRes.json().catch(() => null)) as {
+        access_token?: string;
+        error_description?: string;
+        error?: string;
+      } | null;
       if (tokenJson?.access_token) {
         return buildPopupHtml(
           {

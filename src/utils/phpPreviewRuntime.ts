@@ -64,6 +64,38 @@ function toPhpNumber(v: PhpVal): number {
   return 0;
 }
 
+function isPhpNumericString(v: string): boolean {
+  return /^\s*[+-]?(\d+(\.\d+)?|\.\d+)\s*$/.test(v);
+}
+
+function phpLooseEqual(a: PhpVal, b: PhpVal): boolean {
+  if (a === b) return true;
+  if (typeof a === 'boolean' || typeof b === 'boolean') {
+    return toPhpBool(a) === toPhpBool(b);
+  }
+  if (a === null) {
+    return b === '' || (isPhpArray(b) && b.entries.size === 0);
+  }
+  if (b === null) {
+    return a === '' || (isPhpArray(a) && a.entries.size === 0);
+  }
+  if (typeof a === 'number' && typeof b === 'string' && isPhpNumericString(b)) {
+    return a === Number(b);
+  }
+  if (typeof b === 'number' && typeof a === 'string' && isPhpNumericString(a)) {
+    return Number(a) === b;
+  }
+  if (
+    typeof a === 'string' &&
+    typeof b === 'string' &&
+    isPhpNumericString(a) &&
+    isPhpNumericString(b)
+  ) {
+    return Number(a) === Number(b);
+  }
+  return false;
+}
+
 function phpToJsJson(v: PhpVal): unknown {
   if (v === null || typeof v !== 'object') return v;
   if (isPhpArray(v)) {
@@ -431,8 +463,11 @@ function callBuiltinFunction(
     case 'in_array': {
       const hay = isPhpArray(args[1]) ? args[1] : null;
       if (!hay) return { handled: true, value: false };
+      const strict = toPhpBool(args[2] ?? false);
       for (const val of hay.entries.values()) {
-        if (val == args[0]) return { handled: true, value: true };
+        if (strict ? val === args[0] : phpLooseEqual(val, args[0] ?? null)) {
+          return { handled: true, value: true };
+        }
       }
       return { handled: true, value: false };
     }
@@ -723,9 +758,9 @@ function evalExpr(
       case '!==':
         return l !== r;
       case '==':
-        return l == r;
+        return phpLooseEqual(l, r);
       case '!=':
-        return l != r;
+        return !phpLooseEqual(l, r);
       case '<=':
         return toPhpNumber(l) <= toPhpNumber(r);
       case '>=':

@@ -61,7 +61,10 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         4500
       );
       if (prefRes.ok) {
-        const data = (await prefRes.json().catch(() => null)) as any;
+        const data = (await prefRes.json().catch(() => null)) as {
+          preferences?: { security_totp?: { secret?: string; lastAcceptedStep?: number } };
+          security_totp?: { secret?: string; lastAcceptedStep?: number };
+        } | null;
         const totpPref = data?.preferences?.security_totp || data?.security_totp;
         const secret = totpPref?.secret;
         const lastAcceptedStep =
@@ -184,7 +187,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         5000
       );
       if (res.ok) {
-        const json = (await res.json().catch(() => null)) as any;
+        const json = (await res.json().catch(() => null)) as {
+          verified?: boolean;
+          success?: boolean;
+          valid?: boolean;
+          deviceId?: string;
+          message?: string;
+        } | null;
         if (json?.verified || json?.success || json?.valid) {
           return jsonEdgeResponse(
             {
@@ -197,7 +206,9 @@ export async function onRequest(context: PagesContext): Promise<Response> {
               message: json?.message || '2FA verified.',
             },
             200,
-            request
+            request,
+            undefined,
+            env
           );
         }
       }

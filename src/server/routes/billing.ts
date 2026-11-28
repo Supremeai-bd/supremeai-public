@@ -47,7 +47,7 @@ interface UsersDbEntry {
 export interface BillingContext {
   get customerDirectory(): readonly CustomerEntry[];
   get usersDb(): readonly UsersDbEntry[];
-  fetchGatewayJson: (pathAndQuery: string, ttlMs?: number) => Promise<any | null>;
+  fetchGatewayJson: (pathAndQuery: string, ttlMs?: number) => Promise<unknown>;
   getRequestUserEmail: (req: Request) => string;
   resolveAuthenticatedEmail: (req: Request) => Promise<string | null>;
   verifyAdminAuthorization: (req: Request) => Promise<{ ok: boolean; status?: number; error?: string; email?: string }>;
@@ -107,7 +107,9 @@ export function registerBillingRoutes(app: Express, ctx: BillingContext): void {
 
   // Dynamic Billing & Usage endpoints
   app.get('/api/billing/plans', billingRateLimit, async (_req: Request, res: Response) => {
-    const remote = await ctx.fetchGatewayJson('/api/v1/billing/plans');
+    const rawRemote = await ctx.fetchGatewayJson('/api/v1/billing/plans');
+    const remote =
+      rawRemote && typeof rawRemote === 'object' ? (rawRemote as Record<string, unknown>) : null;
     const remotePlans = remote?.plans;
     const useRemote = remotePlans && typeof remotePlans === 'object' && !Array.isArray(remotePlans);
     if (useRemote) {
@@ -124,8 +126,9 @@ export function registerBillingRoutes(app: Express, ctx: BillingContext): void {
     res.json({ plans: PLAN_CATALOG, topupPackages: TOPUP_PACKAGES, source: 'local' });
   });
 
-  app.get('/api/billing/wallet', billingRateLimit, (req: Request, res: Response) => {
-    const email = ctx.getRequestUserEmail(req);
+  // বাংলা মন্তব্য: আপস্ট্রিম JWT ব্যবহারকারীদের সঠিক ইমেইল ও ওয়ালেট নিশ্চিত করতে অ্যাসিঙ্ক আইডেন্টিটি রেজোলিউশন ব্যবহৃত হচ্ছে
+  app.get('/api/billing/wallet', billingRateLimit, async (req: Request, res: Response) => {
+    const email = (await ctx.resolveAuthenticatedEmail(req)) || ctx.getRequestUserEmail(req);
     const wallet = ensureUserWallet(email);
     res.json({
       user_id: wallet.userId,
@@ -135,8 +138,8 @@ export function registerBillingRoutes(app: Express, ctx: BillingContext): void {
     });
   });
 
-  app.get(['/api/billing/summary', '/api/billing/analytics'], billingRateLimit, (req: Request, res: Response) => {
-    const email = ctx.getRequestUserEmail(req);
+  app.get(['/api/billing/summary', '/api/billing/analytics'], billingRateLimit, async (req: Request, res: Response) => {
+    const email = (await ctx.resolveAuthenticatedEmail(req)) || ctx.getRequestUserEmail(req);
     const wallet = ensureUserWallet(email);
     res.json({
       total_spent: wallet.totalSpent,

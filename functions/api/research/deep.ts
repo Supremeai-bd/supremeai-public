@@ -32,7 +32,9 @@ async function gatherLiveSources(query: string): Promise<WikiSearchItem[]> {
       4500
     );
     if (res.ok) {
-      const json = (await res.json().catch(() => null)) as any;
+      const json = (await res.json().catch(() => null)) as {
+        query?: { search?: Array<{ title?: string; snippet?: string }> };
+      } | null;
       const items = Array.isArray(json?.query?.search) ? json.query.search : [];
       for (const item of items) {
         if (!item?.title) continue;
@@ -56,9 +58,9 @@ async function gatherLiveSources(query: string): Promise<WikiSearchItem[]> {
 
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
+  if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
   if (request.method !== 'POST') {
-    return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request);
+    return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request, undefined, env);
   }
 
   const body = (await request.json().catch(() => ({}))) as {
@@ -69,7 +71,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   };
   const query = typeof body.query === 'string' ? body.query.trim() : '';
   if (!query) {
-    return jsonEdgeResponse({ error: 'Research query is required.' }, 400, request);
+    return jsonEdgeResponse({ error: 'Research query is required.' }, 400, request, undefined, env);
   }
 
   const maxSteps =
@@ -90,13 +92,15 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       7500
     );
     if (upstreamRes.ok) {
-      const upstreamData = (await upstreamRes.json().catch(() => null)) as any;
+      const upstreamData = (await upstreamRes.json().catch(() => null)) as {
+        report?: { sections?: unknown[] };
+      } | null;
       if (
         upstreamData?.report?.sections &&
         Array.isArray(upstreamData.report.sections) &&
         upstreamData.report.sections.length > 0
       ) {
-        return jsonEdgeResponse(upstreamData, 200, request);
+        return jsonEdgeResponse(upstreamData, 200, request, undefined, env);
       }
     }
   } catch {
@@ -203,6 +207,8 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       source: 'edge-deep-research',
     },
     200,
-    request
+    request,
+    undefined,
+    env
   );
 }

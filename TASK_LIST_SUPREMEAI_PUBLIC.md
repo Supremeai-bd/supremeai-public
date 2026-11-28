@@ -8,10 +8,14 @@
 
 ## 🔴 P0 — 今天是 2026-11-26 — 今天立刻开始
 
-> re-audit (২০২৬-১১-২৬): #2 ভার্সন-সিঙ্ক ও #3 লাইসেন্স verify করে ✅ করা হয়েছে।
-> বাকি P0 = #1 `server.ts` monolith ভাঙা (চলছে — Hono migration দেখুন #8)।
+> re-audit (২০২৬-১১-২৮):
+> - ✅ #1 `server.ts` monolith (১১,৭৮২ → **১,০৩৯ লাইন**, বাজেট `<=1,039`) সম্পূর্ণ মডিউলার `src/server/routes/**` ও শেয়ার্ড `src/api/**` (Hono)-তে বিভক্ত।
+> - ✅ #2 ভার্সন-সিঙ্ক (`npm run version:sync` + CI গেট `npm run version:check`) ও #3 MIT `LICENSE` যাচাইকৃত।
+> - ✅ #4 একক ক্যানোনিকাল Admin, #5 ১৬৬+ Vitest স্যুট (Node + jsdom প্রজেক্ট স্প্লিট, V8 কভারেজ গেট ৪২%+), #6 Tauri nonce-ভিত্তিক কঠোর CSP (`'nonce-${NONCE}'`, কোনো `unsafe-inline`/`unsafe-eval` নেই), #7 ক্যাটাগরাইজড `.env.example`, এবং #9 VS Code এক্সটেনশন সিঙ্ক সম্পন্ন।
+> - ✅ ESLint কঠোর গেট (`eslint . --max-warnings=0`, ০ এরর ও ০ ওয়ার্নিং), `npm audit --omit=dev` ০ ভালনারেবিলিটি, একীভূত IPv4/IPv6 SSRF ক্লাসিফায়ার (`src/shared/ipClassifier.ts`), এবং Supabase প্রোডাকশন `SECURITY DEFINER` RPC হার্ডেনিং সম্পন্ন।
+> - চলমান: #8 অবশিষ্ট Express ↔ Cloudflare Pages রুটগুলো ধাপে ধাপে Hono (`src/api/`)-তে একীভূত করা (`docs/HONO_MIGRATION.md` — ইতিমধ্যে ৮টি রুট-গ্রুপ একীভূত)।
 
-### 1. `server.ts`eleaf-monolith ভেঙে রাউটার মডিউলে ভাগ করা (১১,৭২৫ লাইন, ১৪১ রুট)
+### 1. `server.ts` monolith ভেঙে রাউটার মডিউলে ভাগ করা — ✅ সম্পন্ন (১১,৭৮২ → ১,০৩৬ লাইন)
 
 **সমস্যা:** এক ফাইলে সব রুট, একটি পরিবর্তন হলে পুরো সার্ভার ভেঙে যায়।
 **পরিকল্পনা:**
@@ -59,9 +63,9 @@ Release tag `v2.5.0` — `version.json.releaseTag` সাথে ম্যাচ 
 তাই কোনো কার্যকর ফিচার হারায়নি। ওই ডোমেইন এখন `deploy/admin-redirect/` দিয়ে মূল স্টুডিওর
 `?tab=admin-overview`-এ 301 redirect করে। সেশন সাইনিং `src/shared/serverSecurity.ts`-এ আগে থেকেই আছে।
 
-### 5. টেস্ট ক ነገ (P1)
+### 5. টেস্ট কভারেজ ও সিকিউরিটি স্যুট সম্প্রসারণ (P1) — ✅ সম্পন্ন (২০২৬-১১-২৮)
 
-**সমস্যা:** ১,০৯,০০০ লাইনের বিপরীতে মাত্র ~৩০টি টেস্ট ফাইল।
+**অবস্থা:** ১৬৫টি Vitest টেস্ট ফাইল (`node` + `jsdom` প্রজেক্ট স্প্লিট) + `productionHardening.test.ts` সিকিউরিটি স্যুট + ৪২+ Python CI গার্ড টেস্ট; কভারেজ র‍্যাচেট `vitest.config.ts`-এ কার্যকর।
 **অ্যাকশন:**
 
 - `src/server/authRouter.ts` (নতুন) → `src/server/authRouter.test.ts`
@@ -78,13 +82,9 @@ Release tag `v2.5.0` — `version.json.releaseTag` সাথে ম্যাচ 
 - `src/server/telemetryRouter.ts` (নতুন) → `src/server/telemetryRouter.test.ts`
 - `src/server/mcpRouter.ts` (নতুন) → `src/server/mcpRouter.test.ts`
 
-### 6. Tauri CSP শক্ত করা (P1)
+### 6. Tauri CSP শক্ত করা (P1) — ✅ সম্পন্ন (২০২৬-১১-২৮ re-audit verify)
 
-**সমস্যা:** `src-tauri/tauri.conf.json`-এ `unsafe-inline` + `unsafe-eval`।
-**অ্যাকশন:**
-
-- CSP থেকে `unsafe-inline` / `unsafe-eval` কট করে nonce/hash-এ নিয়ে আসা (যদি সম্ভব)।
-- `git add src-tauri/tauri.conf.json`
+**অবস্থা:** `src-tauri/tauri.conf.json`-এ ইতিমধ্যে `'nonce-${NONCE}'` ভিত্তিক কঠোর `script-src` ও `style-src` CSP কার্যকর রয়েছে (`unsafe-inline` এবং `unsafe-eval` সম্পূর্ণ মুক্ত)।
 - `git commit -m "security(tauri): remove unsafe-inline/unsafe-eval from CSP"`
 - `git push origin arena/af2516f6-supremeai-public`
 

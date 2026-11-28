@@ -8,7 +8,7 @@ import {
 
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
+  if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
 
   const incomingUrl = new URL(request.url);
   const path = incomingUrl.pathname;
@@ -24,10 +24,14 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     if (res.ok) {
       const data = await res.json().catch(() => null);
       if (path === '/api/research/history' && Array.isArray(data)) {
-        return jsonEdgeResponse(data, 200, request);
+        return jsonEdgeResponse(data, 200, request, undefined, env);
       }
-      if (data && typeof data === 'object' && (data as any).report?.sections) {
-        return jsonEdgeResponse(data, 200, request);
+      if (
+        data &&
+        typeof data === 'object' &&
+        Boolean((data as { report?: { sections?: unknown } }).report?.sections)
+      ) {
+        return jsonEdgeResponse(data, 200, request, undefined, env);
       }
     }
   } catch {
@@ -35,12 +39,14 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   }
 
   if (path === '/api/research/history') {
-    return jsonEdgeResponse([], 200, request);
+    return jsonEdgeResponse([], 200, request, undefined, env);
   }
 
   return jsonEdgeResponse(
     { error: 'Research detail is only retained for live completed sessions.', status: 'not_found' },
     404,
-    request
+    request,
+    undefined,
+    env
   );
 }

@@ -107,7 +107,7 @@ export function registerTtsRoutes(app: Express, ctx: TtsContext): void {
                 speechMetadata: {
                   style: styleGuide,
                 },
-              } as any,
+              } as unknown as Record<string, unknown>,
             ],
           },
         ],

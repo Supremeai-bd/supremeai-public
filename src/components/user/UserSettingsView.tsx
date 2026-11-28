@@ -90,7 +90,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({
   currentRole: currentRoleProp,
   isAdminEligible = false,
   onOpenAdminConsole,
-  onToggleDeveloperEligibility,
+  onToggleDeveloperEligibility: _onToggleDeveloperEligibility,
   trustedUntil = null,
   onRevokeTrustedBrowser,
   onOpenFeedbackSurvey,

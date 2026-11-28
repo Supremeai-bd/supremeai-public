@@ -2,6 +2,9 @@ import {
   DEFAULT_BACKEND_ORIGIN,
   DEFAULT_MCP_TOWER_ORIGIN as SSOT_MCP_TOWER_ORIGIN,
 } from '../../src/config/platformEndpoints';
+import { isPrivateOrReservedIpLiteral } from '../../src/shared/ipClassifier';
+
+export { isPrivateOrReservedIpLiteral };
 
 export interface PagesContext {
   request: Request;
@@ -271,112 +274,6 @@ export function isRestrictedEdgeHost(hostname: string): boolean {
   const literal = isPrivateOrReservedIpLiteral(host);
   if (literal !== null) return literal;
   return false;
-}
-
-/** Checks a dotted-quad / shorthand / integer IPv4 value against private ranges. */
-function isPrivateIpv4Value(value: number): boolean {
-  const a = (value >>> 24) & 0xff;
-  const b = (value >>> 16) & 0xff;
-  if (a === 0) return true; // 0.0.0.0/8 "this network"
-  if (a === 10) return true; // 10.0.0.0/8
-  if (a === 127) return true; // loopback
-  if (a === 169 && b === 254) return true; // link-local / cloud metadata
-  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-  if (a === 192 && b === 168) return true; // 192.168.0.0/16
-  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
-  if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 benchmark
-  if (a === 192 && b === 0) return true; // 192.0.0.0/24 + 192.0.2.0/24 TEST-NET
-  if (a >= 224) return true; // multicast & reserved
-  return false;
-}
-
-/** inet_aton-style parse: "10.0.0.1", "127.1", "2130706433" -> 32-bit value. */
-function inetAtonShorthand(input: string): number | null {
-  const parts = input.split('.');
-  if (parts.length < 1 || parts.length > 4) return null;
-  for (let i = 0; i < parts.length; i += 1) {
-    const part = parts[i];
-    if (!/^\d{1,10}$/.test(part)) return null;
-    const n = parseInt(part, 10);
-    const maxFinal =
-      parts.length === 1 ? 0xffffffff : parts.length === 2 ? 0xffffff : parts.length === 3 ? 0xffff : 255;
-    if (i < parts.length - 1 ? n > 255 : n > maxFinal) return null;
-  }
-  let value = 0;
-  for (let i = 0; i < parts.length - 1; i += 1) {
-    value = value * 256 + parseInt(parts[i], 10);
-  }
-  const finalShift = 8 * (5 - parts.length);
-  return value * Math.pow(2, finalShift) + parseInt(parts[parts.length - 1], 10);
-}
-
-/** Expands an IPv6 literal (with at most one "::") into eight 16-bit groups. */
-function expandIpv6Groups(addr: string): number[] | null {
-  if (!addr.includes(':')) return null;
-  if ((addr.match(/::/g) || []).length > 1) return null;
-  let head: string[] = [];
-  let tail: string[] = [];
-  if (addr.includes('::')) {
-    const [h, t] = addr.split('::');
-    head = h ? h.split(':') : [];
-    tail = t ? t.split(':') : [];
-    if (head.length + tail.length > 7) return null;
-  } else {
-    head = addr.split(':');
-    if (head.length !== 8) return null;
-  }
-  const parseGroup = (g: string): number =>
-    /^[0-9a-f]{1,4}$/.test(g) ? parseInt(g, 16) : -1;
-  const headGroups = head.map(parseGroup);
-  const tailGroups = tail.map(parseGroup);
-  if (headGroups.some((g) => g === -1) || tailGroups.some((g) => g === -1)) return null;
-  return [...headGroups, ...new Array(8 - headGroups.length - tailGroups.length).fill(0), ...tailGroups];
-}
-
-function isPrivateOrReservedIpv6(groups: number[]): boolean {
-  const g0 = groups[0];
-  const g1 = groups[1];
-  if (g0 === 0 && groups.every((g) => g === 0)) return true; // :: unspecified
-  if (g0 === 0 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0 && groups[4] === 0 && groups[5] === 0 && groups[6] === 0 && groups[7] === 1) return true; // ::1
-  if (g0 === 0xfc || g0 === 0xfd) return true; // ULA fc00::/7
-  if (g0 === 0xfe && g1 >= 0x8000 && g1 <= 0xbfff) return true; // link-local fe80::/10
-  if (g0 === 0xff00 || (g0 & 0xff00) === 0xff00) return true; // multicast ff00::/8
-  if (g0 === 0xfe && g1 >= 0xc000) return true; // feC0::/10 reserved
-  // IPv4-mapped ::ffff:a.b.c.d (groups 5 must be 0xffff, group 4 zero)
-  if (g0 === 0 && g1 === 0 && groups[2] === 0 && groups[3] === 0 && groups[4] === 0 && groups[5] === 0xffff) {
-    const v4 = ((groups[6] >>> 8) & 0xff) * 16777216 + (groups[6] & 0xff) * 65536 + ((groups[7] >>> 8) & 0xff) * 256 + (groups[7] & 0xff);
-    return isPrivateIpv4Value(v4);
-  }
-  // NAT64 64:ff9b::/96 with embedded IPv4 in the last 32 bits
-  if (g0 === 0x64 && g1 === 0xff9b && groups[2] === 0 && groups[3] === 0 && groups[4] === 0 && groups[5] === 0) {
-    const v4 = ((groups[6] >>> 8) & 0xff) * 16777216 + (groups[6] & 0xff) * 65536 + ((groups[7] >>> 8) & 0xff) * 256 + (groups[7] & 0xff);
-    return isPrivateIpv4Value(v4);
-  }
-  return false;
-}
-
-/**
- * Pure, dependency-free IP-literal classifier shared by Edge + Node guards.
- * Returns true (restricted), false (public literal), or null (not an IP literal).
- * Unparseable IP-looking inputs fail CLOSED (restricted) by design.
- */
-export function isPrivateOrReservedIpLiteral(host: string): boolean | null {
-  const h = String(host || '')
-    .toLowerCase()
-    .replace(/^\[|\]$/g, '')
-    .replace(/\.$/, '');
-  if (!h) return true;
-  if (h.includes(':')) {
-    const groups = expandIpv6Groups(h);
-    if (!groups) return true;
-    return isPrivateOrReservedIpv6(groups);
-  }
-  if (/^\d{1,10}$/.test(h) || /^\d{1,3}(\.\d{1,3}){0,3}$/.test(h)) {
-    const value = inetAtonShorthand(h);
-    if (value === null) return true;
-    return isPrivateIpv4Value(value);
-  }
-  return null;
 }
 
 export async function fetchWithTimeout(
@@ -717,7 +614,12 @@ export async function forwardRawUpstream(
 }
 
 // --- Lightweight MCP JSON-RPC 2.0 Client (Edge Web Standards) ---
-function parseMcpSseOrJson(raw: string): any {
+interface McpJsonRpcEnvelope {
+  error?: { message?: string } | string;
+  result?: Record<string, unknown>;
+}
+
+function parseMcpSseOrJson(raw: string): McpJsonRpcEnvelope | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
@@ -743,7 +645,7 @@ export async function callMcpTowerRpc(
   method: 'tools/list' | 'tools/call' | 'resources/list' | 'resources/read',
   params: Record<string, unknown> = {},
   timeoutMs: number = 8500
-): Promise<any> {
+): Promise<Record<string, unknown>> {
   const candidates = resolveMcpRpcCandidates(env);
   const baseHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -824,9 +726,13 @@ export async function callMcpTowerRpc(
         throw new Error(`Unparseable MCP payload for ${method}`);
       }
       if (parsed.error) {
-        throw new Error(parsed.error.message || JSON.stringify(parsed.error));
+        const errMsg =
+          typeof parsed.error === 'object' && parsed.error
+            ? parsed.error.message || JSON.stringify(parsed.error)
+            : String(parsed.error);
+        throw new Error(errMsg);
       }
-      return parsed.result;
+      return parsed.result ?? {};
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
     }
@@ -1000,7 +906,10 @@ export async function extractLlmCompletionText(
   ).catch(() => null);
 
   if (nonStreamRes?.ok) {
-    const json = (await nonStreamRes.json().catch(() => null)) as any;
+    const json = (await nonStreamRes.json().catch(() => null)) as {
+      choices?: Array<{ message?: { content?: string }; text?: string }>;
+      text?: string;
+    } | null;
     const text =
       json?.choices?.[0]?.message?.content ?? json?.choices?.[0]?.text ?? json?.text ?? '';
     if (typeof text === 'string' && text.trim()) {
@@ -1070,7 +979,7 @@ export interface AdminAuthorization {
  */
 export async function authorizeAdminRequest(
   request: Request,
-  env: Record<string, any> | undefined,
+  env: Record<string, string | undefined> | undefined,
   upstreamOrigin: string = resolveUpstreamOrigin(env)
 ): Promise<AdminAuthorization> {
   const authHeader = (request.headers.get('Authorization') || '').trim();

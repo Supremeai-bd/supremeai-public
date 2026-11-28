@@ -198,7 +198,6 @@ export const UserPlanUsageView: React.FC<UserPlanUsageViewProps> = ({
   }, [sessions]);
 
   const totalMessages7Days = activityData.reduce((acc, d) => acc + d.totalMessages, 0);
-  const totalTokens7Days = activityData.reduce((acc, d) => acc + d.estimatedTokens, 0);
   const avgMessagesPerDay = Math.round(totalMessages7Days / 7);
   const peakDay =
     activityData.length > 0

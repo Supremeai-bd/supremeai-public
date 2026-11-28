@@ -20,7 +20,7 @@
  *          { severity, source, title, body?, dedupeKey? }
  */
 
-import { jsonEdgeResponse, timingSafeEqualStrings } from './edgeHelpers';
+import { isRestrictedEdgeHost, jsonEdgeResponse, timingSafeEqualStrings } from './edgeHelpers';
 import { resolveSupabaseAdmin } from './adminRealData';
 import { resolveCoreServiceToken } from './coreAdminBridge';
 
@@ -80,8 +80,7 @@ function httpsUrl(raw: unknown): URL | null {
     if (url.protocol !== 'https:') return null;
     const host = url.hostname.toLowerCase();
     if (
-      host === 'localhost' ||
-      host.endsWith('.local') ||
+      isRestrictedEdgeHost(host) ||
       /^[\d.]+$/.test(host) ||
       host.includes(':')
     ) {
@@ -149,7 +148,7 @@ async function timedFetch(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    return await fetchImpl(url, { ...init, signal: controller.signal });
+    return await fetchImpl(url, { redirect: 'manual', ...init, signal: controller.signal });
   } catch {
     return null;
   } finally {
@@ -577,7 +576,7 @@ export async function handleAlertIngest(
   fetchImpl: typeof fetch = fetch
 ): Promise<Response> {
   const fail = (status: number, error: string) =>
-    jsonEdgeResponse({ success: false, error }, status, request);
+    jsonEdgeResponse({ success: false, error }, status, request, undefined, env);
   if (request.method.toUpperCase() !== 'POST') return fail(405, 'Method not allowed.');
   const presented = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
   if (!presented) return fail(401, 'Missing bearer token.');
@@ -596,5 +595,5 @@ export async function handleAlertIngest(
   const alert = validateAlertInput(await request.json().catch(() => null));
   if (!alert) return fail(400, 'severity (info|warning|critical), source and title are required.');
   const result = await dispatchAlert(env, alert, fetchImpl);
-  return jsonEdgeResponse({ success: true, ...result }, 200, request);
+  return jsonEdgeResponse({ success: true, ...result }, 200, request, undefined, env);
 }

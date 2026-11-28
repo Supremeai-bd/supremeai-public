@@ -68,7 +68,8 @@ const getRuntimeMockOverride = (): boolean | null => {
 // বাংলা মন্তব্য: Desktop (Tauri), Mobile (Android APK/iOS), এবং VS Code Webview-এ লোকাল `/api` না থাকায় স্বয়ংক্রিয়ভাবে ক্যানোনিকাল ক্লাউড এন্ডপয়েন্ট ব্যবহৃত হবে
 export function isEmbeddedAppOrigin(loc?: { protocol?: string; hostname?: string } | null): boolean {
   if (typeof window !== 'undefined') {
-    if ((window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__) {
+    const win = window as unknown as { __TAURI_INTERNALS__?: unknown; __TAURI__?: unknown };
+    if (win.__TAURI_INTERNALS__ || win.__TAURI__) {
       return true;
     }
   }

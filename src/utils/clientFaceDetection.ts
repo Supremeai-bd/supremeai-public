@@ -169,7 +169,15 @@ export async function detectClientFaceInCanvas(
   }
 
   // 2. Secondary: Native browser FaceDetector API (Chromium / Edge)
-  const BrowserFaceDetector = (window as unknown as { FaceDetector?: any }).FaceDetector;
+  type BrowserFaceBox = { x?: number; y?: number; width?: number; height?: number };
+  type BrowserDetectedFace = { boundingBox?: BrowserFaceBox; landmarks?: unknown[] };
+  type BrowserFaceDetectorCtor = new (opts: {
+    fastMode: boolean;
+    maxDetectedFaces: number;
+  }) => { detect: (source: HTMLCanvasElement) => Promise<BrowserDetectedFace[]> };
+  const BrowserFaceDetector = (
+    window as unknown as { FaceDetector?: BrowserFaceDetectorCtor }
+  ).FaceDetector;
   if (typeof BrowserFaceDetector === 'function') {
     try {
       const detector = new BrowserFaceDetector({ fastMode: false, maxDetectedFaces: 3 });

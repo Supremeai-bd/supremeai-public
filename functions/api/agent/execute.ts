@@ -4,7 +4,9 @@ import {
   handleCorsPreflight,
   isRestrictedEdgeHost,
   jsonEdgeResponse,
+  resolveUpstreamOrigin,
   safeEdgeFetch,
+  verifyUpstreamSession,
 } from '../../_lib/edgeHelpers';
 import { extractHtmlTitle, extractReadablePageSnippet } from '../../../src/shared/scheduleExecution';
 import type { AgentExecuteResponse, AgentToolAction } from '../../../src/shared/agentTypes';
@@ -147,6 +149,18 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
   if (request.method !== 'POST') {
     return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request, undefined, env);
+  }
+
+  // বাংলা মন্তব্য: এজ রানটাইমে অটোনোমাস এজেন্ট টুল-লুপ চালানোর আগে বৈধ সেশন যাচাই করা হচ্ছে
+  const session = await verifyUpstreamSession(request, resolveUpstreamOrigin(env));
+  if (!session.valid || session.isGuest) {
+    return jsonEdgeResponse(
+      { error: 'Authentication is required for autonomous agent execution.' },
+      401,
+      request,
+      undefined,
+      env
+    );
   }
 
   const body = (await request.json().catch(() => ({}))) as {

@@ -24,7 +24,12 @@ async function loadTotpSecretFromPrefs(
       5000
     );
     if (!res.ok) return null;
-    const data = (await res.json().catch(() => null)) as any;
+    const data = (await res.json().catch(() => null)) as {
+      preferences?: {
+        security_totp?: { secret?: string; enrolled?: boolean; lastAcceptedStep?: number };
+      };
+      security_totp?: { secret?: string; enrolled?: boolean; lastAcceptedStep?: number };
+    } | null;
     const prefs = data?.preferences || data;
     const totp = prefs?.security_totp;
     if (totp && typeof totp.secret === 'string' && totp.secret.trim()) {

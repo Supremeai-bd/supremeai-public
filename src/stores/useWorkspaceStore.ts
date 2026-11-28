@@ -1343,7 +1343,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       get().browserTabs.find((t) => t.id === targetTabId)?.activeVaultId ??
       get().browserActiveVaultId;
 
-    let vaultCookieHeader: string | null = null;
+    let vaultCookieHeader: string | null;
     try {
       vaultCookieHeader = await resolveDomainSessionCookieHeader(formattedUrl, targetVaultId);
     } catch {

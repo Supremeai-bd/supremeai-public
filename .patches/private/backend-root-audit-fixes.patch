@@ -1,0 +1,749 @@
+diff --git a/core/api/routes/share.py b/core/api/routes/share.py
+index 2392862..b091885 100644
+--- a/core/api/routes/share.py
++++ b/core/api/routes/share.py
+@@ -9,11 +9,11 @@ from __future__ import annotations
+ import asyncio
+ import secrets
+ import time
+-from collections import OrderedDict
++from collections import OrderedDict
+ from datetime import UTC, datetime, timedelta
+ from typing import Any
+ 
+-from fastapi import APIRouter, Depends, HTTPException, Response
++from fastapi import APIRouter, Depends, HTTPException, Response
+ from pydantic import BaseModel, Field
+ 
+ from api.deps import get_current_user_token
+@@ -23,8 +23,8 @@ from database.supabase_client import get_db
+ router = APIRouter(prefix="/api/share", tags=["Sharing"])
+ 
+ # In-memory cache with 30-minute TTL for public share lookups
+-_share_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+-_SHARE_CACHE_MAX_SIZE = 500
++_share_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
++_SHARE_CACHE_MAX_SIZE = 500
+ _CACHE_TTL_SECONDS = 30 * 60  # 30 minutes
+ 
+ 
+@@ -33,20 +33,20 @@ def _cache_get(share_id: str) -> dict[str, Any] | None:
+     entry = _share_cache.get(share_id)
+     if entry is None:
+         return None
+-    if time.monotonic() - entry["_cached_at"] >= _CACHE_TTL_SECONDS:
++    if time.monotonic() - entry["_cached_at"] >= _CACHE_TTL_SECONDS:
+         del _share_cache[share_id]
+         return None
+-    _share_cache.move_to_end(share_id)
++    _share_cache.move_to_end(share_id)
+     return entry
+ 
+ 
+ def _cache_set(share_id: str, data: dict[str, Any]) -> None:
+     """Store a share entry in the in-memory cache."""
+-    # বাংলা মন্তব্য: caller-এর data mutate নয়; free-tier RAM-এ সর্বোচ্চ ৫০০ entry।
+-    _share_cache[share_id] = {**data, "_cached_at": time.monotonic()}
+-    _share_cache.move_to_end(share_id)
+-    while len(_share_cache) > _SHARE_CACHE_MAX_SIZE:
+-        _share_cache.popitem(last=False)
++    # বাংলা মন্তব্য: caller-এর data mutate নয়; free-tier RAM-এ সর্বোচ্চ ৫০০ entry।
++    _share_cache[share_id] = {**data, "_cached_at": time.monotonic()}
++    _share_cache.move_to_end(share_id)
++    while len(_share_cache) > _SHARE_CACHE_MAX_SIZE:
++        _share_cache.popitem(last=False)
+ 
+ 
+ def _generate_share_id(length: int = 12) -> str:
+@@ -192,12 +192,77 @@ async def generate_share_link(
+         raise HTTPException(status_code=500, detail="Failed to generate share link") from e
+ 
+ 
++# বাংলা মন্তব্য: /{share_id} ডায়নামিক রাউটের আগেই /list রেজিস্টার করতে হবে, নইলে /api/share/list শ্যাডো হয়ে 404 দেয়।
++@router.get("/list", response_model=list[SharedConversationResponse])
++async def list_shared_conversations(
++    user: dict = Depends(get_current_user_token),
++):
++    """List all conversations shared by the authenticated user.
++
++    Returns share metadata including view counts and expiration dates.
++    """
++    user_id = user.get("sub")
++    if not user_id:
++        raise HTTPException(status_code=401, detail="Invalid token")
++
++    db = get_db()
++
++    try:
++        # বাংলা মন্তব্য: ইভেন্ট লুপ ব্লক এড়াতে asyncio.to_thread এবং N+1 কোয়েরি রোধে একক ব্যাচ .in_() ব্যবহৃত হচ্ছে
++        response = await asyncio.to_thread(
++            lambda: (
++                db.client.table("shared_conversations")
++                .select(
++                    "share_id, conversation_id, user_id, is_public, view_count, created_at, expires_at"
++                )
++                .eq("user_id", user_id)
++                .order("created_at", desc=True)
++                .execute()
++            )
++        )
++
++        rows = response.data or []
++        unique_cids = list(dict.fromkeys(row["conversation_id"] for row in rows if row.get("conversation_id")))
++        titles_by_id: dict[str, str | None] = {}
++        if unique_cids:
++            conv_resp = await asyncio.to_thread(
++                lambda: (
++                    db.client.table("conversations")
++                    .select("id, title")
++                    .in_("id", unique_cids)
++                    .execute()
++                )
++            )
++            for conv_row in conv_resp.data or []:
++                cid = conv_row.get("id")
++                if cid:
++                    titles_by_id[cid] = conv_row.get("title")
++
++        return [
++            SharedConversationResponse(
++                share_id=row["share_id"],
++                conversation_id=row["conversation_id"],
++                title=titles_by_id.get(row["conversation_id"]),
++                is_public=row["is_public"],
++                view_count=row["view_count"],
++                created_at=row["created_at"],
++                expires_at=row["expires_at"],
++            )
++            for row in rows
++        ]
++    except HTTPException:
++        raise
++    except Exception as e:
++        logger.error(f"Failed to list shared conversations: {e}")
++        raise HTTPException(status_code=500, detail="Failed to list shared conversations") from e
++
++
+ @router.get("/{share_id}", response_model=PublicShareDetailResponse)
+-async def get_shared_conversation(share_id: str, response: Response):
+-    """বাংলা মন্তব্য: message cache access-authority নয়; প্রতি read-এ live share যাচাই।"""
+-    response.headers["Cache-Control"] = "no-store"
++async def get_shared_conversation(share_id: str, response: Response):
++    """বাংলা মন্তব্য: message cache access-authority নয়; প্রতি read-এ live share যাচাই।"""
++    response.headers["Cache-Control"] = "no-store"
+     try:
+-        db = get_db()
++        db = get_db()
+         share_response = await asyncio.to_thread(
+             lambda: (
+                 db.client.table("shared_conversations")
+@@ -208,68 +273,75 @@ async def get_shared_conversation(share_id: str, response: Response):
+             )
+         )
+         if not share_response.data:
+-            _share_cache.pop(share_id, None)
+-            raise HTTPException(
+-                status_code=404,
+-                detail="Share link not found",
+-                headers={"Cache-Control": "no-store"},
+-            )
++            _share_cache.pop(share_id, None)
++            raise HTTPException(
++                status_code=404,
++                detail="Share link not found",
++                headers={"Cache-Control": "no-store"},
++            )
+ 
+         share = share_response.data[0]
+         expires_at = share["expires_at"]
+         if datetime.now(UTC) >= datetime.fromisoformat(expires_at.replace("Z", "+00:00")):
+-            _share_cache.pop(share_id, None)
+-            raise HTTPException(
+-                status_code=410,
+-                detail="This share link has expired",
+-                headers={"Cache-Control": "no-store"},
+-            )
++            _share_cache.pop(share_id, None)
++            raise HTTPException(
++                status_code=410,
++                detail="This share link has expired",
++                headers={"Cache-Control": "no-store"},
++            )
+ 
+         conversation_id = share["conversation_id"]
+-        cached = _cache_get(share_id)
+-        # বাংলা মন্তব্য: অন্য worker-এ revoke/private/expiry বদলালেও উপরকার live check বাধ্যতামূলক।
+-        if cached is not None and cached.get("conversation_id") == conversation_id:
+-            title, messages = cached.get("title"), cached["messages"]
+-        else:
+-            conv_response = await asyncio.to_thread(
+-                lambda: (
+-                    db.client.table("conversations")
+-                    .select("id, title")
+-                    .eq("id", conversation_id)
+-                    .execute()
+-                )
+-            )
+-            if not conv_response.data:
+-                _share_cache.pop(share_id, None)
+-                raise HTTPException(
+-                    status_code=404,
+-                    detail="Conversation not found",
+-                    headers={"Cache-Control": "no-store"},
+-                )
+-            title = conv_response.data[0].get("title")
+-            messages_response = await asyncio.to_thread(
+-                lambda: (
+-                    db.client.table("messages")
+-                    .select("id, role, content, created_at")
+-                    .eq("conversation_id", conversation_id)
+-                    .order("created_at", desc=False)
+-                    .execute()
+-                )
+-            )
+-            messages = [SharedMessageResponse(**msg) for msg in messages_response.data]
+-            _cache_set(
+-                share_id, {"conversation_id": conversation_id, "title": title, "messages": messages}
+-            )
+-
+-        new_view_count = share.get("view_count", 0) + 1
+-        await asyncio.to_thread(
+-            lambda: (
+-                db.client.table("shared_conversations")
+-                .update({"view_count": new_view_count})
+-                .eq("share_id", share_id)
+-                .execute()
++        cached = _cache_get(share_id)
++        # বাংলা মন্তব্য: অন্য worker-এ revoke/private/expiry বদলালেও উপরকার live check বাধ্যতামূলক।
++        if cached is not None and cached.get("conversation_id") == conversation_id:
++            title, messages = cached.get("title"), cached["messages"]
++        else:
++            conv_response = await asyncio.to_thread(
++                lambda: (
++                    db.client.table("conversations")
++                    .select("id, title")
++                    .eq("id", conversation_id)
++                    .execute()
++                )
+             )
+-        )
++            if not conv_response.data:
++                _share_cache.pop(share_id, None)
++                raise HTTPException(
++                    status_code=404,
++                    detail="Conversation not found",
++                    headers={"Cache-Control": "no-store"},
++                )
++            title = conv_response.data[0].get("title")
++            messages_response = await asyncio.to_thread(
++                lambda: (
++                    db.client.table("messages")
++                    .select("id, role, content, created_at")
++                    .eq("conversation_id", conversation_id)
++                    .order("created_at", desc=False)
++                    .execute()
++                )
++            )
++            messages = [SharedMessageResponse(**msg) for msg in messages_response.data]
++            _cache_set(
++                share_id, {"conversation_id": conversation_id, "title": title, "messages": messages}
++            )
++
++        current_views = int(share.get("view_count", 0) or 0)
++        new_view_count = current_views + 1
++        # বাংলা মন্তব্য: গৌণ view_count আপডেট ব্যর্থ হলেও বৈধ পাবলিক শেয়ার রিড যেন 500 না দেয়
++        try:
++            await asyncio.to_thread(
++                lambda: (
++                    db.client.table("shared_conversations")
++                    .update({"view_count": new_view_count})
++                    .eq("share_id", share_id)
++                    .execute()
++                )
++            )
++        except Exception as view_err:
++            logger.warning(f"Non-critical view_count update failed for {share_id}: {view_err}")
++            new_view_count = current_views
++
+         return PublicShareDetailResponse(
+             conversation_id=conversation_id,
+             title=title,
+@@ -282,65 +354,11 @@ async def get_shared_conversation(share_id: str, response: Response):
+         raise
+     except Exception as e:
+         logger.error(f"Failed to retrieve shared conversation: {e}")
+-        raise HTTPException(
+-            status_code=500,
+-            detail="Failed to retrieve shared conversation",
+-            headers={"Cache-Control": "no-store"},
+-        ) from e
+-
+-
+-@router.get("/list", response_model=list[SharedConversationResponse])
+-async def list_shared_conversations(
+-    user: dict = Depends(get_current_user_token),
+-):
+-    """List all conversations shared by the authenticated user.
+-
+-    Returns share metadata including view counts and expiration dates.
+-    """
+-    user_id = user.get("sub")
+-    if not user_id:
+-        raise HTTPException(status_code=401, detail="Invalid token")
+-
+-    db = get_db()
+-
+-    try:
+-        response = (
+-            db.client.table("shared_conversations")
+-            .select(
+-                "share_id, conversation_id, user_id, is_public, view_count, created_at, expires_at"
+-            )
+-            .eq("user_id", user_id)
+-            .order("created_at", desc=True)
+-            .execute()
+-        )
+-
+-        # Enrich with conversation titles
+-        results: list[SharedConversationResponse] = []
+-        for row in response.data:
+-            conv_resp = (
+-                db.client.table("conversations")
+-                .select("title")
+-                .eq("id", row["conversation_id"])
+-                .execute()
+-            )
+-            title = conv_resp.data[0]["title"] if conv_resp.data else None
+-
+-            results.append(
+-                SharedConversationResponse(
+-                    share_id=row["share_id"],
+-                    conversation_id=row["conversation_id"],
+-                    title=title,
+-                    is_public=row["is_public"],
+-                    view_count=row["view_count"],
+-                    created_at=row["created_at"],
+-                    expires_at=row["expires_at"],
+-                )
+-            )
+-
+-        return results
+-    except Exception as e:
+-        logger.error(f"Failed to list shared conversations: {e}")
+-        raise HTTPException(status_code=500, detail="Failed to list shared conversations") from e
++        raise HTTPException(
++            status_code=500,
++            detail="Failed to retrieve shared conversation",
++            headers={"Cache-Control": "no-store"},
++        ) from e
+ 
+ 
+ @router.delete("/{share_id}", response_model=ShareRevokeResponse)
+@@ -359,12 +377,14 @@ async def revoke_share(
+     db = get_db()
+ 
+     try:
+-        # Verify ownership
+-        share_response = (
+-            db.client.table("shared_conversations")
+-            .select("share_id, user_id")
+-            .eq("share_id", share_id)
+-            .execute()
++        # বাংলা মন্তব্য: মালিকানা যাচাই কোয়েরিও asyncio.to_thread-এ চালানো হচ্ছে যেন ইভেন্ট লুপ ব্লক না হয়
++        share_response = await asyncio.to_thread(
++            lambda: (
++                db.client.table("shared_conversations")
++                .select("share_id, user_id")
++                .eq("share_id", share_id)
++                .execute()
++            )
+         )
+ 
+         if not share_response.data:
+diff --git a/core/middleware/security.py b/core/middleware/security.py
+index fbc460e..944c1a7 100644
+--- a/core/middleware/security.py
++++ b/core/middleware/security.py
+@@ -121,9 +121,16 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
+     RATE_WINDOW = 60  # Seconds
+ 
+     # Path-specific rate limits (critical paths)
++    # বাংলা মন্তব্য: সব লগইন, সাইন-আপ, অ্যাডমিন ফায়ারবেস এবং SSO রুট কঠোর রেট-লিমিটের আওতায় আনা হয়েছে
+     SIMPLE_RATE_LIMITS = {
+         "/api/v1/auth/login": {"requests": 5, "window": 600},  # 5 per 10 min
++        "/api/auth/login": {"requests": 5, "window": 600},
++        "/api/admin/firebase-login": {"requests": 5, "window": 600},
++        "/api/auths/signin": {"requests": 5, "window": 600},
++        "/auth/sso/": {"requests": 10, "window": 600},
+         "/api/v1/auth/register": {"requests": 3, "window": 3600},  # 3 per hour
++        "/api/auth/register": {"requests": 3, "window": 3600},
++        "/api/auths/signup": {"requests": 3, "window": 3600},
+         "/api/v1/scraper/scrape": {"requests": 20, "window": 3600},  # 20 per hour
+         "/api/v1/kaggle/submit": {"requests": 10, "window": 3600},  # 10 per hour
+     }
+diff --git a/core/tests/api/test_share_access_lifecycle.py b/core/tests/api/test_share_access_lifecycle.py
+index 7084a72..c00bc55 100644
+--- a/core/tests/api/test_share_access_lifecycle.py
++++ b/core/tests/api/test_share_access_lifecycle.py
+@@ -46,6 +46,7 @@ class FakeDatabase:
+             ],
+         }
+         self.down = False
++        self.fail_updates = False
+         self.client = self
+         self.reads = {}
+ 
+@@ -63,7 +64,11 @@ class Query:
+         return self
+ 
+     def eq(self, key, value):
+-        self.filters.append((key, value))
++        self.filters.append(('eq', key, value))
++        return self
++
++    def in_(self, key, values):
++        self.filters.append(('in', key, set(values)))
+         return self
+ 
+     def order(self, *_args, **_kwargs):
+@@ -81,10 +86,19 @@ class Query:
+         if self.db.down:
+             raise RuntimeError("DB unavailable")
+         rows = self.db.rows[self.name]
+-        matches = [r for r in rows if all(r.get(k) == v for k, v in self.filters)]
++        matches = [
++            r
++            for r in rows
++            if all(
++                (r.get(k) == v if op == "eq" else r.get(k) in v)
++                for op, k, v in self.filters
++            )
++        ]
+         if self.action == "delete":
+             self.db.rows[self.name] = [r for r in rows if r not in matches]
+         elif self.action == "update":
++            if self.db.fail_updates:
++                raise RuntimeError("Transient write failure")
+             for row in matches:
+                 row.update(self.payload)
+         else:
+@@ -223,3 +237,58 @@ def test_cache_cannot_cross_conversation_identity(harness):
+     response = client.get("/api/share/AbCdEf123456")
+     assert response.status_code == 404
+     assert "private shared content" not in response.text
++
++
++def test_list_shared_conversations_not_shadowed_and_batches_titles(harness):
++    # বাংলা মন্তব্য: /api/share/list যেন /{share_id} দ্বারা শ্যাডো না হয় এবং N+1 কোয়েরির বদলে ১টি ব্যাচ কোয়েরি চালায়
++    db, worker = harness
++    db.rows["conversations"].extend(
++        [
++            {"id": "conv_2", "user_id": "owner", "title": "দ্বিতীয় আলাপ"},
++            {"id": "conv_3", "user_id": "owner", "title": "তৃতীয় আলাপ"},
++        ]
++    )
++    exp = db.rows["shared_conversations"][0]["expires_at"]
++    db.rows["shared_conversations"].extend(
++        [
++            {
++                "share_id": "ShareTwo0002",
++                "user_id": "owner",
++                "conversation_id": "conv_2",
++                "is_public": True,
++                "view_count": 3,
++                "created_at": "2026-01-02T00:00:00Z",
++                "expires_at": exp,
++            },
++            {
++                "share_id": "ShareThr0003",
++                "user_id": "owner",
++                "conversation_id": "conv_3",
++                "is_public": True,
++                "view_count": 5,
++                "created_at": "2026-01-03T00:00:00Z",
++                "expires_at": exp,
++            },
++        ]
++    )
++
++    _, anon_client = worker("share_list_anon")
++    assert anon_client.get("/api/share/list").status_code == 401
++
++    _, owner_client = worker("share_list_owner", user="owner")
++    res = owner_client.get("/api/share/list")
++    assert res.status_code == 200
++    items = res.json()
++    assert len(items) == 3
++    assert {item["title"] for item in items} == {"বাংলা আলাপ", "দ্বিতীয় আলাপ", "তৃতীয় আলাপ"}
++    assert db.reads["conversations"] == 1
++
++
++def test_transient_view_count_write_failure_does_not_500_public_read(harness):
++    # বাংলা মন্তব্য: গৌণ view_count আপডেট ব্যর্থ হলেও পাবলিক রিড ২০০ স্ট্যাটাসে উত্তর দেবে
++    db, worker = harness
++    _, client = worker("share_resilient_view_count")
++    db.fail_updates = True
++    res = client.get("/api/share/AbCdEf123456")
++    assert res.status_code == 200
++    assert res.json()["view_count"] == 0
+diff --git a/scripts/ci/capability_integration_gate.py b/scripts/ci/capability_integration_gate.py
+index 3f49fd3..356cf0e 100644
+--- a/scripts/ci/capability_integration_gate.py
++++ b/scripts/ci/capability_integration_gate.py
+@@ -4,17 +4,29 @@ import json
+ import sys
+ from pathlib import Path
+ 
++# বাংলা মন্তব্য: core/adaptive_engine/* (ক্যানোনিকাল) এবং লিগ্যাসি backend/adaptive_engine/* উভয় পাথ সমর্থিত
++REQUIRED_MODULES = (
++    "adaptive_engine/capability_registry.py",
++    "adaptive_engine/capability_node.py",
++    "adaptive_engine/governed_executor.py",
++)
++
+ 
+ def validate(matrix_path: str) -> dict:
+     data = json.loads(Path(matrix_path).read_text(encoding="utf-8"))
+     modules = data.get("modules", [])
+-    required = {"backend/adaptive_engine/capability_registry.py", "backend/adaptive_engine/capability_node.py", "backend/adaptive_engine/governed_executor.py"}
+     present = {item["path"] for item in modules}
+-    missing = sorted(required - present)
++    missing = sorted(
++        f"core/{rel}"
++        for rel in REQUIRED_MODULES
++        if f"core/{rel}" not in present and f"backend/{rel}" not in present
++    )
+     return {"ok": not missing, "missing": missing, "module_count": len(modules)}
+ 
+ 
+ if __name__ == "__main__":
+-    result = validate(sys.argv[1] if len(sys.argv) > 1 else "docs/generated/module_capability_matrix.json")
++    result = validate(
++        sys.argv[1] if len(sys.argv) > 1 else "docs/generated/module_capability_matrix.json"
++    )
+     print(json.dumps(result, indent=2))
+     raise SystemExit(0 if result["ok"] else 1)
+diff --git a/scripts/ci/generate_module_capability_matrix.py b/scripts/ci/generate_module_capability_matrix.py
+index c3eff86..e20c053 100644
+--- a/scripts/ci/generate_module_capability_matrix.py
++++ b/scripts/ci/generate_module_capability_matrix.py
+@@ -47,7 +47,8 @@ def build() -> dict:
+         "__pycache__", ".next", "target", ".venv", ".venv_ci", "venv", "ci-reports",
+         "site-packages", ".pytest_cache", ".ruff_cache", ".mypy_cache", "archive"
+     }
+-    target_dirs = ["backend", "frontend", "infrastructure", "scripts"]
++    # বাংলা মন্তব্য: backend/ -> core/ মাইগ্রেশনের পর বর্তমান সমস্ত সক্রিয় টপ-লেভেল প্যাকেজ অন্তর্ভুক্ত করা হয়েছে
++    target_dirs = ["core", "gateway", "studio", "browser", "backend", "frontend", "infrastructure", "scripts"]
+ 
+     # Try git ls-files first for absolute consistency across CI and local environments
+     candidate_paths: list[Path] = []
+diff --git a/scripts/ci/rate_limit_endpoint_checker.py b/scripts/ci/rate_limit_endpoint_checker.py
+index 055cc78..1a30cad 100644
+--- a/scripts/ci/rate_limit_endpoint_checker.py
++++ b/scripts/ci/rate_limit_endpoint_checker.py
+@@ -20,8 +20,8 @@ import ast
+ import sys
+ from pathlib import Path
+ 
+-REPO_ROOT = Path(__file__).resolve().parents[2]
+-BACKEND_ROOT = REPO_ROOT / "backend"
++# বাংলা মন্তব্য: পরিত্যক্ত backend/ পাথের বদলে ক্যানোনিকাল core/ প্যাকেজ স্ক্যান নিশ্চিত করা হচ্ছে
++from repo_paths import REPO_ROOT, resolve
+ 
+ SENSITIVE_PATH_KEYWORDS = {
+     "login",
+@@ -35,7 +35,7 @@ SENSITIVE_PATH_KEYWORDS = {
+ 
+ 
+ def get_middleware_protected_paths() -> set[str]:
+-    middleware_file = BACKEND_ROOT / "core" / "middleware" / "security.py"
++    middleware_file = resolve("backend/core/middleware/security.py") or (REPO_ROOT / "core" / "middleware" / "security.py")
+     if not middleware_file.exists():
+         return set()
+ 
+@@ -58,7 +58,7 @@ def get_middleware_protected_paths() -> set[str]:
+ 
+ def get_router_prefixes() -> dict[str, str]:
+     """Parse api/routers.py to map route modules to their mounted prefix."""
+-    routers_file = BACKEND_ROOT / "api" / "routers.py"
++    routers_file = resolve("backend/api/routers.py") or (REPO_ROOT / "core" / "api" / "routers.py")
+     prefixes = {}
+     if not routers_file.exists():
+         return prefixes
+@@ -84,13 +84,14 @@ def get_router_prefixes() -> dict[str, str]:
+ 
+ def scan_sensitive_routes(protected_paths: set[str]) -> list[str]:
+     issues = []
+-    routes_dir = BACKEND_ROOT / "api" / "routes"
+-    if not routes_dir.exists():
+-        return issues
++    routes_dir = resolve("backend/api/routes") or (REPO_ROOT / "core" / "api" / "routes")
++    route_files = list(routes_dir.rglob("*.py")) if routes_dir.exists() else []
++    if not route_files:
++        raise RuntimeError(f"Zero route files found under {routes_dir} — refusing false-green pass.")
+ 
+     mounted_prefixes = get_router_prefixes()
+ 
+-    for py_file in routes_dir.rglob("*.py"):
++    for py_file in route_files:
+         try:
+             content = py_file.read_text(encoding="utf-8", errors="ignore")
+             # Fast check
+diff --git a/scripts/ci/security_headers_checker.py b/scripts/ci/security_headers_checker.py
+index de54d0d..d4d8e7e 100644
+--- a/scripts/ci/security_headers_checker.py
++++ b/scripts/ci/security_headers_checker.py
+@@ -20,8 +20,10 @@ import ast
+ import sys
+ from pathlib import Path
+ 
+-REPO_ROOT = Path(__file__).resolve().parents[2]
+-BACKEND_ROOT = REPO_ROOT / "backend"
++# বাংলা মন্তব্য: backend/ বিলুপ্ত হওয়ায় repo_paths দিয়ে ক্যানোনিকাল core/ পাথ সমাধান করা হচ্ছে
++from repo_paths import REPO_ROOT, resolve
++
++CORE_SECURITY_PATH = resolve("backend/core/middleware/security.py") or (REPO_ROOT / "core" / "middleware" / "security.py")
+ 
+ REQUIRED_HEADERS = {
+     "X-Content-Type-Options",
+@@ -34,7 +36,7 @@ REQUIRED_HEADERS = {
+ 
+ def check_middleware_definitions() -> list[str]:
+     issues = []
+-    middleware_file = BACKEND_ROOT / "core" / "middleware" / "security.py"
++    middleware_file = CORE_SECURITY_PATH
+     if not middleware_file.exists():
+         issues.append(f"Missing core security middleware file: {middleware_file}")
+         return issues
+diff --git a/scripts/ci/webhook_signature_checker.py b/scripts/ci/webhook_signature_checker.py
+index 5f9612f..4d56eea 100644
+--- a/scripts/ci/webhook_signature_checker.py
++++ b/scripts/ci/webhook_signature_checker.py
+@@ -17,8 +17,10 @@ import ast
+ import sys
+ from pathlib import Path
+ 
+-REPO_ROOT = Path(__file__).resolve().parents[2]
+-BACKEND_ROOT = REPO_ROOT / "backend"
++# বাংলা মন্তব্য: শূন্য ফাইল স্ক্যানে মিথ্যা সবুজ সংকেত রোধে core/ ও gateway/ ডিরেক্টরি যাচাই করা হচ্ছে
++from repo_paths import REPO_ROOT, resolve
++
++SCAN_ROOTS = [p for p in (resolve("backend"), REPO_ROOT / "gateway") if p is not None and p.exists()]
+ 
+ SIGNATURE_INDICATORS = {
+     "verify",
+@@ -86,7 +88,10 @@ def analyze_route_function(fn_node: ast.FunctionDef | ast.AsyncFunctionDef, file
+ 
+ def scan_backend_webhooks() -> list[str]:
+     all_issues = []
+-    for py_file in BACKEND_ROOT.rglob("*.py"):
++    py_files = [f for root in SCAN_ROOTS for f in root.rglob("*.py")]
++    if not py_files:
++        raise RuntimeError("Zero backend Python files discovered for webhook signature scan.")
++    for py_file in py_files:
+         if any(part.startswith(".") or part in ("tests", "venv", ".venv") for part in py_file.parts):
+             continue
+ 
+diff --git a/tests/test_workflow_annotation_summary.py b/tests/test_workflow_annotation_summary.py
+new file mode 100644
+index 0000000..de0adb6
+--- /dev/null
++++ b/tests/test_workflow_annotation_summary.py
+@@ -0,0 +1,97 @@
++"""বাংলা মন্তব্য: scripts/ci/workflow_annotation_summary.py-এর জন্য হার্মেটিক ইউনিট টেস্ট (test_parity_guard পরিপূরক)।"""
++
++from __future__ import annotations
++
++import importlib.util
++from pathlib import Path
++import pytest
++
++SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "ci" / "workflow_annotation_summary.py"
++_SPEC = importlib.util.spec_from_file_location("workflow_annotation_summary", SCRIPT_PATH)
++assert _SPEC and _SPEC.loader
++mod = importlib.util.module_from_spec(_SPEC)
++_SPEC.loader.exec_module(mod)
++
++VALID_SHA = "a" * 40
++
++
++def test_report_summarizes_counts_without_leaking_messages():
++    # বাংলা মন্তব্য: অ্যানোটেশনের কাঁচা বার্তা বা গোপন তথ্য কখনোই সামারিতে কপি হবে না
++    secret_text = "SECRET_LEAK_DO_NOT_ECHO_12345"
++
++    def fake_fetch(path: str, _token: str):
++        if path.endswith("/jobs"):
++            yield {
++                "jobs": [
++                    {"id": 101, "status": "completed", "conclusion": "success"},
++                    {"id": 102, "status": "in_progress", "conclusion": None},
++                ]
++            }
++        elif path.endswith("/check-runs"):
++            yield {
++                "check_runs": [
++                    {
++                        "id": 555,
++                        "name": "CodeQL",
++                        "status": "completed",
++                        "app": {"slug": "github-advanced-security"},
++                    }
++                ]
++            }
++        elif "/check-runs/101/annotations" in path:
++            yield [
++                {"annotation_level": "warning", "message": secret_text},
++                {"annotation_level": "notice", "message": "ignored"},
++            ]
++        elif "/check-runs/102/annotations" in path:
++            yield []
++        elif "/check-runs/555/annotations" in path:
++            yield [{"annotation_level": "failure", "message": secret_text}]
++        else:
++            raise AssertionError(f"Unexpected path: {path}")
++
++    summary = mod.report(
++        "Supremeai-bd/supremeai",
++        "24570001",
++        "1",
++        VALID_SHA,
++        "tok_readonly",
++        fetch=fake_fetch,
++    )
++    assert "| Actions job `101` | 1 | 0 |" in summary
++    assert "| Same-SHA CodeQL `555` | 0 | 1 |" in summary
++    assert "**INCOMPLETE SNAPSHOT:** 1 job(s) and 0 CodeQL check(s)" in summary
++    assert "**Total:** 1 warning, 1 failure annotations" in summary
++    assert secret_text not in summary
++
++
++@pytest.mark.parametrize(
++    "repo,run,attempt,sha,token",
++    [
++        ("bad repo", "1", "1", VALID_SHA, "tok"),
++        ("Supremeai-bd/supremeai", "0", "1", VALID_SHA, "tok"),
++        ("Supremeai-bd/supremeai", "1", "abc", VALID_SHA, "tok"),
++        ("Supremeai-bd/supremeai", "1", "1", "shortsha", "tok"),
++        ("Supremeai-bd/supremeai", "1", "1", VALID_SHA, ""),
++    ],
++)
++def test_report_rejects_invalid_parameters(repo, run, attempt, sha, token):
++    with pytest.raises(ValueError):
++        mod.report(repo, run, attempt, sha, token, fetch=lambda *_a: iter(()))
++
++
++def test_report_fails_closed_when_jobs_list_is_empty():
++    with pytest.raises(ValueError, match="No source jobs returned"):
++        mod.report(
++            "Supremeai-bd/supremeai",
++            "12",
++            "1",
++            VALID_SHA,
++            "tok",
++            fetch=lambda *_a: iter([{"jobs": []}]),
++        )
++
++
++def test_main_fails_when_summary_env_missing(monkeypatch):
++    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
++    assert mod.main() == 1

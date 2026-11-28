@@ -104,7 +104,7 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
     method: string,
     body?: unknown,
     prefer = 'return=representation'
-  ): Promise<any> => {
+  ): Promise<Array<Record<string, unknown>> | null> => {
     const res = await fetch(`${CONV_SB_URL}/rest/v1/${pathAndQuery}`, {
       method,
       headers: {
@@ -138,9 +138,9 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
           undefined,
           'return=minimal'
         );
-        const convs: any[] = Array.isArray(rows) ? rows : [];
+        const convs: Array<Record<string, unknown>> = Array.isArray(rows) ? rows : [];
         const counts: Record<string, number> = {};
-        const ids = convs.map((c) => c.id).filter(Boolean);
+        const ids = convs.map((c) => String(c.id || '')).filter(Boolean);
         if (ids.length > 0) {
           const msgs = await convSupabaseRest(
             `conversation_messages?conversation_id=in.(${ids.map((i) => convSb(String(i))).join(',')})&select=conversation_id`,
@@ -149,7 +149,8 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
             'return=minimal'
           );
           for (const m of Array.isArray(msgs) ? msgs : []) {
-            counts[m.conversation_id] = (counts[m.conversation_id] || 0) + 1;
+            const cid = String(m.conversation_id || '');
+            if (cid) counts[cid] = (counts[cid] || 0) + 1;
           }
         }
         res.setHeader('X-SupremeAI-Storage', 'supabase');
@@ -159,7 +160,7 @@ export function registerConversationsRoutes(app: Express, ctx: ConversationsCont
             title: c.title,
             created_at: c.created_at,
             updated_at: c.updated_at,
-            message_count: counts[c.id] || 0,
+            message_count: counts[String(c.id || '')] || 0,
           })),
           storage: 'supabase',
         });

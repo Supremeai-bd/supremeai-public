@@ -136,8 +136,6 @@ export const WorkspaceTipBar: React.FC<WorkspaceTipBarProps> = ({
 // --- Occasional Product Micro-Survey ---
 
 const SURVEY_STORAGE_KEY = 'supremeai_survey_state_v1';
-const SUBMIT_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
-const SNOOZE_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 interface SurveyPersistedState {
   lastSubmittedAt?: number;

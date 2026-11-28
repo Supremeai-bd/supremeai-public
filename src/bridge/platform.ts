@@ -9,7 +9,11 @@ export type RuntimeTarget = 'web' | 'desktop' | 'android' | 'extension';
 // runtime always injects, so the native branch is actually reachable.
 export function detectPlatform(): Platform {
   if (typeof window !== 'undefined' && isTauri()) return 'tauri';
-  if (typeof (globalThis as any).acquireVsCodeApi === 'function') return 'extension';
+  if (
+    typeof (globalThis as unknown as { acquireVsCodeApi?: unknown }).acquireVsCodeApi === 'function'
+  ) {
+    return 'extension';
+  }
   return 'web';
 }
 

@@ -56,9 +56,13 @@ async function timedFetch(
 
 const TIERS = new Set(['Free', 'Pro', 'Enterprise']);
 
-export function mapAuthUser(raw: Record<string, any>, idx: number): EdgeCustomerRecord {
-  const meta = (raw.user_metadata || {}) as Record<string, any>;
-  const app = (raw.app_metadata || {}) as Record<string, any>;
+export function mapAuthUser(raw: Record<string, unknown>, idx: number): EdgeCustomerRecord {
+  const meta = (
+    raw.user_metadata && typeof raw.user_metadata === 'object' ? raw.user_metadata : {}
+  ) as Record<string, unknown>;
+  const app = (
+    raw.app_metadata && typeof raw.app_metadata === 'object' ? raw.app_metadata : {}
+  ) as Record<string, unknown>;
   const email = String(raw.email || '').trim();
   const tierRaw = String(app.tier || app.plan || meta.plan || 'Free');
   const tier = (TIERS.has(tierRaw) ? tierRaw : 'Free') as EdgeCustomerRecord['tier'];
@@ -94,7 +98,9 @@ export async function listSupabaseUsers(
       headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}`, Accept: 'application/json' },
     });
     if (!res.ok) return null;
-    const data = (await res.json().catch(() => null)) as { users?: Record<string, any>[] } | null;
+    const data = (await res.json().catch(() => null)) as {
+      users?: Record<string, unknown>[];
+    } | null;
     const users = Array.isArray(data?.users) ? data!.users : [];
     return users.map(mapAuthUser);
   } catch {

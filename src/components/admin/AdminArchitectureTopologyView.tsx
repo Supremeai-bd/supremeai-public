@@ -512,12 +512,12 @@ export const AdminArchitectureTopologyView: React.FC = () => {
         lastChecked: now,
       };
       next['eco-gateway'] = next['render-api'];
-    } catch (err: any) {
+    } catch (err: unknown) {
       next['render-api'] = {
         id: 'render-api',
         name: 'supremeai-api',
         status: 'error',
-        message: String(err?.message || 'Connection refused to gateway'),
+        message: err instanceof Error ? err.message : 'Connection refused to gateway',
         statusCode: 0,
         lastChecked: now,
       };
@@ -578,12 +578,12 @@ export const AdminArchitectureTopologyView: React.FC = () => {
           }
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       next['render-mcp'] = {
         id: 'render-mcp',
         name: 'supremeai-mcp-tower',
         status: 'error',
-        message: String(err?.message || 'MCP Tower unreachable'),
+        message: err instanceof Error ? err.message : 'MCP Tower unreachable',
         statusCode: 0,
         lastChecked: now,
       };
@@ -605,12 +605,12 @@ export const AdminArchitectureTopologyView: React.FC = () => {
         statusCode: res?.status || 500,
         lastChecked: now,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       next['eco-providers'] = {
         id: 'eco-providers',
         name: 'AI Provider Squad',
         status: 'unknown',
-        message: String(err?.message || 'Provider config probe unavailable'),
+        message: err instanceof Error ? err.message : 'Provider config probe unavailable',
         lastChecked: now,
       };
     }
@@ -618,9 +618,12 @@ export const AdminArchitectureTopologyView: React.FC = () => {
     // 4. Probe Control-Plane Service Health Collector for downstream nodes
     try {
       const { res, body } = await safeFetchJson('/api/admin/control-plane/service-health');
-      const liveServices: any[] = Array.isArray(body?.snapshot?.services)
-        ? body.snapshot.services
-        : [];
+      const liveServices: Array<{
+        id?: string;
+        name?: string;
+        status?: string;
+        latencyMs?: number;
+      }> = Array.isArray(body?.snapshot?.services) ? body.snapshot.services : [];
       if (res?.ok && liveServices.length > 0) {
         for (const s of liveServices) {
           const key = String(s?.id || s?.name || '').toLowerCase();

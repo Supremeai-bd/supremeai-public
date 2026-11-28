@@ -138,7 +138,10 @@ const TARGET = 'server.ts';
 //         src/server/userDirectory.ts; federation catch-all → src/server/federationProxy.ts;
 //         Vite/static serving + error handler → src/server/frontendServing.ts; plus 41
 //         unused imports and 3 dead declarations removed (−1,148 lines).
-const BUDGET = 1056;
+// 1056 → 1039 after migrating GET /api/platform/config & GET /api/auth/captcha-config
+//         into unified Hono (src/api/routes/{platformConfig,captchaConfig}.ts) and
+//         removing duplicate ProviderMeshEntry/InfisicalVaultKeyEntry declarations.
+const BUDGET = 1039;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

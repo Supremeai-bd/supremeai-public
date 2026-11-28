@@ -23,10 +23,12 @@
  */
 
 import { Hono, type Context } from 'hono';
+import { createCaptchaConfigRoutes } from './routes/captchaConfig';
 import { createReleasesRoutes } from './routes/releases';
 import { createTelemetryRoutes } from './routes/telemetry';
 import { createHealthRoutes } from './routes/health';
 import { createModelsRoutes } from './routes/models';
+import { createPlatformConfigRoutes } from './routes/platformConfig';
 import { createShareRoutes } from './routes/share';
 import { createI18nRoutes } from './routes/i18n';
 
@@ -45,6 +47,8 @@ export interface ApiDeps {
   now?: () => number;
   /** বাংলা মন্তব্য: শুধু Node-এর বিদ্যমান catalog cache; Edge-এ কোনো upstream fetch নয়। */
   fetchGatewayJson?: (pathAndQuery: string, ttlMs?: number) => Promise<unknown>;
+  /** বাংলা মন্তব্য: Node সার্ভারে লাইভ প্ল্যাটফর্ম কনফিগ ও ফিচার-ফ্ল্যাগ পড়ার ঐচ্ছিক হুক। */
+  getPlatformConfig?: () => Record<string, unknown>;
 }
 
 /** বাংলা মন্তব্য: env থেকে নিরাপদে string মান পড়া — দুই রানটাইমেই একই আচরণ। */
@@ -57,10 +61,12 @@ export function readEnv(c: ApiContext, key: string): string | undefined {
 export function createApiApp(deps: ApiDeps = {}): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
 
+  app.route('/', createCaptchaConfigRoutes());
   app.route('/', createReleasesRoutes(deps));
   app.route('/', createTelemetryRoutes());
   app.route('/', createHealthRoutes());
   app.route('/', createModelsRoutes(deps));
+  app.route('/', createPlatformConfigRoutes(deps));
   app.route('/', createShareRoutes(deps));
   app.route('/', createI18nRoutes(deps));
 

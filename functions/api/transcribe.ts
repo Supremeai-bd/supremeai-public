@@ -8,9 +8,9 @@ import {
 
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
+  if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
   if (request.method !== 'POST') {
-    return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request);
+    return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request, undefined, env);
   }
 
   const body = (await request.json().catch(() => ({}))) as {
@@ -22,7 +22,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     typeof body.mimeType === 'string' && body.mimeType.trim() ? body.mimeType.trim() : 'audio/webm';
 
   if (!audioData) {
-    return jsonEdgeResponse({ error: 'audioData base64 string is required.' }, 400, request);
+    return jsonEdgeResponse({ error: 'audioData base64 string is required.' }, 400, request, undefined, env);
   }
 
   // 1. Try upstream gateway /api/transcribe if a real Whisper/Gemini STT backend is active
@@ -48,7 +48,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       } | null;
       const resolved = String(data?.transcript || data?.text || '').trim();
       if (resolved) {
-        return jsonEdgeResponse({ transcript: resolved, source: 'upstream-stt' }, 200, request);
+        return jsonEdgeResponse({ transcript: resolved, source: 'upstream-stt' }, 200, request, undefined, env);
       }
     }
   } catch {
@@ -87,10 +87,12 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         14000
       );
       if (geminiRes.ok) {
-        const gJson = (await geminiRes.json().catch(() => null)) as any;
+        const gJson = (await geminiRes.json().catch(() => null)) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        } | null;
         const transcript = String(gJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
         if (transcript) {
-          return jsonEdgeResponse({ transcript, source: 'edge-gemini-stt' }, 200, request);
+          return jsonEdgeResponse({ transcript, source: 'edge-gemini-stt' }, 200, request, undefined, env);
         }
       }
     } catch {
@@ -104,6 +106,8 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         'Server-side speech transcription requires GEMINI_API_KEY or live Whisper backend; please use your browser voice dictation.',
     },
     503,
-    request
+    request,
+    undefined,
+    env
   );
 }

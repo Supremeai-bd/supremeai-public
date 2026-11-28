@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from 'express';
 import crypto from 'crypto';
 import { validateGitLabHost } from '../../shared/serverSecurity';
+import { routeRateLimit } from '../routeRateLimit';
 
 /**
  * Git OAuth — `GET /api/git/oauth/*` (status, url, callback)
@@ -22,25 +23,61 @@ export interface GitOauthContext {
   PORT: number;
 }
 
+const MAX_OAUTH_STATES = 1000;
+const SAFE_HOST_PATTERN = /^(?:\[[a-fA-F0-9:]+\]|[a-zA-Z0-9.-]+)(?::\d{1,5})?$/;
+
 export function registerGitOauthRoutes(app: Express, ctx: GitOauthContext): void {
+  const oauthRateLimit = routeRateLimit(60);
   const oauthStateStore = new Map<
     string,
     { provider: 'github' | 'gitlab'; host?: string; expiresAt: number }
   >();
 
+  // বাংলা মন্তব্য: মেমরি নিঃশেষ (OOM) রোধে মেয়াদোত্তীর্ণ ও অতিরিক্ত OAuth state ছাঁটাই করা হচ্ছে
+  const recordOAuthState = (
+    state: string,
+    entry: { provider: 'github' | 'gitlab'; host?: string; expiresAt: number }
+  ) => {
+    const now = Date.now();
+    if (oauthStateStore.size >= MAX_OAUTH_STATES) {
+      for (const [k, v] of oauthStateStore) {
+        if (v.expiresAt <= now) oauthStateStore.delete(k);
+      }
+      while (oauthStateStore.size >= MAX_OAUTH_STATES) {
+        const oldestKey = oauthStateStore.keys().next().value;
+        if (!oldestKey) break;
+        oauthStateStore.delete(oldestKey);
+      }
+    }
+    oauthStateStore.set(state, entry);
+  };
+
+  // বাংলা মন্তব্য: হেডার ইনজেকশন বা ক্ষতিকর প্রোটোকল (javascript:/data:) প্রতিরোধে কঠোর http/https ও host যাচাই
   const resolveAppBaseUrl = (req: Request): string => {
     const configured = (process.env.APP_URL || '').trim().replace(/\/+$/, '');
-    if (configured) return configured;
-    const proto = String(req.header('x-forwarded-proto') || req.protocol || 'http')
+    if (configured) {
+      try {
+        const parsed = new URL(configured);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          return parsed.origin;
+        }
+      } catch {
+        // Fall through to validated request host
+      }
+    }
+    const rawProto = String(req.header('x-forwarded-proto') || req.protocol || 'http')
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+    const proto = rawProto === 'https' ? 'https' : 'http';
+    const rawHost = String(req.header('x-forwarded-host') || req.header('host') || '')
       .split(',')[0]
       .trim();
-    const host = String(req.header('x-forwarded-host') || req.header('host') || `127.0.0.1:${ctx.PORT}`)
-      .split(',')[0]
-      .trim();
+    const host = SAFE_HOST_PATTERN.test(rawHost) ? rawHost : `127.0.0.1:${ctx.PORT}`;
     return `${proto}://${host}`;
   };
 
-  app.get('/api/git/oauth/status', (req: Request, res: Response) => {
+  app.get('/api/git/oauth/status', oauthRateLimit, (req: Request, res: Response) => {
     const baseUrl = resolveAppBaseUrl(req);
     res.json({
       githubConfigured: Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
@@ -50,7 +87,7 @@ export function registerGitOauthRoutes(app: Express, ctx: GitOauthContext): void
     });
   });
 
-  app.get('/api/git/oauth/:provider/url', (req: Request, res: Response) => {
+  app.get('/api/git/oauth/:provider/url', oauthRateLimit, (req: Request, res: Response) => {
     const provider =
       req.params.provider === 'gitlab'
         ? 'gitlab'
@@ -76,7 +113,7 @@ export function registerGitOauthRoutes(app: Express, ctx: GitOauthContext): void
         });
         return;
       }
-      oauthStateStore.set(state, { provider: 'github', expiresAt: Date.now() + 10 * 60 * 1000 });
+      recordOAuthState(state, { provider: 'github', expiresAt: Date.now() + 10 * 60 * 1000 });
       const params = new URLSearchParams({
         client_id: clientId,
         redirect_uri: callbackUrl,
@@ -112,7 +149,7 @@ export function registerGitOauthRoutes(app: Express, ctx: GitOauthContext): void
       });
       return;
     }
-    oauthStateStore.set(state, {
+    recordOAuthState(state, {
       provider: 'gitlab',
       host: gitlabHost,
       expiresAt: Date.now() + 10 * 60 * 1000,
@@ -129,6 +166,7 @@ export function registerGitOauthRoutes(app: Express, ctx: GitOauthContext): void
 
   app.get(
     ['/api/git/oauth/:provider/callback', '/api/git/oauth/:provider/callback/'],
+    oauthRateLimit,
     async (req: Request, res: Response) => {
       const provider =
         req.params.provider === 'gitlab'

@@ -30,9 +30,9 @@ function heuristicTitle(message: string, attachmentName?: string): string {
 
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
+  if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
   if (request.method !== 'POST') {
-    return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request);
+    return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request, undefined, env);
   }
 
   const body = (await request.json().catch(() => ({}))) as {
@@ -59,7 +59,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
 
   const fallback = heuristicTitle(userMsg, body.attachmentName);
   if (!userMsg) {
-    return jsonEdgeResponse({ title: fallback, source: 'heuristic' }, 200, request);
+    return jsonEdgeResponse({ title: fallback, source: 'heuristic' }, 200, request, undefined, env);
   }
 
   try {
@@ -95,11 +95,11 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       .slice(0, 46);
 
     if (cleaned && cleaned.length >= 3) {
-      return jsonEdgeResponse({ title: cleaned, source: 'edge-llm' }, 200, request);
+      return jsonEdgeResponse({ title: cleaned, source: 'edge-llm' }, 200, request, undefined, env);
     }
   } catch {
     // Fall back cleanly to heuristic title
   }
 
-  return jsonEdgeResponse({ title: fallback, source: 'heuristic' }, 200, request);
+  return jsonEdgeResponse({ title: fallback, source: 'heuristic' }, 200, request, undefined, env);
 }

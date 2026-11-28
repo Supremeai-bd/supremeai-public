@@ -290,7 +290,7 @@ export function registerWorkspaceTerminalRoutes(app: Express, ctx: WorkspaceTerm
 
     const walk = (dir: string, depth: number) => {
       if (depth > 3 || collected.length >= 120) return;
-      let entries: fs.Dirent[] = [];
+      let entries: fs.Dirent[];
       try {
         entries = fs.readdirSync(dir, { withFileTypes: true });
       } catch {

@@ -514,19 +514,20 @@ class ApiClient {
         (err instanceof TypeError && /fetch|network/i.test(errMsg));
 
       if (isFetchNetworkError && endpoint !== '/api/health') {
-        let onlineProbeOk = false;
+        let onlineProbeOk: boolean;
+        const probeCtrl = new AbortController();
+        const probeTimer = setTimeout(() => probeCtrl.abort(), 2200);
         try {
-          const probeCtrl = new AbortController();
-          const probeTimer = setTimeout(() => probeCtrl.abort(), 2200);
           const probeRes = await fetch('/api/health', {
             method: 'GET',
             cache: 'no-store',
             signal: probeCtrl.signal,
           });
-          clearTimeout(probeTimer);
           onlineProbeOk = probeRes.ok;
         } catch {
           onlineProbeOk = false;
+        } finally {
+          clearTimeout(probeTimer);
         }
 
         if (typeof navigator !== 'undefined' && !navigator.onLine) {

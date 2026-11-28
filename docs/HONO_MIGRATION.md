@@ -53,8 +53,9 @@ src/api/node.ts           → Node: Express-এ mount (@hono/node-server)
 | `POST /api/telemetry/client-error` | ৭৩ → ২ | `routes/telemetry.ts`-এর অংশ | ✅ Hono (Edge-এর ৮ KB সীমা, 413 আর 405 এখন Node-এও আছে) |
 | `GET /api/health` | ৩৭ → ২ | `routes/telemetry.ts`-এর health অংশ সরানো | ✅ Hono; version package.json থেকে; providerReadiness, no-store, HEAD ও 405 |
 | `GET /api/models` | ২৯ → ২ | `routes/telemetry.ts`-এ শুধু Node catalog cache | ✅ Hono; Node-এর shared cache helper injected (billing-ও ব্যবহার করে); Edge-এ স্থানীয় canonical catalog |
-| `GET /api/platform/config` | ৪০ | `routes/admin/platform.ts` | ⏳ (Express-এ admin store থেকে পড়ে, Edge-এ static) |
-| `/api/llm-gateway/latency` | ১১০ | `routes/llmLatency.ts` | ⚠️ দুই কপির ডেটা আলাদা: Express-এ স্থির সংখ্যা, Edge-এ সত্যিকারের probe। আগে product সিদ্ধান্ত লাগবে |
+| `GET /api/auth/captcha-config` | ৩১ → ১ | আগে শুধু Edge-এ | ✅ Hono (`routes/captchaConfig.ts`); এখন Node ও Edge উভয় রানটাইমে একীভূত |
+| `GET /api/platform/config` | ৪০ → ১ | `routes/admin/platform.ts`-এর অংশ সরানো | ✅ Hono (`routes/platformConfig.ts`); Node-এ লাইভ `getPlatformConfig` ইনজেকশন, Edge-এ ক্যানোনিকাল পলিসি + প্ল্যান ক্যাটালগ |
+| `/api/llm-gateway/latency` | ১৩৯ | `routes/llmLatency.ts` | ⏳ দুই কপিতেই এখন প্রকৃত ডেটা স্কিমা (ভুয়া sampleCount বাদ); একীভূত প্রোব সিদ্ধান্তের অপেক্ষায় |
 | `/api/share/generate`, `/api/share/artifact`, `/api/share/:id` | ১৪১ → ৪ | আগে শুধু Edge-এ | ✅ Hono; Node-এও চলে; no-store, 1 MiB actual-byte limit, malformed input 400/404, HEAD ও 405 |
 | `/api/research/*` | ২৫৪ | — (শুধু Edge-এ) | ⏳ আলাদা ধাপ |
 | `/api/tts`, `/api/tts/edge` | ৪৫৮ | `routes/tts.ts` | ⏳ |
