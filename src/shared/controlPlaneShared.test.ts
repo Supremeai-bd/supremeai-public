@@ -7,6 +7,10 @@ import {
   parseEcosystemDiagnosticsResult,
   CONTROL_PLANE_ROUTE_SPECS,
   FALLBACK_MCP_TOOLS,
+  asMcpRpcResult,
+  mcpResultText,
+  parseMcpTextJson,
+  readJsonPath,
 } from './controlPlaneShared';
 
 describe('controlPlaneShared', () => {
@@ -153,5 +157,41 @@ describe('controlPlaneShared', () => {
       expect(stream).toBeDefined();
       expect(stream?.edgeSupported).toBe(false);
     });
+  });
+});
+
+describe('controlPlaneShared untyped-JSON helpers', () => {
+  it('readJsonPath walks nested objects and stops at non-objects', () => {
+    const payload = { health: { services: { cloudflare: { status: 'critical' } } }, n: 3 };
+    expect(readJsonPath(payload, ['health', 'services', 'cloudflare', 'status'])).toBe('critical');
+    expect(readJsonPath(payload, ['n', 'x'])).toBeUndefined();
+    expect(readJsonPath(null, ['a'])).toBeUndefined();
+    expect(readJsonPath('text', ['length'])).toBeUndefined();
+    expect(readJsonPath(payload, [])).toBe(payload);
+  });
+
+  it('asMcpRpcResult / mcpResultText only accept object results with string text', () => {
+    expect(asMcpRpcResult('nope')).toBeNull();
+    expect(asMcpRpcResult(null)).toBeNull();
+    expect(mcpResultText({ content: [{ type: 'text', text: 'hi' }] })).toBe('hi');
+    expect(mcpResultText({ content: [{ type: 'text', text: 42 }] })).toBeUndefined();
+    expect(mcpResultText({ content: [] })).toBeUndefined();
+    expect(mcpResultText(undefined)).toBeUndefined();
+  });
+
+  it('parseMcpTextJson parses the first text block and returns null on bad JSON', () => {
+    expect(parseMcpTextJson({ content: [{ text: '{"services":[1]}' }] })).toEqual({ services: [1] });
+    expect(parseMcpTextJson({ content: [{ text: 'not json' }] })).toBeNull();
+    expect(parseMcpTextJson({})).toBeNull();
+  });
+
+  it('transformMcpToolsList tolerates non-array and malformed tool rows', () => {
+    expect(transformMcpToolsList(undefined, 'x').tools).toEqual([]);
+    const { tools } = transformMcpToolsList(
+      [{ name: 'status', annotations: { readOnlyHint: false, destructiveHint: 1 } }, 'junk'],
+      'x'
+    );
+    expect(tools[0]).toMatchObject({ name: 'status', readOnlyHint: false, destructiveHint: true });
+    expect(tools[1]).toMatchObject({ name: 'undefined', readOnlyHint: true, destructiveHint: false });
   });
 });
