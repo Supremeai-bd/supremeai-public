@@ -31,24 +31,69 @@ export function categorizeTool(name: string): McpToolDescriptor['category'] {
 }
 
 /**
+ * Loose shape of an MCP JSON-RPC `result` (tools/list, tools/call). Tower payloads are not
+ * versioned, so every field is optional and callers narrow before use.
+ */
+export interface McpRpcResult {
+  content?: Array<{ type?: string; text?: unknown } | undefined>;
+  isError?: boolean;
+  tools?: unknown;
+  [key: string]: unknown;
+}
+
+/** Narrows an untyped JSON-RPC result to {@link McpRpcResult}; non-objects become null. */
+export function asMcpRpcResult(value: unknown): McpRpcResult | null {
+  return value && typeof value === 'object' ? (value as McpRpcResult) : null;
+}
+
+/** Text of the first content block of an MCP tool result, or undefined. */
+export function mcpResultText(value: unknown): string | undefined {
+  const text = asMcpRpcResult(value)?.content?.[0]?.text;
+  return typeof text === 'string' ? text : undefined;
+}
+
+/** Parses the first text block of an MCP tool result as JSON; null when absent or invalid. */
+export function parseMcpTextJson(value: unknown): unknown {
+  const text = mcpResultText(value);
+  if (text === undefined) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/** Reads a nested field from untyped JSON (`readJsonPath(x, ['a', 'b'])` ≈ `x?.a?.b`). */
+export function readJsonPath(value: unknown, path: readonly string[]): unknown {
+  let current: unknown = value;
+  for (const key of path) {
+    if (!current || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+/**
  * বাংলা মন্তব্য: MCP সার্ভার থেকে পাওয়া র' টুলসের লিস্টকে স্ট্যান্ডার্ড McpToolDescriptor অ্যারেতে রূপান্তর করে।
  */
 export function transformMcpToolsList(
-  rawTools: any[],
+  rawTools: unknown,
   mcpEndpoint: string
 ): {
   tools: McpToolDescriptor[];
   provenance: DataProvenance;
   endpoint: string;
 } {
-  const tools: McpToolDescriptor[] = (Array.isArray(rawTools) ? rawTools : []).map((t: any) => ({
-    name: String(t.name),
-    description: String(t.description || ''),
-    category: categorizeTool(String(t.name)),
-    readOnlyHint: t?.annotations?.readOnlyHint !== false,
-    destructiveHint: Boolean(t?.annotations?.destructiveHint),
-    inputSchema: t.inputSchema,
-  }));
+  const tools: McpToolDescriptor[] = (Array.isArray(rawTools) ? rawTools : []).map(
+    (t: unknown) => ({
+      name: String(readJsonPath(t, ['name'])),
+      description: String(readJsonPath(t, ['description']) || ''),
+      category: categorizeTool(String(readJsonPath(t, ['name']))),
+      readOnlyHint: readJsonPath(t, ['annotations', 'readOnlyHint']) !== false,
+      destructiveHint: Boolean(readJsonPath(t, ['annotations', 'destructiveHint'])),
+      inputSchema: readJsonPath(t, ['inputSchema']) as McpToolDescriptor['inputSchema'],
+    })
+  );
 
   return {
     tools,
@@ -110,7 +155,7 @@ export function computeEvidenceFingerprint(evidence: unknown): string {
  * টাওয়ার উত্তর না দিলে বা রায় (releaseGate) বোঝা না গেলে আর "GO" ধরে নেওয়া হয় না — DEGRADED।
  */
 export function parseDeepDiagnoseResult(
-  mcpResult: any,
+  mcpResult: unknown,
   service: string = 'api',
   intent: string = 'is_healthy',
   latencyMs: number = 0
@@ -119,7 +164,7 @@ export function parseDeepDiagnoseResult(
   let summary = `MCP Tower did not answer — diagnosis for ${service} is unavailable.`;
   let releaseGate: 'GO' | 'NO_GO' | 'DEGRADED' = 'DEGRADED';
 
-  const contentText = mcpResult?.content?.[0]?.text;
+  const contentText = mcpResultText(mcpResult);
   if (typeof contentText !== 'string') {
     provenance = 'local-snapshot';
   } else {
@@ -163,8 +208,8 @@ export function parseDeepDiagnoseResult(
  * বাংলা মন্তব্য: MCP Tower-এর status ও system_parity_audit রেজাল্টকে ইকোসিস্টেম ডায়াগনস্টিকস ভিউয়ের জন্য প্রসেস করা।
  */
 export function parseEcosystemDiagnosticsResult(
-  statusPayload: any,
-  parityPayload: any,
+  statusPayload: unknown,
+  parityPayload: unknown,
   mcpEndpoint: string,
   upstreamOrigin: string
 ) {

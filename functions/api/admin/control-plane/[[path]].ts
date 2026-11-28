@@ -10,13 +10,13 @@ import {
   authorizeAdminRequest,
 } from '../../../_lib/edgeHelpers';
 import {
-  categorizeTool,
   transformMcpToolsList,
   FALLBACK_MCP_TOOLS,
-  FALLBACK_GITHUB_COMMIT,
   parseDeepDiagnoseResult,
   parseEcosystemDiagnosticsResult,
   computeEvidenceFingerprint,
+  parseMcpTextJson,
+  readJsonPath,
 } from '../../../../src/shared/controlPlaneShared';
 import { withAdminAudit, type AdminAuditContext } from '../../../_lib/adminAudit';
 
@@ -32,12 +32,14 @@ async function fetchGithubHead(env?: Record<string, string | undefined>) {
       5000
     );
     if (res.ok) {
-      const data = (await res.json()) as any;
+      const data: unknown = await res.json();
       return {
-        sha: String(data?.sha || '').slice(0, 7) || 'head',
-        message: String(data?.commit?.message || '').split('\n')[0] || 'feat: main sync',
-        author: String(data?.commit?.author?.name || 'SupremeAI Maintainer'),
-        date: String(data?.commit?.author?.date || new Date().toISOString()),
+        sha: String(readJsonPath(data, ['sha']) || '').slice(0, 7) || 'head',
+        message:
+          String(readJsonPath(data, ['commit', 'message']) || '').split('\n')[0] ||
+          'feat: main sync',
+        author: String(readJsonPath(data, ['commit', 'author', 'name']) || 'SupremeAI Maintainer'),
+        date: String(readJsonPath(data, ['commit', 'author', 'date']) || new Date().toISOString()),
         provenance: 'live-github',
       };
     }
@@ -414,7 +416,7 @@ async function handleControlPlaneRequest(
     const service = body.service || 'api';
     const intent = body.intent || 'is_healthy';
 
-    let mcpResult: any = null;
+    let mcpResult: unknown = null;
     const diagStarted = Date.now();
     try {
       mcpResult = await callMcpTowerRpc(
@@ -526,8 +528,8 @@ async function handleControlPlaneRequest(
   }
 
   if (sub === 'ecosystem-diagnostics') {
-    let statusPayload: any = null;
-    let parityPayload: any = null;
+    let statusPayload: unknown = null;
+    let parityPayload: unknown = null;
     try {
       const [statusRes, parityRes] = await Promise.all([
         callMcpTowerRpc(
@@ -543,17 +545,8 @@ async function handleControlPlaneRequest(
           8000
         ).catch(() => null),
       ]);
-      const parseRpc = (r: any) => {
-        const txt = r?.content?.[0]?.text;
-        if (typeof txt !== 'string') return null;
-        try {
-          return JSON.parse(txt);
-        } catch {
-          return null;
-        }
-      };
-      statusPayload = parseRpc(statusRes);
-      parityPayload = parseRpc(parityRes);
+      statusPayload = parseMcpTextJson(statusRes);
+      parityPayload = parseMcpTextJson(parityRes);
     } catch {
       // Non-fatal fallback
     }

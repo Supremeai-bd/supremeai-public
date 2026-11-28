@@ -44,9 +44,12 @@ export interface ControlPlaneRouterDeps {
 
 import {
   computeEvidenceFingerprint,
-  categorizeTool,
   transformMcpToolsList,
-  FALLBACK_MCP_TOOLS,
+  asMcpRpcResult,
+  mcpResultText,
+  parseMcpTextJson,
+  readJsonPath,
+  type McpRpcResult,
 } from '../shared/controlPlaneShared';
 import {
   DEFAULT_BACKEND_ORIGIN,
@@ -85,7 +88,13 @@ let cachedGithubSha: {
 
 
 
-function parseSseOrJson(raw: string): any {
+/** JSON-RPC 2.0 response envelope as sent by MCP Tower (plain JSON or the last SSE `data:` frame). */
+interface JsonRpcEnvelope {
+  result?: unknown;
+  error?: { message?: string } & Record<string, unknown>;
+}
+
+function parseSseOrJson(raw: string): JsonRpcEnvelope | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
@@ -185,9 +194,9 @@ async function ensureMcpSession(forceRefresh: boolean = false): Promise<string |
 
 async function callMcpJsonRpc(
   method: 'tools/list' | 'tools/call' | 'resources/list' | 'resources/read',
-  params: Record<string, any> = {},
+  params: Record<string, unknown> = {},
   timeoutMs: number = 8500
-): Promise<any> {
+): Promise<McpRpcResult | null> {
   const execute = async (forceNewSession: boolean) => {
     const sid = await ensureMcpSession(forceNewSession);
     const headers: Record<string, string> = {
@@ -234,7 +243,7 @@ async function callMcpJsonRpc(
   if (parsed.error) {
     throw new Error(parsed.error.message || JSON.stringify(parsed.error));
   }
-  return parsed.result;
+  return asMcpRpcResult(parsed.result);
 }
 
 async function fetchLiveGithubCommit(): Promise<{
@@ -1154,7 +1163,7 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
   app.post('/api/admin/control-plane/deep-diagnose', async (req: Request, res: Response) => {
     const service = typeof req.body?.service === 'string' ? req.body.service : 'api';
     const intent = typeof req.body?.intent === 'string' ? req.body.intent : 'is_healthy';
-    let provenance: DataProvenance = 'local-snapshot';
+    let provenance: DataProvenance;
     let liveSummary = latestDiagnose.summary;
     let releaseGate: DeepDiagnoseReport['releaseGate'] = latestDiagnose.releaseGate;
 
@@ -1168,7 +1177,7 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
         9000
       );
       provenance = 'live-mcp';
-      const contentText = mcpResult?.content?.[0]?.text;
+      const contentText = mcpResultText(mcpResult);
       if (typeof contentText === 'string') {
         try {
           const parsed = JSON.parse(contentText);
@@ -1611,7 +1620,7 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
 
   // --- 3-Tier Memory, Qdrant Vector DB & AST Graph ---
   app.get('/api/admin/control-plane/memory', async (_req: Request, res: Response) => {
-    let provenance: DataProvenance = 'local-snapshot';
+    let provenance: DataProvenance;
     try {
       const mcpRes = await callMcpJsonRpc(
         'tools/call',
@@ -1719,9 +1728,9 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
 
   app.post('/api/admin/control-plane/graph-query', async (req: Request, res: Response) => {
     const query = typeof req.body?.query === 'string' ? req.body.query.trim().toLowerCase() : '';
-    let provenance: DataProvenance = 'local-snapshot';
+    let provenance: DataProvenance;
     let liveOutput: string | undefined;
-    let liveStatus: 'ok' | 'unavailable' | 'error' = 'unavailable';
+    let liveStatus: 'ok' | 'unavailable' | 'error';
 
     try {
       const mcpRes = await callMcpJsonRpc(
@@ -1773,7 +1782,7 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
 
   // --- External Agents & Bridge Work Orders ---
   app.get('/api/admin/control-plane/external-agents', async (_req: Request, res: Response) => {
-    let provenance: DataProvenance = 'local-snapshot';
+    let provenance: DataProvenance;
     try {
       await callMcpJsonRpc('tools/call', { name: 'bridge_work_queue', arguments: {} }, 6000);
       provenance = 'live-mcp';
@@ -2042,9 +2051,9 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
       recommendation: string;
     }> = [];
 
-    let liveStatusPayload: any = null;
-    let parityPayload: any = null;
-    let mcpReachable = false;
+    let liveStatusPayload: unknown = null;
+    let parityPayload: unknown = null;
+    let mcpReachable: boolean;
 
     try {
       const [statusRes, parityRes] = await Promise.all([
@@ -2060,26 +2069,19 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
         ).catch(() => null),
       ]);
 
-      const extractJson = (rpcResult: any) => {
-        const txt = rpcResult?.content?.[0]?.text;
-        if (typeof txt !== 'string') return null;
-        try {
-          return JSON.parse(txt);
-        } catch {
-          return null;
-        }
-      };
-
-      liveStatusPayload = extractJson(statusRes);
-      parityPayload = extractJson(parityRes);
+      liveStatusPayload = parseMcpTextJson(statusRes);
+      parityPayload = parseMcpTextJson(parityRes);
       mcpReachable = Boolean(liveStatusPayload || parityPayload);
     } catch {
       mcpReachable = false;
     }
 
     const activeServiceChecks =
-      liveStatusPayload?.services || liveStatusPayload?.health?.services || {};
-    const redisInfo = liveStatusPayload?.redis || parityPayload?.redis || null;
+      readJsonPath(liveStatusPayload, ['services']) ||
+      readJsonPath(liveStatusPayload, ['health', 'services']) ||
+      {};
+    const redisInfo =
+      readJsonPath(liveStatusPayload, ['redis']) || readJsonPath(parityPayload, ['redis']) || null;
     const renderMcpServiceId = (
       process.env.RENDER_MCP_SERVICE_ID || process.env.RENDER_SERVICE_ID_MCP
     )?.trim();
@@ -2106,8 +2108,8 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
     }
 
     if (
-      redisInfo?.activeProvider === 'secondary' ||
-      String(redisInfo?.failover || '').includes('secondary')
+      readJsonPath(redisInfo, ['activeProvider']) === 'secondary' ||
+      String(readJsonPath(redisInfo, ['failover']) || '').includes('secondary')
     ) {
       findings.push({
         id: 'redis-failover',
@@ -2132,11 +2134,25 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
       });
     }
 
-    const driftServices = Array.isArray(parityPayload?.services)
-      ? parityPayload.services.filter(
-          (s: any) => s?.drift || s?.shaMismatch || s?.status === 'degraded'
-        )
-      : [];
+    /** One row of Tower's `system_parity_audit.services` (untyped upstream JSON). */
+    type ParityServiceRow = Partial<
+      Record<
+        | 'name'
+        | 'service'
+        | 'status'
+        | 'drift'
+        | 'shaMismatch'
+        | 'liveSha'
+        | 'deployedSha'
+        | 'targetSha'
+        | 'expectedSha',
+        unknown
+      >
+    >;
+    const parityServices = readJsonPath(parityPayload, ['services']);
+    const driftServices = (Array.isArray(parityServices) ? parityServices : [])
+      .filter((s: unknown): s is ParityServiceRow => Boolean(s && typeof s === 'object'))
+      .filter((s) => s.drift || s.shaMismatch || s.status === 'degraded');
     for (const svc of driftServices.slice(0, 4)) {
       findings.push({
         id: `parity-${String(svc.name || svc.service || 'service')}`,
@@ -2149,7 +2165,7 @@ export function registerControlPlaneRoutes(app: Express, deps: ControlPlaneRoute
       });
     }
 
-    if (activeServiceChecks?.cloudflare?.status === 'critical') {
+    if (readJsonPath(activeServiceChecks, ['cloudflare', 'status']) === 'critical') {
       findings.push({
         id: 'cf-worker-route',
         severity: 'warning',
