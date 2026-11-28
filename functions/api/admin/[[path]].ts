@@ -2,15 +2,12 @@ import {
   PagesContext,
   applyCorsHeaders,
   handleCorsPreflight,
-  isSafeGitHubRepoSlug,
   jsonEdgeResponse,
   resolveUpstreamOrigin,
   forwardRawUpstream,
-  fetchWithTimeout,
   timingSafeEqualStrings,
   authorizeAdminRequest,
 } from '../../_lib/edgeHelpers';
-import { extractCiErrorSnippet } from '../../../src/utils/githubPipelineMetrics';
 import { handleAdminRealDataRoute } from '../../_lib/adminRealDataRoutes';
 import { handleAdminTeamRoute } from '../../_lib/adminTeam';
 import { handleAdminModelRouterRoute } from '../../_lib/adminModelRouter';
@@ -19,7 +16,7 @@ import { handleAdminFinOpsRoute } from '../../_lib/adminFinOps';
 import { handleAdminSessionsRoute } from '../../_lib/adminSessions';
 import { handleAdminAlertsRoute } from '../../_lib/adminAlerts';
 import { handleAdminPackagesRoute } from '../../_lib/creditPackages';
-import { runPullAction } from '../../_lib/githubPullActions';
+import { handleAdminGitHubRoute } from '../../_lib/githubPullActions';
 import {
   handleAdminAuditLogRoute,
   withAdminAudit,
@@ -258,243 +255,9 @@ async function handleAdminRequest(
     }
   }
 
-  // 1. Live GitHub Runs & Pulls via GitHub API on Edge
-  if (path.startsWith('/api/admin/github/')) {
-    const repo = incomingUrl.searchParams.get('repo')?.trim() || 'Supremeai-bd/supremeai';
-    if (!isSafeGitHubRepoSlug(repo)) {
-      return jsonEdgeResponse(
-        { error: 'Invalid GitHub repository slug.' },
-        400,
-        request,
-        undefined,
-        env
-      );
-    }
-    const token = env?.GITHUB_TOKEN?.trim() || env?.GITHUB_READONLY_TOKEN?.trim() || '';
-    const ghHeaders: Record<string, string> = {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'SupremeAI-Studio-Edge-Admin',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-
-    if (path === '/api/admin/github/runs' && request.method === 'GET') {
-      try {
-        const res = await fetchWithTimeout(
-          `https://api.github.com/repos/${repo}/actions/runs?per_page=10`,
-          { headers: ghHeaders },
-          5500
-        );
-        const data = (await res.json().catch(() => ({}))) as { workflow_runs?: unknown[] };
-        const runs = Array.isArray(data.workflow_runs) ? data.workflow_runs : [];
-        return jsonEdgeResponse(
-          { runs, tokenConfigured: Boolean(token) },
-          200,
-          request,
-          undefined,
-          env
-        );
-      } catch {
-        return jsonEdgeResponse(
-          { runs: [], tokenConfigured: Boolean(token) },
-          200,
-          request,
-          undefined,
-          env
-        );
-      }
-    }
-
-    const logMatch = path.match(/^\/api\/admin\/github\/runs\/(\d{1,20})\/logs$/);
-    if (logMatch && request.method === 'GET') {
-      const runId = logMatch[1];
-      try {
-        const jobsRes = await fetchWithTimeout(
-          `https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs?per_page=30`,
-          { headers: ghHeaders },
-          6000
-        );
-        if (!jobsRes.ok) {
-          return jsonEdgeResponse(
-            {
-              runId,
-              repo,
-              available: false,
-              reason: `GitHub jobs API returned HTTP ${jobsRes.status}.`,
-              failedJobs: [],
-              annotations: [],
-              stderrSnippet: '',
-              truncated: false,
-            },
-            200,
-            request,
-            undefined,
-            env
-          );
-        }
-        const jobsPayload = (await jobsRes.json().catch(() => ({}))) as {
-          jobs?: Array<Record<string, unknown>>;
-        };
-        const allJobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
-        const failedSet = new Set([
-          'failure',
-          'timed_out',
-          'startup_failure',
-          'action_required',
-          'stale',
-        ]);
-        const failedJobs = allJobs
-          .filter((j) => failedSet.has(String(j.conclusion || '').toLowerCase()))
-          .slice(0, 5)
-          .map((j) => ({
-            id: Number(j.id || 0),
-            name: String(j.name || 'Workflow job'),
-            conclusion: (j.conclusion as string | null) ?? null,
-            html_url: typeof j.html_url === 'string' ? j.html_url : null,
-            failedSteps: (Array.isArray(j.steps) ? (j.steps as Array<Record<string, unknown>>) : [])
-              .filter((s) => failedSet.has(String(s.conclusion || '').toLowerCase()))
-              .map((s) => ({
-                name: String(s.name || 'Failed step'),
-                number: Number(s.number || 0),
-                conclusion: (s.conclusion as string | null) ?? null,
-              })),
-          }));
-
-        const annotations: Array<{
-          path: string;
-          startLine: number;
-          annotationLevel: string;
-          title: string | null;
-          message: string;
-        }> = [];
-        const snippetParts: string[] = [];
-        let truncated = false;
-        let reason: string | undefined;
-
-        for (const job of failedJobs.filter((j) => j.id > 0).slice(0, 2)) {
-          const [annRes, logRes] = await Promise.allSettled([
-            fetchWithTimeout(
-              `https://api.github.com/repos/${repo}/check-runs/${job.id}/annotations?per_page=15`,
-              { headers: ghHeaders },
-              5000
-            ),
-            fetchWithTimeout(
-              `https://api.github.com/repos/${repo}/actions/jobs/${job.id}/logs`,
-              { headers: ghHeaders },
-              7000
-            ),
-          ]);
-          if (annRes.status === 'fulfilled' && annRes.value.ok) {
-            const annJson = (await annRes.value.json().catch(() => [])) as Array<
-              Record<string, unknown>
-            >;
-            if (Array.isArray(annJson)) {
-              for (const item of annJson) {
-                const msg = String(item.message || '').trim();
-                if (!msg) continue;
-                annotations.push({
-                  path: String(item.path || ''),
-                  startLine: Number(item.start_line || 0),
-                  annotationLevel: String(item.annotation_level || 'failure'),
-                  title: typeof item.title === 'string' && item.title ? item.title : null,
-                  message: msg,
-                });
-              }
-            }
-          }
-          if (logRes.status === 'fulfilled') {
-            if (logRes.value.ok) {
-              const rawText = await logRes.value.text();
-              const bounded = rawText.length > 300_000 ? rawText.slice(-300_000) : rawText;
-              const extracted = extractCiErrorSnippet(bounded, 40, 5000);
-              if (extracted.truncated || rawText.length > 300_000) truncated = true;
-              if (extracted.snippet) snippetParts.push(extracted.snippet);
-            } else if (!reason) {
-              reason = `Raw job log download returned HTTP ${logRes.value.status}.`;
-            }
-          }
-        }
-
-        const stderrSnippet = snippetParts.join('\n\n');
-        const available = Boolean(stderrSnippet || annotations.length > 0);
-        return jsonEdgeResponse(
-          {
-            runId,
-            repo,
-            available,
-            reason,
-            failedJobs,
-            annotations: annotations.slice(0, 12),
-            stderrSnippet,
-            truncated,
-          },
-          200,
-          request,
-          undefined,
-          env
-        );
-      } catch {
-        return jsonEdgeResponse(
-          {
-            runId,
-            repo,
-            available: false,
-            reason: 'Unable to fetch GitHub job logs.',
-            failedJobs: [],
-            annotations: [],
-            stderrSnippet: '',
-            truncated: false,
-          },
-          200,
-          request,
-          undefined,
-          env
-        );
-      }
-    }
-
-    const pullAction = /^\/api\/admin\/github\/pulls\/(\d{1,7})\/(approve|merge)$/.exec(path);
-    if (pullAction && request.method === 'POST') {
-      const body = (await request
-        .clone()
-        .json()
-        .catch(() => ({}))) as { repo?: unknown };
-      const targetRepo =
-        typeof body.repo === 'string' && isSafeGitHubRepoSlug(body.repo.trim())
-          ? body.repo.trim()
-          : repo;
-      const action = pullAction[2] as 'approve' | 'merge';
-      const result = await runPullAction(env, targetRepo, Number(pullAction[1]), action);
-      audit.details = `PR #${pullAction[1]} ${action} on ${targetRepo} → ${result.body.success ? 'ok' : result.body.code || result.status}`;
-      return jsonEdgeResponse(result.body, result.status, request, undefined, env);
-    }
-
-    if (path === '/api/admin/github/pulls' && request.method === 'GET') {
-      try {
-        const res = await fetchWithTimeout(
-          `https://api.github.com/repos/${repo}/pulls?state=open&per_page=10`,
-          { headers: ghHeaders },
-          5500
-        );
-        const data = (await res.json().catch(() => [])) as unknown[];
-        const pulls = Array.isArray(data) ? data : [];
-        return jsonEdgeResponse(
-          { pulls, tokenConfigured: Boolean(token) },
-          200,
-          request,
-          undefined,
-          env
-        );
-      } catch {
-        return jsonEdgeResponse(
-          { pulls: [], tokenConfigured: Boolean(token) },
-          200,
-          request,
-          undefined,
-          env
-        );
-      }
-    }
-  }
+  // 1. Live GitHub Runs, Logs, Pulls & Actions (`Supremeai-bd/supremeai` + `Supremeai-bd/supremeai-public`)
+  const ghRoute = await handleAdminGitHubRoute(path, request, env, audit);
+  if (ghRoute) return ghRoute;
 
   // 1b. বাংলা মন্তব্য: Render-এ যেগুলো স্টাব (providers, vault, customers, connections) —
   // সেগুলো edge-এ আসল উৎস (Infisical, Supabase Auth, লাইভ প্রোব) থেকে।

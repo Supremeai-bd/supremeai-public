@@ -13,6 +13,7 @@ export interface GitHubWorkflowRun {
   head_sha?: string | null;
   run_number?: number | null;
   event?: string | null;
+  repo?: string;
 }
 
 /** GitHub returns `head`/`base` as objects; the gateway returns plain strings. */
@@ -25,6 +26,8 @@ export interface GitHubPullRequest {
   base?: GitHubBranchRef;
   html_url: string;
   user: string | { login?: string };
+  created_at?: string;
+  repo?: string;
 }
 
 export type RunOutcome = 'active' | 'success' | 'failure' | 'cancelled' | 'neutral';
@@ -217,6 +220,15 @@ export function formatShortCommitSha(sha?: string | null): string | null {
   return trimmed.slice(0, 7).toLowerCase();
 }
 
+export function extractRepoFromGitHubUrl(htmlUrl?: string | null): string | null {
+  if (typeof htmlUrl !== 'string' || !htmlUrl.trim()) return null;
+  const match = htmlUrl.match(/^https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\//i);
+  if (match?.[1] && REPO_SLUG_PATTERN.test(match[1])) {
+    return match[1];
+  }
+  return null;
+}
+
 export function buildGitHubCommitUrl(
   repo: string,
   sha?: string | null,
@@ -231,11 +243,9 @@ export function buildGitHubCommitUrl(
     return `https://github.com/${trimmedRepo}/commit/${cleanSha}`;
   }
 
-  if (typeof runHtmlUrl === 'string' && runHtmlUrl.trim()) {
-    const match = runHtmlUrl.match(/^https:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\//i);
-    if (match?.[1] && REPO_SLUG_PATTERN.test(match[1])) {
-      return `https://github.com/${match[1]}/commit/${cleanSha}`;
-    }
+  const extracted = extractRepoFromGitHubUrl(runHtmlUrl);
+  if (extracted) {
+    return `https://github.com/${extracted}/commit/${cleanSha}`;
   }
 
   return null;
@@ -385,7 +395,7 @@ export function computeDeploymentTrends(
       branch: run.head_branch,
       headSha,
       shortSha: formatShortCommitSha(headSha),
-      commitUrl: buildGitHubCommitUrl(repo, headSha, run.html_url),
+      commitUrl: buildGitHubCommitUrl(run.repo || repo, headSha, run.html_url),
       runNumber: run.run_number ?? null,
       status: run.status,
       conclusion: run.conclusion,

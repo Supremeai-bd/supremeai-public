@@ -16,6 +16,31 @@ export const GITHUB_MONOREPO_SLUG = 'Supremeai-bd/supremeai';
 export const GITHUB_PUBLIC_REPO_SLUG = 'Supremeai-bd/supremeai-public';
 export const GITHUB_LEGACY_FRONTEND_SLUG = 'Supremeai-bd/supremeai-frontend';
 
+export interface ManagedGitHubRepo {
+  slug: string;
+  shortName: string;
+  roleLabel: string;
+  visibility: 'private' | 'public';
+  url: string;
+}
+
+export const MANAGED_GITHUB_REPOS: readonly ManagedGitHubRepo[] = [
+  {
+    slug: GITHUB_MONOREPO_SLUG,
+    shortName: 'supremeai',
+    roleLabel: 'Monorepo SSOT',
+    visibility: 'private',
+    url: `https://github.com/${GITHUB_MONOREPO_SLUG}`,
+  },
+  {
+    slug: GITHUB_PUBLIC_REPO_SLUG,
+    shortName: 'supremeai-public',
+    roleLabel: 'Public Studio',
+    visibility: 'public',
+    url: `https://github.com/${GITHUB_PUBLIC_REPO_SLUG}`,
+  },
+] as const;
+
 export const KNOWN_RENDER_SERVICE_IDS: Record<string, string> = {
   'supremeai-api': 'srv-dbappass728c7396p580',
 };

@@ -211,4 +211,112 @@ describe('AdminGitHubPipelineView', () => {
       'Raw job log download returned HTTP 403 (configure GITHUB_TOKEN on server).'
     );
   });
+
+  it('loads and displays both Supremeai-bd/supremeai and Supremeai-bd/supremeai-public with per-repo filtering and action routing', async () => {
+    vi.mocked(adminService.fetchGitHubRuns).mockImplementation(async (repo) => {
+      if (repo === 'Supremeai-bd/supremeai-public') {
+        return {
+          tokenConfigured: true,
+          runs: [
+            {
+              id: 9202,
+              name: 'SupremeAI Unified CI & Release Pipeline (Web + Desktop + Android + VSIX)',
+              status: 'completed',
+              conclusion: 'success',
+              html_url: 'https://github.com/Supremeai-bd/supremeai-public/actions/runs/9202',
+              created_at: '2026-11-28T11:00:00Z',
+              run_started_at: '2026-11-28T11:00:00Z',
+              updated_at: '2026-11-28T11:02:10Z',
+              head_branch: 'main',
+              head_sha: '1b2c5f34f21ec3a6103eadb8f6418361a3c79849',
+              run_number: 202,
+              repo: 'Supremeai-bd/supremeai-public',
+            },
+          ],
+        };
+      }
+      return {
+        tokenConfigured: true,
+        runs: [
+          {
+            id: 9101,
+            name: 'SupremeAI Unified CI/CD Pipeline',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: 'https://github.com/Supremeai-bd/supremeai/actions/runs/9101',
+            created_at: '2026-11-28T10:55:00Z',
+            run_started_at: '2026-11-28T10:55:00Z',
+            updated_at: '2026-11-28T10:57:44Z',
+            head_branch: 'main',
+            head_sha: 'e27a67a000000000000000000000000000000000',
+            run_number: 1260,
+            repo: 'Supremeai-bd/supremeai',
+          },
+        ],
+      };
+    });
+
+    vi.mocked(adminService.fetchGitHubPulls).mockImplementation(async (repo) => {
+      if (repo === 'Supremeai-bd/supremeai-public') {
+        return {
+          tokenConfigured: true,
+          pulls: [
+            {
+              number: 203,
+              title: 'feat(pipeline): add supremeai-public to GitHub CI/CD cockpit',
+              head: 'arena/c93463ac-supremeai-public',
+              base: 'main',
+              html_url: 'https://github.com/Supremeai-bd/supremeai-public/pull/203',
+              user: { login: 'paykaribazaronline' },
+              repo: 'Supremeai-bd/supremeai-public',
+            },
+          ],
+        };
+      }
+      return {
+        tokenConfigured: true,
+        pulls: [
+          {
+            number: 967,
+            title: 'Owner governance stack',
+            head: 'arena/a538bdfb-supremeai',
+            base: 'main',
+            html_url: 'https://github.com/Supremeai-bd/supremeai/pull/967',
+            user: { login: 'paykaribazaronline' },
+            repo: 'Supremeai-bd/supremeai',
+          },
+        ],
+      };
+    });
+    vi.mocked(adminService.triggerGitHubPullAction).mockResolvedValue(undefined);
+
+    render(<AdminGitHubPipelineView />);
+
+    // Both managed repository overview cards and both runs/PRs appear in Unified view
+    expect(await screen.findByTestId('repo-card-Supremeai-bd/supremeai')).toBeInTheDocument();
+    expect(screen.getByTestId('repo-card-Supremeai-bd/supremeai-public')).toBeInTheDocument();
+    expect(await screen.findByTestId('workflow-run-row-9202')).toBeInTheDocument();
+    expect(screen.getByTestId('workflow-run-row-9101')).toBeInTheDocument();
+    expect(screen.getByTestId('run-repo-badge-9202')).toHaveTextContent(
+      'Supremeai-bd/supremeai-public'
+    );
+    expect(
+      screen.getByTestId('pull-request-row-Supremeai-bd/supremeai-public-203')
+    ).toBeInTheDocument();
+
+    // Filter to Supremeai-bd/supremeai-public only
+    fireEvent.click(screen.getByTestId('repo-tab-Supremeai-bd/supremeai-public'));
+    expect(screen.getByTestId('workflow-run-row-9202')).toBeInTheDocument();
+    expect(screen.queryByTestId('workflow-run-row-9101')).not.toBeInTheDocument();
+
+    // Approve PR #203 routes to Supremeai-bd/supremeai-public
+    fireEvent.click(screen.getByRole('button', { name: /Approve PR/i }));
+    await waitFor(() => {
+      expect(adminService.triggerGitHubPullAction).toHaveBeenCalledWith(
+        'Supremeai-bd/supremeai-public',
+        203,
+        'approve'
+      );
+    });
+  });
 });

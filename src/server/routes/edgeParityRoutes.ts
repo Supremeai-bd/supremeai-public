@@ -8,6 +8,7 @@ import {
 import { handleAdminAlertsRoute } from '../../../functions/_lib/adminAlerts';
 import { handleAdminBackupsRoute } from '../../../functions/_lib/adminBackups';
 import { handleAdminFinOpsRoute } from '../../../functions/_lib/adminFinOps';
+import { handleAdminGitHubRoute } from '../../../functions/_lib/githubPullActions';
 import { handleAdminModelRouterRoute } from '../../../functions/_lib/adminModelRouter';
 import { handleAdminPackagesRoute } from '../../../functions/_lib/creditPackages';
 import { handleAdminRealDataRoute } from '../../../functions/_lib/adminRealDataRoutes';
@@ -154,6 +155,7 @@ export function registerEdgeParityRoutes(app: Express, ctx: EdgeParityRoutesCont
     const upstreamOrigin = resolveUpstreamOrigin(env);
 
     const matched =
+      (await handleAdminGitHubRoute(path, webReq, env, audit)) ??
       (await handleAdminTeamRoute(path, webReq, env, audit)) ??
       (await handleAdminModelRouterRoute(path, webReq, env, audit)) ??
       (await handleAdminBackupsRoute(path, webReq, env)) ??
