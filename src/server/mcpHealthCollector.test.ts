@@ -36,6 +36,7 @@ const mcpStatusPayload = {
 function installFetchMock() {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const origin = new URL(url).origin;
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
     if (url === `${TOWER}/health`) {
       return jsonResponse({
@@ -48,19 +49,19 @@ function installFetchMock() {
     if (url === `${BACKEND}/healthz`) {
       return jsonResponse({ status: 'ok', version: '9.9.9', chat_ready: true });
     }
-    if (url.startsWith('https://api.github.com/')) {
+    if (origin === 'https://api.github.com') {
       return jsonResponse({ sha: 'abc123' });
     }
-    if (url.startsWith(TOWER) && body?.method === 'initialize') {
+    if (origin === TOWER && body?.method === 'initialize') {
       return jsonResponse(
         { jsonrpc: '2.0', id: 1, result: {} },
         { headers: { 'mcp-session-id': 'sess-1' } }
       );
     }
-    if (url.startsWith(TOWER) && body?.method === 'notifications/initialized') {
+    if (origin === TOWER && body?.method === 'notifications/initialized') {
       return new Response(null, { status: 202 });
     }
-    if (url.startsWith(TOWER) && body?.method === 'tools/call') {
+    if (origin === TOWER && body?.method === 'tools/call') {
       // Streamable HTTP transport answers with an SSE frame.
       const frame = {
         jsonrpc: '2.0',
