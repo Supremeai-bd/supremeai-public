@@ -17,7 +17,13 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  Layers,
 } from 'lucide-react';
+import {
+  GITHUB_MONOREPO_SLUG,
+  GITHUB_PUBLIC_REPO_SLUG,
+  MANAGED_GITHUB_REPOS,
+} from '../../config/platformEndpoints';
 import { adminService } from '../../services/adminService';
 import { useI18n } from '../../utils/i18n';
 import { useDataSource } from '../../hooks/useDataSource';
@@ -30,6 +36,7 @@ import {
   computeRunDurationMs,
   DEFAULT_DURATION_THRESHOLD_MS,
   evaluateDurationAlert,
+  extractRepoFromGitHubUrl,
   formatPipelineDuration,
   formatShortCommitSha,
   isRunActive,
@@ -53,11 +60,17 @@ function loadStoredDurationThreshold(): number {
   return DEFAULT_DURATION_THRESHOLD_MS;
 }
 
-type Run = GitHubWorkflowRun;
-
+type Run = GitHubWorkflowRun & { repo: string };
 type BranchRef = GitHubBranchRef;
+type Pull = GitHubPullRequest & { repo: string };
+type RepoScope = 'all' | string;
 
-type Pull = GitHubPullRequest;
+interface RepoSnapshot {
+  runs: Run[];
+  pulls: Pull[];
+  tokenConfigured: boolean;
+  warning: string | null;
+}
 
 /** GitHub returns `head`/`base` as objects; the gateway returns plain strings. */
 export function branchName(ref: BranchRef): string {
@@ -66,13 +79,17 @@ export function branchName(ref: BranchRef): string {
   return String(ref.ref || ref.label || '');
 }
 
+function normalizeRepoSlug(candidate: string | null | undefined, fallback: string): string {
+  const raw = (candidate || '').trim();
+  if (!raw) return fallback;
+  const matched = MANAGED_GITHUB_REPOS.find((m) => m.slug.toLowerCase() === raw.toLowerCase());
+  return matched ? matched.slug : raw;
+}
+
 export const AdminGitHubPipelineView: React.FC = () => {
   const { t } = useI18n();
-  const [repo, setRepo] = useState('Supremeai-bd/supremeai');
-  const [runs, setRuns] = useState<Run[]>([]);
-  const [pulls, setPulls] = useState<Pull[]>([]);
-  const [tokenOk, setTokenOk] = useState<boolean>(true);
-  const [warning, setWarning] = useState<string | null>(null);
+  const [scope, setScope] = useState<RepoScope>('all');
+  const [snapshots, setSnapshots] = useState<Record<string, RepoSnapshot>>({});
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState<boolean>(false);
@@ -96,9 +113,139 @@ export const AdminGitHubPipelineView: React.FC = () => {
   const [copiedErrorRunKey, setCopiedErrorRunKey] = useState<string | null>(null);
   const lastAlertedKeyRef = useRef<string | null>(null);
 
+  const load = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const results = await Promise.all(
+        MANAGED_GITHUB_REPOS.map(async (managed) => {
+          try {
+            const [runsRes, pullsRes] = await Promise.all([
+              adminService.fetchGitHubRuns(managed.slug),
+              adminService.fetchGitHubPulls(managed.slug),
+            ]);
+            const runs: Run[] = (Array.isArray(runsRes?.runs) ? runsRes.runs : []).map((r) => ({
+              ...r,
+              repo: normalizeRepoSlug(
+                r.repo || extractRepoFromGitHubUrl(r.html_url),
+                managed.slug
+              ),
+            }));
+            const pulls: Pull[] = (Array.isArray(pullsRes?.pulls) ? pullsRes.pulls : []).map(
+              (p) => ({
+                ...p,
+                repo: normalizeRepoSlug(
+                  p.repo || extractRepoFromGitHubUrl(p.html_url),
+                  managed.slug
+                ),
+              })
+            );
+            return {
+              slug: managed.slug,
+              ok: true,
+              snapshot: {
+                runs,
+                pulls,
+                tokenConfigured:
+                  runsRes?.tokenConfigured !== false && pullsRes?.tokenConfigured !== false,
+                warning: runsRes?.warning || pullsRes?.warning || null,
+              } satisfies RepoSnapshot,
+            };
+          } catch {
+            return {
+              slug: managed.slug,
+              ok: false,
+              snapshot: {
+                runs: [],
+                pulls: [],
+                tokenConfigured: true,
+                warning: `Unable to reach GitHub pipeline proxy for ${managed.slug}.`,
+              } satisfies RepoSnapshot,
+            };
+          }
+        })
+      );
+
+      const nextSnapshots: Record<string, RepoSnapshot> = {};
+      let anyOk = false;
+      for (const item of results) {
+        nextSnapshots[item.slug] = item.snapshot;
+        if (item.ok) anyOk = true;
+      }
+      setSnapshots(nextSnapshots);
+      setHasLoaded(anyOk);
+      if (anyOk) {
+        setLastUpdatedMs(Date.now());
+      }
+      setNowMs(Date.now());
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const { runs, pulls, tokenOk, warning } = useMemo(() => {
+    if (scope !== 'all') {
+      const snap = snapshots[scope];
+      return {
+        runs: snap?.runs ?? [],
+        pulls: snap?.pulls ?? [],
+        tokenOk: snap ? snap.tokenConfigured : true,
+        warning: snap?.warning ?? null,
+      };
+    }
+
+    const seenRuns = new Set<string>();
+    const mergedRuns: Run[] = [];
+    const seenPulls = new Set<string>();
+    const mergedPulls: Pull[] = [];
+    const warnings: string[] = [];
+    let anyTokenMissing = false;
+
+    for (const managed of MANAGED_GITHUB_REPOS) {
+      const snap = snapshots[managed.slug];
+      if (!snap) continue;
+      if (!snap.tokenConfigured && managed.visibility === 'private') {
+        anyTokenMissing = true;
+      }
+      if (snap.warning) warnings.push(`${managed.shortName}: ${snap.warning}`);
+
+      for (const r of snap.runs) {
+        const dedupeKey = r.html_url?.trim() || `${r.repo}:${r.id}`;
+        if (seenRuns.has(dedupeKey)) continue;
+        seenRuns.add(dedupeKey);
+        mergedRuns.push(r);
+      }
+      for (const p of snap.pulls) {
+        const dedupeKey = p.html_url?.trim() || `${p.repo}#${p.number}`;
+        if (seenPulls.has(dedupeKey)) continue;
+        seenPulls.add(dedupeKey);
+        mergedPulls.push(p);
+      }
+    }
+
+    mergedRuns.sort(
+      (a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0)
+    );
+    mergedPulls.sort(
+      (a, b) => (Date.parse(b.created_at || '') || 0) - (Date.parse(a.created_at || '') || 0)
+    );
+
+    return {
+      runs: mergedRuns,
+      pulls: mergedPulls,
+      tokenOk: !anyTokenMissing,
+      warning: warnings.length > 0 ? warnings.join(' · ') : null,
+    };
+  }, [scope, snapshots]);
+
+  const activeScopeLabel =
+    scope === 'all' ? `${GITHUB_MONOREPO_SLUG} + ${GITHUB_PUBLIC_REPO_SLUG}` : scope;
+
   const hasActiveRun = useMemo(() => runs.some((r) => isRunActive(r)), [runs]);
 
-  const trendsSummary = useMemo(() => computeDeploymentTrends(runs, nowMs), [runs, nowMs]);
+  const trendsSummary = useMemo(
+    () => computeDeploymentTrends(runs, nowMs, scope === 'all' ? '' : scope),
+    [runs, nowMs, scope]
+  );
   const durationAlert = useMemo(
     () => evaluateDurationAlert(trendsSummary.avgDurationMs, durationThresholdMs),
     [trendsSummary.avgDurationMs, durationThresholdMs]
@@ -118,31 +265,6 @@ export const AdminGitHubPipelineView: React.FC = () => {
     }
   }, []);
 
-  const load = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [runsRes, pullsRes] = await Promise.all([
-        adminService.fetchGitHubRuns(repo),
-        adminService.fetchGitHubPulls(repo),
-      ]);
-      setRuns(Array.isArray(runsRes?.runs) ? runsRes.runs : []);
-      setPulls(Array.isArray(pullsRes?.pulls) ? pullsRes.pulls : []);
-      setTokenOk(runsRes?.tokenConfigured !== false && pullsRes?.tokenConfigured !== false);
-      setWarning(runsRes?.warning || pullsRes?.warning || null);
-      setHasLoaded(true);
-      setLastUpdatedMs(Date.now());
-      setNowMs(Date.now());
-    } catch {
-      setRuns([]);
-      setPulls([]);
-      setWarning('Unable to reach GitHub pipeline proxy.');
-      setHasLoaded(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [repo]);
-
-  // বাংলা মন্তব্য: সক্রিয় ডিপ্লয়মেন্ট চললে দ্রুত ৮ সেকেন্ড পরপর পোল হবে, নাহলে ৩০ সেকেন্ড।
   useEffect(() => {
     void load();
     const pollMs = hasActiveRun ? 8000 : 30000;
@@ -152,7 +274,6 @@ export const AdminGitHubPipelineView: React.FC = () => {
     return () => clearInterval(timer);
   }, [load, hasActiveRun]);
 
-  // বাংলা মন্তব্য: কোনো জব চলমান থাকলে প্রতি ১ সেকেন্ডে রিয়েল-টাইম ডিউরেশন আপডেট।
   useEffect(() => {
     if (!hasActiveRun) return;
     setNowMs(Date.now());
@@ -160,26 +281,26 @@ export const AdminGitHubPipelineView: React.FC = () => {
     return () => clearInterval(tick);
   }, [hasActiveRun]);
 
-  // বাংলা মন্তব্য: গড় ডিপ্লয়মেন্ট সময়সীমা সীমা ছাড়ালে একবার সতর্কীকরণ টোস্ট ট্রিগার করে।
   useEffect(() => {
     if (!durationAlert.exceeded) {
       lastAlertedKeyRef.current = null;
       return;
     }
-    const alertKey = `${repo}:${durationAlert.thresholdMs}`;
+    const alertKey = `${scope}:${durationAlert.thresholdMs}`;
     if (lastAlertedKeyRef.current === alertKey) return;
     lastAlertedKeyRef.current = alertKey;
     setAlertAcknowledged(false);
     toast.warning(
       'Deployment Duration Threshold Exceeded',
-      `${repo} average (${formatPipelineDuration(durationAlert.avgDurationMs)}) exceeds ${formatPipelineDuration(durationAlert.thresholdMs)} limit.`,
+      `${activeScopeLabel} average (${formatPipelineDuration(durationAlert.avgDurationMs)}) exceeds ${formatPipelineDuration(durationAlert.thresholdMs)} limit.`,
       6000
     );
   }, [
     durationAlert.exceeded,
     durationAlert.avgDurationMs,
     durationAlert.thresholdMs,
-    repo,
+    scope,
+    activeScopeLabel,
   ]);
 
   const dataSource = useDataSource({
@@ -188,11 +309,15 @@ export const AdminGitHubPipelineView: React.FC = () => {
     error: warning,
   });
 
-  const handleRunAction = async (id: number | string, action: 'rerun' | 'cancel') => {
-    setActionMsg(`Executing ${action} on run #${id}...`);
+  const handleRunAction = async (
+    targetRepo: string,
+    id: number | string,
+    action: 'rerun' | 'cancel'
+  ) => {
+    setActionMsg(`Executing ${action} on ${targetRepo} run #${id}...`);
     try {
-      await adminService.triggerGitHubRunAction(repo, id, action);
-      setActionMsg(`Action "${action}" dispatched for run #${id}.`);
+      await adminService.triggerGitHubRunAction(targetRepo, id, action);
+      setActionMsg(`Action "${action}" dispatched for ${targetRepo} run #${id}.`);
     } catch (err) {
       setActionMsg(err instanceof Error ? err.message : `Failed to ${action} run #${id}.`);
     }
@@ -200,12 +325,19 @@ export const AdminGitHubPipelineView: React.FC = () => {
     void load();
   };
 
-  const handlePullAction = async (number: number, action: 'approve' | 'merge') => {
-    setActionMsg(`Executing ${action} on PR #${number}...`);
+  const handlePullAction = async (
+    targetRepo: string,
+    number: number,
+    action: 'approve' | 'merge'
+  ) => {
+    setActionMsg(`Executing ${action} on ${targetRepo} PR #${number}...`);
     try {
-      await adminService.triggerGitHubPullAction(repo, number, action);
-      setActionMsg(`PR #${number} ${action} completed.`);
-      toast.success(`PR #${number}`, action === 'approve' ? 'Approved on GitHub.' : 'Merged on GitHub.');
+      await adminService.triggerGitHubPullAction(targetRepo, number, action);
+      setActionMsg(`${targetRepo} PR #${number} ${action} completed.`);
+      toast.success(
+        `${targetRepo} PR #${number}`,
+        action === 'approve' ? 'Approved on GitHub.' : 'Merged on GitHub.'
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : `Failed to ${action} PR #${number}.`;
       setActionMsg(message);
@@ -220,46 +352,42 @@ export const AdminGitHubPipelineView: React.FC = () => {
     return user?.login || 'contributor';
   };
 
-  // বাংলা মন্তব্য: ব্যর্থ ডিপ্লয়মেন্টের সারি এক্সপ্যান্ড করলে API থেকে stderr/CI লগ সংগ্রহ করে এবং ক্যাশ রাখে।
-  const loadRunErrorLogs = useCallback(
-    async (runId: number | string) => {
-      const cacheKey = `${repo}:${runId}`;
+  const loadRunErrorLogs = useCallback(async (targetRepo: string, runId: number | string) => {
+    const cacheKey = `${targetRepo}:${runId}`;
+    setErrorLogsByKey((prev) => ({
+      ...prev,
+      [cacheKey]: { ...prev[cacheKey], loading: true, error: null },
+    }));
+    try {
+      const data = await adminService.fetchGitHubRunErrorLogs(targetRepo, runId);
       setErrorLogsByKey((prev) => ({
         ...prev,
-        [cacheKey]: { ...prev[cacheKey], loading: true, error: null },
+        [cacheKey]: { loading: false, error: null, data },
       }));
-      try {
-        const data = await adminService.fetchGitHubRunErrorLogs(repo, runId);
-        setErrorLogsByKey((prev) => ({
-          ...prev,
-          [cacheKey]: { loading: false, error: null, data },
-        }));
-      } catch (err) {
-        setErrorLogsByKey((prev) => ({
-          ...prev,
-          [cacheKey]: {
-            loading: false,
-            error: err instanceof Error ? err.message : 'Failed to load CI error logs.',
-          },
-        }));
-      }
-    },
-    [repo]
-  );
+    } catch (err) {
+      setErrorLogsByKey((prev) => ({
+        ...prev,
+        [cacheKey]: {
+          loading: false,
+          error: err instanceof Error ? err.message : 'Failed to load CI error logs.',
+        },
+      }));
+    }
+  }, []);
 
   const handleToggleErrorLog = useCallback(
-    (runId: number | string) => {
-      const cacheKey = `${repo}:${runId}`;
+    (targetRepo: string, runId: number | string) => {
+      const cacheKey = `${targetRepo}:${runId}`;
       const currentlyExpanded = Boolean(expandedErrorRuns[cacheKey]);
       setExpandedErrorRuns((prev) => ({ ...prev, [cacheKey]: !currentlyExpanded }));
       if (!currentlyExpanded) {
         const existing = errorLogsByKey[cacheKey];
         if (!existing || (!existing.loading && !existing.data)) {
-          void loadRunErrorLogs(runId);
+          void loadRunErrorLogs(targetRepo, runId);
         }
       }
     },
-    [repo, expandedErrorRuns, errorLogsByKey, loadRunErrorLogs]
+    [expandedErrorRuns, errorLogsByKey, loadRunErrorLogs]
   );
 
   const handleCopyErrorLog = useCallback(async (cacheKey: string, text: string) => {
@@ -277,7 +405,7 @@ export const AdminGitHubPipelineView: React.FC = () => {
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-6 max-w-7xl mx-auto space-y-6 text-slate-800 dark:text-slate-200">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
@@ -311,28 +439,67 @@ export const AdminGitHubPipelineView: React.FC = () => {
             )}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Trigger workflow reruns, approve pull requests, and auto-merge code directly from the
-            SupremeAI admin cockpit.
+            Trigger workflow reruns, approve pull requests, and auto-merge code across{' '}
+            <span className="font-mono text-slate-700 dark:text-slate-300">
+              {GITHUB_MONOREPO_SLUG}
+            </span>{' '}
+            and{' '}
+            <span className="font-mono text-slate-700 dark:text-slate-300">
+              {GITHUB_PUBLIC_REPO_SLUG}
+            </span>
+            .
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <select
-            value={repo}
-            onChange={(e) => {
-              setRepo(e.target.value);
-              setAlertAcknowledged(false);
-            }}
-            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono"
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="tablist"
+            aria-label="GitHub repository scope"
+            className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/90"
           >
-            <option value="Supremeai-bd/supremeai">Supremeai-bd/supremeai (Monorepo SSOT)</option>
-            <option value="Supremeai-bd/supremeai-public">
-              Supremeai-bd/supremeai-public (Studio Mirror)
-            </option>
-            <option value="Supremeai-bd/supremeai-frontend">
-              Supremeai-bd/supremeai-frontend (Legacy Archived)
-            </option>
-          </select>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={scope === 'all'}
+              data-testid="repo-tab-all"
+              onClick={() => {
+                setScope('all');
+                setAlertAcknowledged(false);
+              }}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
+                scope === 'all'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+              <span>All Repos ({MANAGED_GITHUB_REPOS.length})</span>
+            </button>
+            {MANAGED_GITHUB_REPOS.map((managed) => {
+              const selected = scope === managed.slug;
+              return (
+                <button
+                  key={managed.slug}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  data-testid={`repo-tab-${managed.slug}`}
+                  onClick={() => {
+                    setScope(managed.slug);
+                    setAlertAcknowledged(false);
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
+                    selected
+                      ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs border border-slate-200/80 dark:border-slate-700'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  }`}
+                >
+                  <span>{managed.slug}</span>
+                </button>
+              );
+            })}
+          </div>
+
           <button
             type="button"
             onClick={() => void load()}
@@ -343,6 +510,101 @@ export const AdminGitHubPipelineView: React.FC = () => {
             <span>{t.refreshRunsBtn}</span>
           </button>
         </div>
+      </div>
+
+      {/* Dual-Repository Overview Strip (always displays both Supremeai-bd/supremeai and Supremeai-bd/supremeai-public) */}
+      <div
+        data-testid="managed-repos-overview"
+        className="grid grid-cols-1 md:grid-cols-2 gap-3"
+      >
+        {MANAGED_GITHUB_REPOS.map((managed) => {
+          const snap = snapshots[managed.slug];
+          const repoRuns = (snap?.runs ?? []).filter(
+            (r) => r.repo.toLowerCase() === managed.slug.toLowerCase()
+          );
+          const repoPulls = (snap?.pulls ?? []).filter(
+            (p) => p.repo.toLowerCase() === managed.slug.toLowerCase()
+          );
+          const repoTrends = computeDeploymentTrends(repoRuns, nowMs, managed.slug);
+          const isSelected = scope === managed.slug;
+
+          const statusDotClass =
+            repoTrends.overallHealth === 'active'
+              ? 'bg-cyan-400 animate-pulse'
+              : repoTrends.overallHealth === 'healthy'
+                ? 'bg-emerald-500'
+                : repoTrends.overallHealth === 'degraded'
+                  ? 'bg-amber-500'
+                  : repoTrends.overallHealth === 'failing'
+                    ? 'bg-rose-500'
+                    : 'bg-slate-400';
+
+          return (
+            <div
+              key={managed.slug}
+              data-testid={`repo-card-${managed.slug}`}
+              onClick={() => {
+                setScope((curr) => (curr === managed.slug ? 'all' : managed.slug));
+                setAlertAcknowledged(false);
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setScope((curr) => (curr === managed.slug ? 'all' : managed.slug));
+                  setAlertAcknowledged(false);
+                }
+              }}
+              className={`p-3.5 rounded-xl border transition-colors cursor-pointer flex items-center justify-between gap-3 ${
+                isSelected
+                  ? 'border-cyan-500/70 bg-cyan-50/40 dark:bg-cyan-950/25 shadow-xs'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 hover:border-slate-300 dark:hover:border-slate-700'
+              }`}
+            >
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass}`} />
+                  <span className="font-mono text-xs font-bold text-slate-900 dark:text-white truncate">
+                    {managed.slug}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700">
+                    {managed.roleLabel}
+                  </span>
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-2 tabular-nums">
+                  <span>
+                    {repoTrends.successRatePercent !== null
+                      ? `${repoTrends.successRatePercent}% pass`
+                      : 'No completed runs'}
+                  </span>
+                  <span>·</span>
+                  <span>{repoRuns.length} runs</span>
+                  <span>·</span>
+                  <span
+                    className={
+                      repoPulls.length > 0 ? 'text-purple-600 dark:text-purple-400 font-semibold' : ''
+                    }
+                  >
+                    {repoPulls.length} open {repoPulls.length === 1 ? 'PR' : 'PRs'}
+                  </span>
+                </div>
+              </div>
+
+              <a
+                href={managed.url}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                title={`Open ${managed.slug} on GitHub`}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
+              >
+                <span>GitHub</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          );
+        })}
       </div>
 
       {(!tokenOk || warning) && (
@@ -369,7 +631,7 @@ export const AdminGitHubPipelineView: React.FC = () => {
         isLoading={isLoading}
         lastUpdatedMs={lastUpdatedMs}
         dataSource={dataSource}
-        repo={repo}
+        repo={scope === 'all' ? '' : scope}
         durationThresholdMs={durationThresholdMs}
         onChangeDurationThreshold={handleChangeDurationThreshold}
         alertAcknowledged={alertAcknowledged}
@@ -384,14 +646,16 @@ export const AdminGitHubPipelineView: React.FC = () => {
         </h3>
         <div className="grid gap-3">
           {runs.map((run) => {
+            const runRepo = run.repo || GITHUB_MONOREPO_SLUG;
+            const isPublicRepo =
+              runRepo.toLowerCase() === GITHUB_PUBLIC_REPO_SLUG.toLowerCase();
             const isSuccess = run.conclusion === 'success';
             const isFailed = classifyRunOutcome(run) === 'failure';
             const active = isRunActive(run);
             const durationLabel = formatPipelineDuration(computeRunDurationMs(run, nowMs));
-            // বাংলা মন্তব্য: বৈধ head_sha থাকলে ডিপ্লয়মেন্টের পাশে ক্লিকেবল GitHub কমিট লিংক দেখানো হবে।
             const shortSha = formatShortCommitSha(run.head_sha);
-            const commitUrl = buildGitHubCommitUrl(repo, run.head_sha, run.html_url);
-            const runCacheKey = `${repo}:${run.id}`;
+            const commitUrl = buildGitHubCommitUrl(runRepo, run.head_sha, run.html_url);
+            const runCacheKey = `${runRepo}:${run.id}`;
             const isErrorLogExpanded = isFailed && Boolean(expandedErrorRuns[runCacheKey]);
             const logEntry = errorLogsByKey[runCacheKey];
             const logData = logEntry?.data;
@@ -406,19 +670,29 @@ export const AdminGitHubPipelineView: React.FC = () => {
 
             return (
               <div
-                key={run.id}
+                key={runCacheKey}
                 data-testid={`workflow-run-row-${run.id}`}
                 className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 flex flex-col gap-3"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-semibold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                    <div className="font-semibold text-sm text-slate-900 dark:text-white flex flex-wrap items-center gap-2">
+                      <span
+                        data-testid={`run-repo-badge-${run.id}`}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border shrink-0 ${
+                          isPublicRepo
+                            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/70'
+                            : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/70'
+                        }`}
+                      >
+                        {runRepo}
+                      </span>
                       <span className="truncate">{run.name}</span>
                       <span className="text-xs font-mono tabular-nums text-slate-400 shrink-0">
                         #{run.id}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 flex flex-wrap items-center gap-2">
+                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1 flex flex-wrap items-center gap-2">
                       <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-cyan-600 dark:text-cyan-400">
                         {run.head_branch}
                       </span>
@@ -473,7 +747,7 @@ export const AdminGitHubPipelineView: React.FC = () => {
                         data-testid={`toggle-error-log-${run.id}`}
                         aria-expanded={isErrorLogExpanded}
                         aria-controls={`error-log-panel-${run.id}`}
-                        onClick={() => handleToggleErrorLog(run.id)}
+                        onClick={() => handleToggleErrorLog(runRepo, run.id)}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer whitespace-nowrap shrink-0 transition-colors ${
                           isErrorLogExpanded
                             ? 'bg-rose-600 border-rose-600 text-white hover:bg-rose-500'
@@ -491,7 +765,7 @@ export const AdminGitHubPipelineView: React.FC = () => {
                     )}
                     <button
                       type="button"
-                      onClick={() => handleRunAction(run.id, 'rerun')}
+                      onClick={() => handleRunAction(runRepo, run.id, 'rerun')}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer shadow-sm whitespace-nowrap shrink-0"
                     >
                       <RotateCcw className="w-3 h-3" />
@@ -499,7 +773,7 @@ export const AdminGitHubPipelineView: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleRunAction(run.id, 'cancel')}
+                      onClick={() => handleRunAction(runRepo, run.id, 'cancel')}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold cursor-pointer shadow-sm whitespace-nowrap shrink-0"
                     >
                       <XCircle className="w-3 h-3" />
@@ -532,9 +806,7 @@ export const AdminGitHubPipelineView: React.FC = () => {
                         {logData?.failedJobs && logData.failedJobs.length > 0 && (
                           <>
                             <span aria-hidden="true">·</span>
-                            <span>
-                              {logData.failedJobs.map((j) => j.name).join(', ')}
-                            </span>
+                            <span>{logData.failedJobs.map((j) => j.name).join(', ')}</span>
                             {logData.failedJobs.some((j) => j.failedSteps.length > 0) && (
                               <>
                                 <span aria-hidden="true">·</span>
@@ -553,7 +825,7 @@ export const AdminGitHubPipelineView: React.FC = () => {
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
-                          onClick={() => void loadRunErrorLogs(run.id)}
+                          onClick={() => void loadRunErrorLogs(runRepo, run.id)}
                           disabled={Boolean(logEntry?.loading)}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] font-medium cursor-pointer disabled:opacity-50 whitespace-nowrap"
                         >
@@ -685,7 +957,7 @@ export const AdminGitHubPipelineView: React.FC = () => {
           })}
           {runs.length === 0 && (
             <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 text-center text-xs text-slate-500">
-              No workflow runs found for {repo}.
+              No workflow runs found for {activeScopeLabel}.
             </div>
           )}
         </div>
@@ -698,56 +970,73 @@ export const AdminGitHubPipelineView: React.FC = () => {
           Active Pull Requests & Merge Gates
         </h3>
         <div className="grid gap-3">
-          {pulls.map((pr) => (
-            <div
-              key={pr.number}
-              className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 space-y-3"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <div className="font-semibold text-sm text-slate-900 dark:text-white">
-                    PR #{pr.number}: {pr.title}
+          {pulls.map((pr) => {
+            const prRepo = pr.repo || GITHUB_MONOREPO_SLUG;
+            const isPublicRepo =
+              prRepo.toLowerCase() === GITHUB_PUBLIC_REPO_SLUG.toLowerCase();
+            return (
+              <div
+                key={`${prRepo}#${pr.number}`}
+                data-testid={`pull-request-row-${prRepo}-${pr.number}`}
+                className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 space-y-3"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <div className="font-semibold text-sm text-slate-900 dark:text-white flex flex-wrap items-center gap-2">
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold border shrink-0 ${
+                          isPublicRepo
+                            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/70'
+                            : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/70'
+                        }`}
+                      >
+                        {prRepo}
+                      </span>
+                      <span>
+                        PR #{pr.number}: {pr.title}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500 font-mono mt-1">
+                      {branchName(pr.head) && branchName(pr.base)
+                        ? `${branchName(pr.head)} -> ${branchName(pr.base)} · `
+                        : ''}
+                      requested by {getPullAuthor(pr.user)}
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500 font-mono mt-0.5">
-                    {branchName(pr.head) && branchName(pr.base)
-                      ? `${branchName(pr.head)} -> ${branchName(pr.base)} · `
-                      : ''}requested by{' '}
-                    {getPullAuthor(pr.user)}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handlePullAction(prRepo, pr.number, 'approve')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer shadow-sm"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{t.approvePrBtn}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handlePullAction(prRepo, pr.number, 'merge')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold cursor-pointer shadow-sm"
+                    >
+                      <GitBranch className="w-3.5 h-3.5" />
+                      <span>{t.autoMergeBtn}</span>
+                    </button>
+                    <a
+                      href={pr.html_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium"
+                    >
+                      <span>View Diff</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
                   </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handlePullAction(pr.number, 'approve')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer shadow-sm"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>{t.approvePrBtn}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePullAction(pr.number, 'merge')}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold cursor-pointer shadow-sm"
-                  >
-                    <GitBranch className="w-3.5 h-3.5" />
-                    <span>{t.autoMergeBtn}</span>
-                  </button>
-                  <a
-                    href={pr.html_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium"
-                  >
-                    <span>View Diff</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {pulls.length === 0 && (
             <div className="p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 text-center text-xs text-slate-500">
-              No open pull requests pending review.
+              No open pull requests pending review across {activeScopeLabel}.
             </div>
           )}
         </div>

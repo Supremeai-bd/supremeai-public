@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { runPullAction } from './githubPullActions';
+import { handleAdminGitHubRoute, runPullAction } from './githubPullActions';
 
 type Route = { status: number; body: unknown };
 
@@ -94,5 +94,88 @@ describe('runPullAction merge', () => {
     const r = await runPullAction({ GITHUB_TOKEN: 't' }, 'o/r', 904, 'merge', fetchImpl);
     expect(r.status).toBe(409);
     expect(r.body.error).toContain('Required status check is failing');
+  });
+});
+
+describe('handleAdminGitHubRoute multi-repo & public fallback', () => {
+  it('retries unauthenticated GET for Supremeai-bd/supremeai-public when fine-grained GITHUB_TOKEN returns 403', async () => {
+    let attempts = 0;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      attempts += 1;
+      const auth = new Headers(init?.headers).get('Authorization');
+      if (auth) {
+        return Response.json(
+          { message: 'Resource not accessible by personal access token' },
+          { status: 403 }
+        );
+      }
+      return Response.json({
+        workflow_runs: [
+          {
+            id: 4613,
+            name: 'SupremeAI Unified CI & Release Pipeline',
+            status: 'completed',
+            conclusion: 'success',
+            head_branch: 'main',
+            head_sha: '1b2c5f34f21ec3a6103eadb8f6418361a3c79849',
+            created_at: '2026-11-28T10:55:00Z',
+            html_url: 'https://github.com/Supremeai-bd/supremeai-public/actions/runs/4613',
+          },
+        ],
+      });
+    }) as unknown as typeof fetch;
+
+    const req = new Request(
+      'https://supremeai.studio/api/admin/github/runs?repo=Supremeai-bd%2Fsupremeai-public'
+    );
+    const res = await handleAdminGitHubRoute(
+      '/api/admin/github/runs',
+      req,
+      { GITHUB_TOKEN: 'fine-grained-private-only' },
+      { actor: 'admin' },
+      fetchImpl
+    );
+    expect(res?.status).toBe(200);
+    expect(attempts).toBe(2);
+    const body = (await res!.json()) as { runs: Array<{ id: number; repo: string }> };
+    expect(body.runs).toHaveLength(1);
+    expect(body.runs[0]?.repo).toBe('Supremeai-bd/supremeai-public');
+  });
+
+  it('dispatches POST /api/admin/github/runs/:id/rerun on Supremeai-bd/supremeai-public and rejects unsafe slugs', async () => {
+    const { fetchImpl, calls } = fakeGitHub({
+      'POST /repos/Supremeai-bd/supremeai-public/actions/runs/4613/rerun': {
+        status: 201,
+        body: {},
+      },
+    });
+    const audit: { actor: string; details?: string } = { actor: 'admin' };
+    const okRes = await handleAdminGitHubRoute(
+      '/api/admin/github/runs/4613/rerun',
+      new Request('https://supremeai.studio/api/admin/github/runs/4613/rerun', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: 'Supremeai-bd/supremeai-public' }),
+      }),
+      { GITHUB_TOKEN: 'org-tok' },
+      audit,
+      fetchImpl
+    );
+    expect(okRes?.status).toBe(200);
+    expect(calls[0]?.key).toBe('POST /repos/Supremeai-bd/supremeai-public/actions/runs/4613/rerun');
+    expect(audit.details).toContain('Supremeai-bd/supremeai-public');
+
+    const badRes = await handleAdminGitHubRoute(
+      '/api/admin/github/runs/4613/rerun',
+      new Request('https://supremeai.studio/api/admin/github/runs/4613/rerun', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: '../../evil/traversal' }),
+      }),
+      { GITHUB_TOKEN: 'org-tok' },
+      { actor: 'admin' },
+      fetchImpl
+    );
+    expect(badRes?.status).toBe(400);
   });
 });
