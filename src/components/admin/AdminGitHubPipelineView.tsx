@@ -33,6 +33,8 @@ import {
   formatPipelineDuration,
   formatShortCommitSha,
   isRunActive,
+  type GitHubBranchRef,
+  type GitHubPullRequest,
   type GitHubRunErrorLogsResponse,
   type GitHubWorkflowRun,
 } from '../../utils/githubPipelineMetrics';
@@ -53,16 +55,9 @@ function loadStoredDurationThreshold(): number {
 
 type Run = GitHubWorkflowRun;
 
-type BranchRef = string | { ref?: string; label?: string } | null | undefined;
+type BranchRef = GitHubBranchRef;
 
-interface Pull {
-  number: number;
-  title: string;
-  head?: BranchRef;
-  base?: BranchRef;
-  html_url: string;
-  user: string | { login?: string };
-}
+type Pull = GitHubPullRequest;
 
 /** GitHub returns `head`/`base` as objects; the gateway returns plain strings. */
 export function branchName(ref: BranchRef): string {

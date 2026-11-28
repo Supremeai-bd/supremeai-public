@@ -15,6 +15,18 @@ export interface GitHubWorkflowRun {
   event?: string | null;
 }
 
+/** GitHub returns `head`/`base` as objects; the gateway returns plain strings. */
+export type GitHubBranchRef = string | { ref?: string; label?: string } | null | undefined;
+
+export interface GitHubPullRequest {
+  number: number;
+  title: string;
+  head?: GitHubBranchRef;
+  base?: GitHubBranchRef;
+  html_url: string;
+  user: string | { login?: string };
+}
+
 export type RunOutcome = 'active' | 'success' | 'failure' | 'cancelled' | 'neutral';
 
 export type PipelineHealthStatus = 'active' | 'healthy' | 'degraded' | 'failing' | 'empty' | 'unknown';

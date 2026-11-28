@@ -1,6 +1,11 @@
 import { apiClient } from './apiClient';
-import type { GitHubRunErrorLogsResponse } from '../utils/githubPipelineMetrics';
+import type {
+  GitHubPullRequest,
+  GitHubRunErrorLogsResponse,
+  GitHubWorkflowRun,
+} from '../utils/githubPipelineMetrics';
 import {
+  McpServiceLog,
   McpTowerService,
   PlatformConfig,
   ModelPolicy,
@@ -82,31 +87,36 @@ export const adminService = {
     return apiClient.get('/api/admin/overview');
   },
 
-  mapTowerService(raw: any): McpTowerService {
+  mapTowerService(raw: Record<string, unknown>): McpTowerService {
+    // Tower telemetry is untyped JSON: strings/numbers are narrowed, unions keep the Tower value.
+    const text = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
+    const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+    const id = String(raw.id ?? '');
     return {
-      id: raw.id,
-      name: raw.name || raw.id,
-      displayName: raw.displayName || raw.name || raw.id,
-      category: raw.category || 'core',
-      port: typeof raw.port === 'number' ? raw.port : 0,
-      status: raw.status || 'healthy',
-      uptime: raw.uptime || '—',
-      latencyMs: typeof raw.latencyMs === 'number' ? raw.latencyMs : 0,
+      id,
+      name: text(raw.name) || id,
+      displayName: text(raw.displayName) || text(raw.name) || id,
+      category: (text(raw.category) || 'core') as McpTowerService['category'],
+      port: num(raw.port) ?? 0,
+      status: (text(raw.status) || 'healthy') as McpTowerService['status'],
+      uptime: text(raw.uptime) || '—',
+      latencyMs: num(raw.latencyMs) ?? 0,
       // বাংলা মন্তব্য: না মাপা মান 0 দেখালে "সব ঠিক আছে" মনে হয় — null রাখি, UI "—" দেখায়
-      cpuPercent: typeof raw.cpuPercent === 'number' ? raw.cpuPercent : null,
-      memoryMb: typeof raw.memoryMb === 'number' ? raw.memoryMb : null,
-      lastChecked: raw.lastChecked || 'Just now',
-      version: raw.version || raw.deployStatus || 'live',
-      endpoint: raw.endpoint || '',
-      errorCount: typeof raw.errorCount === 'number' ? raw.errorCount : 0,
-      logs: Array.isArray(raw.logs) ? raw.logs : [],
-      deployStatus: raw.deployStatus,
-      monthlyBuildMinutes: raw.monthlyBuildMinutes,
-      freeLimitRemainingMinutes: raw.freeLimitRemainingMinutes,
-      freeLimitExhausted: raw.freeLimitExhausted,
-      deployAgeDays: raw.deployAgeDays,
-      commitSha: raw.commitSha,
-      freshness: raw.freshness,
+      cpuPercent: num(raw.cpuPercent) ?? null,
+      memoryMb: num(raw.memoryMb) ?? null,
+      lastChecked: text(raw.lastChecked) || 'Just now',
+      version: text(raw.version) || text(raw.deployStatus) || 'live',
+      endpoint: text(raw.endpoint) || '',
+      errorCount: num(raw.errorCount) ?? 0,
+      logs: Array.isArray(raw.logs) ? (raw.logs as McpServiceLog[]) : [],
+      deployStatus: text(raw.deployStatus),
+      monthlyBuildMinutes: num(raw.monthlyBuildMinutes),
+      freeLimitRemainingMinutes: num(raw.freeLimitRemainingMinutes),
+      freeLimitExhausted:
+        typeof raw.freeLimitExhausted === 'boolean' ? raw.freeLimitExhausted : undefined,
+      deployAgeDays: num(raw.deployAgeDays),
+      commitSha: text(raw.commitSha),
+      freshness: text(raw.freshness) as McpTowerService['freshness'],
     };
   },
 
@@ -133,8 +143,8 @@ export const adminService = {
     const refreshed = toServices(getFederationData<unknown>('mcp-tower'));
     if (refreshed.length > 0) return refreshed;
 
-    const data = await apiClient.get<{ services: any[] }>('/api/mcp-tower/services');
-    return (data.services || []).map((s) => this.mapTowerService(s));
+    const data = await apiClient.get<unknown>('/api/mcp-tower/services');
+    return toServices(data);
   },
 
   async rebootMcpService(serviceId: string): Promise<McpTowerService> {
@@ -325,12 +335,12 @@ export const adminService = {
     return apiClient.post('/api/admin/schema-parity/sync', {});
   },
 
-  async fetchLlmGatewayRoutes(): Promise<{ routes: LlmGatewayRoute[]; traffic?: any }> {
+  async fetchLlmGatewayRoutes(): Promise<{ routes: LlmGatewayRoute[]; traffic?: unknown }> {
     if (env.isMockEnabled) {
       return { routes: INITIAL_LLM_GATEWAY_ROUTES };
     }
     try {
-      const res = await apiClient.get<{ routes?: LlmGatewayRoute[]; traffic?: any }>(
+      const res = await apiClient.get<{ routes?: LlmGatewayRoute[]; traffic?: unknown }>(
         '/api/admin/llm-gateway'
       );
       return {
@@ -374,7 +384,7 @@ export const adminService = {
 
   async fetchGitHubRuns(
     repo: string
-  ): Promise<{ runs: any[]; tokenConfigured?: boolean; warning?: string }> {
+  ): Promise<{ runs: GitHubWorkflowRun[]; tokenConfigured?: boolean; warning?: string }> {
     return apiClient.get(`/api/admin/github/runs?repo=${encodeURIComponent(repo)}`);
   },
 
@@ -389,7 +399,7 @@ export const adminService = {
 
   async fetchGitHubPulls(
     repo: string
-  ): Promise<{ pulls: any[]; tokenConfigured?: boolean; warning?: string }> {
+  ): Promise<{ pulls: GitHubPullRequest[]; tokenConfigured?: boolean; warning?: string }> {
     return apiClient.get(`/api/admin/github/pulls?repo=${encodeURIComponent(repo)}`);
   },
 
