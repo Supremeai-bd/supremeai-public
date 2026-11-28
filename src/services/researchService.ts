@@ -108,7 +108,9 @@ export const researchService = {
         language_pref: language,
       });
     } catch (err: unknown) {
-      throw new Error(err instanceof Error ? err.message : 'Deep research execution failed.');
+      throw new Error(err instanceof Error ? err.message : 'Deep research execution failed.', {
+        cause: err,
+      });
     }
   },
 

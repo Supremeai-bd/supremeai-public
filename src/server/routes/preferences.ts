@@ -46,7 +46,7 @@ export interface PreferencesContext {
     method: string,
     body?: unknown,
     prefer?: string
-  ) => Promise<any>;
+  ) => Promise<unknown>;
 }
 
 export function registerPreferencesRoutes(app: Express, ctx: PreferencesContext): void {
@@ -117,7 +117,11 @@ export function registerPreferencesRoutes(app: Express, ctx: PreferencesContext)
           signal: AbortSignal.timeout(4000),
         });
         if (meRes.ok) {
-          const meData: any = await meRes.json().catch(() => null);
+          const meData = (await meRes.json().catch(() => null)) as {
+            user?: Record<string, unknown>;
+            email?: string;
+            [k: string]: unknown;
+          } | null;
           const raw =
             meData?.user && typeof meData.user === 'object'
               ? { ...meData, ...meData.user }
@@ -174,7 +178,12 @@ export function registerPreferencesRoutes(app: Express, ctx: PreferencesContext)
             signal: AbortSignal.timeout(5000),
           });
           if (upstreamRes.ok) {
-            const data: any = await upstreamRes.json().catch(() => null);
+            const data = (await upstreamRes.json().catch(() => null)) as {
+              preferences?: Record<string, unknown>;
+              user_preferences?: { preferences?: Record<string, unknown> };
+              user_id?: string;
+              updated_at?: string;
+            } | null;
             if (data && typeof data === 'object') {
               const prefs =
                 data.preferences && typeof data.preferences === 'object'
@@ -265,7 +274,16 @@ export function registerPreferencesRoutes(app: Express, ctx: PreferencesContext)
           signal: AbortSignal.timeout(5000),
         });
         if (upstreamRes.ok) {
-          const data: any = await upstreamRes.json().catch(() => null);
+          const data = (await upstreamRes.json().catch(() => null)) as {
+            user_preferences?: {
+              user_id?: string;
+              preferences?: Record<string, unknown>;
+              updated_at?: string;
+            };
+            user_id?: string;
+            preferences?: Record<string, unknown>;
+            updated_at?: string;
+          } | null;
           if (data && typeof data === 'object') {
             const up = data.user_preferences || data;
             const cacheKey = String(up?.user_id || '')

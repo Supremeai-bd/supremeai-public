@@ -1094,7 +1094,7 @@ export function useLiveVoiceSession({
           bytes[i] = binary.charCodeAt(i);
         }
 
-        let ok = false;
+        let ok: boolean;
         try {
           ok = await playSingleViaWebAudio(bytes);
         } catch {

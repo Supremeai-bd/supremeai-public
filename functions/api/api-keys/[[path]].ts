@@ -9,7 +9,9 @@ import {
 
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
+  if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
+  const respond = (payload: unknown, status: number = 200) =>
+    jsonEdgeResponse(payload, status, request, undefined, env);
 
   const incomingUrl = new URL(request.url);
   const path = incomingUrl.pathname;
@@ -29,13 +31,13 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       const text = await res.text();
       if (res.ok) {
         const parsed = JSON.parse(text || '{}');
-        return jsonEdgeResponse(parsed, res.status, request);
+        return respond(parsed, res.status);
       }
     } catch {
       // Fall through cleanly below
     }
     if (request.method === 'GET') {
-      return jsonEdgeResponse({ keys: [] }, 200, request);
+      return respond({ keys: [] }, 200);
     }
   }
 
@@ -50,27 +52,19 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     try {
       const upProbe = await fetchWithTimeout(`${upstreamOrigin}/health`, { method: 'GET' }, 4500);
       const latencyMs = Date.now() - started;
-      return jsonEdgeResponse(
-        {
-          success: upProbe.ok,
-          latencyMs,
-          message: upProbe.ok
-            ? `Key ${keyId} verified via SupremeAI gateway probe (${latencyMs}ms).`
-            : `Gateway returned HTTP ${upProbe.status} during key probe.`,
-        },
-        200,
-        request
-      );
+      return respond({
+        success: upProbe.ok,
+        latencyMs,
+        message: upProbe.ok
+          ? `Key ${keyId} verified via SupremeAI gateway probe (${latencyMs}ms).`
+          : `Gateway returned HTTP ${upProbe.status} during key probe.`,
+      });
     } catch {
-      return jsonEdgeResponse(
-        {
-          success: false,
-          latencyMs: Date.now() - started,
-          message: 'Upstream gateway unreachable during key probe.',
-        },
-        200,
-        request
-      );
+      return respond({
+        success: false,
+        latencyMs: Date.now() - started,
+        message: 'Upstream gateway unreachable during key probe.',
+      });
     }
   }
 
@@ -84,28 +78,27 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     );
     if (res.ok) {
       const data = await res.json().catch(() => ({ success: true }));
-      return jsonEdgeResponse(data, res.status, request);
+      return respond(data, res.status);
     }
   } catch {
     // Handled gracefully below
   }
 
   if (action === 'revoke' && request.method === 'POST') {
-    return jsonEdgeResponse({ success: true, id: keyId, status: 'revoked' }, 200, request);
+    return respond({ success: true, id: keyId, status: 'revoked' }, 200);
   }
 
   if (request.method === 'DELETE' && keyId) {
-    return jsonEdgeResponse({ success: true, deletedId: keyId }, 200, request);
+    return respond({ success: true, deletedId: keyId }, 200);
   }
 
   if (request.method === 'PATCH' && keyId) {
     const body = await request.json().catch(() => ({}));
-    return jsonEdgeResponse(
+    return respond(
       { success: true, key: { id: keyId, ...(typeof body === 'object' && body ? body : {}) } },
-      200,
-      request
+      200
     );
   }
 
-  return jsonEdgeResponse({ error: 'Unsupported API key operation' }, 400, request);
+  return respond({ error: 'Unsupported API key operation' }, 400);
 }

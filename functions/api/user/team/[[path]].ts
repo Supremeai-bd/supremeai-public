@@ -12,7 +12,7 @@ import { handleUserTeamRequest } from '../../../_lib/userTeam';
  */
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
+  if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
   const upstreamOrigin = resolveUpstreamOrigin(env);
   return handleUserTeamRequest(request, env, {
     verify: (req) => verifyUpstreamSession(req, upstreamOrigin),

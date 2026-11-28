@@ -4,10 +4,39 @@ import { configDefaults, defineConfig } from 'vitest/config';
 export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('.', import.meta.url)) } },
   test: {
-    environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
-    include: ['{src,functions}/**/*.test.{ts,tsx}'],
-    exclude: [...configDefaults.exclude, 'src/shared/productionHardening.test.ts'],
+    // বাংলা মন্তব্য: সার্ভার, এজ, শেয়ার্ড ও Hono API টেস্টগুলো দ্রুতগতির 'node' এনভায়রনমেন্টে এবং কেবল UI/স্টোর টেস্টগুলো 'jsdom'-এ চালানো হচ্ছে
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'node',
+          environment: 'node',
+          setupFiles: [],
+          include: [
+            'functions/**/*.test.ts',
+            'src/server/**/*.test.ts',
+            'src/api/**/*.test.ts',
+            'src/shared/**/*.test.ts',
+          ],
+          exclude: [...configDefaults.exclude, 'src/shared/productionHardening.test.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'jsdom',
+          environment: 'jsdom',
+          setupFiles: ['./src/test/setup.ts'],
+          include: ['src/**/*.test.{ts,tsx}'],
+          exclude: [
+            ...configDefaults.exclude,
+            'src/server/**/*.test.ts',
+            'src/api/**/*.test.ts',
+            'src/shared/**/*.test.ts',
+          ],
+        },
+      },
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json-summary'],
@@ -34,15 +63,12 @@ export default defineConfig({
         'src/**/types.ts',
         'src/**/*.types.ts',
       ],
-      // বাংলা: থ্রেশহোল্ড "আজকের বাস্তব মান"-এর ঠিক নিচে বসানো — আগে ৬০% লেখা ছিল
-      // অথচ মাপা মান ৩১%, অর্থাৎ গেট কখনো চলত না (মিথ্যা নিরাপত্তা)।
-      // এখন গেট সত্যিই চলবে: কভারেজ কমলে CI লাল হবে। প্রতি স্প্রিন্টে ৫ পয়েন্ট বাড়ান।
-      // পরিমাপ (২০২৬-১১-২৩): lines ৩১.১ · stmts ৩০.৩ · funcs ২৯.৩ · branches ২৫.২
+      // বাংলা মন্তব্য: নতুন সিকিউরিটি ও সার্ভার ইউনিট টেস্ট যুক্ত হওয়ার পর কভারেজ র‍্যাচেট আরও শক্তিশালী করা হয়েছে
       thresholds: {
-        lines: 30,
-        statements: 30,
-        functions: 28,
-        branches: 24,
+        lines: 42,
+        statements: 42,
+        functions: 38,
+        branches: 38,
       },
     },
   },

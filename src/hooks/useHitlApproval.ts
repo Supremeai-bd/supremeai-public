@@ -144,7 +144,6 @@ export function useHitlApproval() {
       }
     };
     // Re-run when admin eligibility changes; fetchPending is stable.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdminEligible]);
 
   const approve = async (recordId: string) => {

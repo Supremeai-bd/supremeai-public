@@ -64,7 +64,7 @@ export function isAuthWalledDomain(hostname: string): boolean {
 }
 
 export function normalizeBrowserTargetUrl(raw: string): string | null {
-  const cleaned = raw.trim().replace(/^[<("'`\[]+|[>),.;!?'"`\]।]+$/g, '');
+  const cleaned = raw.trim().replace(/^[<("'`[]+|[>),.;!?'"`\]।]+$/g, '');
   if (!cleaned) return null;
 
   const withProto = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;

@@ -1,14 +1,15 @@
 import type { Express, Request, Response } from 'express';
-import fs from 'fs';
-import path from 'path';
 import { GoogleGenAI, ThinkingLevel, Type, type FunctionDeclaration } from '@google/genai';
 import { isProtectedWorkspaceFile, isRestrictedProxyTarget } from '../../shared/serverSecurity';
 import { extractHtmlTitle, extractReadablePageSnippet } from '../../shared/scheduleExecution';
+import { routeRateLimit } from '../routeRateLimit';
 import type { AgentExecuteResponse, AgentToolAction } from '../../shared/agentTypes';
 import type { AgentExecutionStep, GroundingSource } from '../../types';
 
 export interface AgentExecuteContext {
   isIpBlocked: (req: Request) => boolean;
+  // বাংলা মন্তব্য: অটোনোমাস এজেন্ট টুল-লুপে অনুমোদিত ব্যবহারকারী যাচাইয়ের জন্য ঐচ্ছিক হুক
+  resolveAuthenticatedEmail?: (req: Request) => Promise<string | null>;
   safeFetchWithRedirectCheck?: (
     initialUrl: string | URL,
     init?: RequestInit,
@@ -37,87 +38,22 @@ const VALID_DASHBOARD_ACTIONS = new Set([
   'toggle_voice',
 ]);
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.next', '.wrangler', '.studio-data']);
-
-function safeResolveWorkspacePath(targetRel: string): {
-  ok: boolean;
-  realTarget?: string;
-  error?: string;
-} {
-  const cleaned = targetRel.replace(/^\/+/, '').trim();
-  if (!cleaned) {
-    return { ok: false, error: 'File path is required.' };
-  }
-  if (isProtectedWorkspaceFile(cleaned)) {
-    return { ok: false, error: 'Access to protected environment or credential files is denied.' };
-  }
-  const workspaceRealRoot = fs.realpathSync(process.cwd());
-  const resolved = path.resolve(workspaceRealRoot, cleaned);
-  if (resolved !== workspaceRealRoot && !resolved.startsWith(workspaceRealRoot + path.sep)) {
-    return { ok: false, error: 'Access outside workspace root is denied.' };
-  }
-  if (!fs.existsSync(resolved)) {
-    return { ok: false, error: `File not found: ${cleaned}` };
-  }
-  const realTarget = fs.realpathSync(resolved);
-  if (realTarget !== workspaceRealRoot && !realTarget.startsWith(workspaceRealRoot + path.sep)) {
-    return { ok: false, error: 'Symlink escape outside workspace denied.' };
-  }
-  const relFromRoot = path.relative(workspaceRealRoot, realTarget);
-  if (isProtectedWorkspaceFile(relFromRoot)) {
-    return { ok: false, error: 'Access to protected environment or credential files is denied.' };
-  }
-  return { ok: true, realTarget };
-}
-
-function collectHostWorkspaceFiles(dirRel: string, limit: number = 80): string[] {
-  const workspaceRealRoot = fs.realpathSync(process.cwd());
-  const cleanDir = dirRel.replace(/^\/+/, '').trim();
-  const baseDir = cleanDir ? path.resolve(workspaceRealRoot, cleanDir) : workspaceRealRoot;
-  if (baseDir !== workspaceRealRoot && !baseDir.startsWith(workspaceRealRoot + path.sep)) {
-    return [];
-  }
-  if (!fs.existsSync(baseDir) || !fs.statSync(baseDir).isDirectory()) {
-    return [];
-  }
-
-  const results: string[] = [];
-  const walk = (currentDir: string, depth: number) => {
-    if (results.length >= limit || depth > 4) return;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(currentDir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (results.length >= limit) break;
-      if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.env')) continue;
-      const full = path.join(currentDir, entry.name);
-      const rel = path.relative(workspaceRealRoot, full).replace(/\\/g, '/');
-      if (isProtectedWorkspaceFile(rel)) continue;
-      if (entry.isDirectory()) {
-        walk(full, depth + 1);
-      } else if (entry.isFile()) {
-        results.push(rel);
-      }
-    }
-  };
-  walk(baseDir, 0);
-  return results;
+// বাংলা মন্তব্য: হোস্ট সার্ভারের ডিস্ক (process.cwd()) পড়া সম্পূর্ণ বন্ধ করা হয়েছে; কেবল ইউজারের ভার্চুয়াল ওয়ার্কস্পেস বাফার ব্যবহৃত হবে
+function normalizeVirtualPath(rawPath: string): string {
+  return rawPath.replace(/\\/g, '/').replace(/^\/+/, '').trim();
 }
 
 const AGENT_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: 'list_workspace_files',
     description:
-      'List files in the active virtual workspace project and host repository so you can inspect codebase structure.',
+      'List files currently open in the active virtual workspace project buffer.',
     parameters: {
       type: Type.OBJECT,
       properties: {
         dir: {
           type: Type.STRING,
-          description: 'Optional relative directory prefix to filter, e.g. "src" or "functions".',
+          description: 'Optional relative directory prefix to filter, e.g. "src" or "components".',
         },
       },
     },
@@ -125,13 +61,13 @@ const AGENT_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: 'read_workspace_file',
     description:
-      'Read the contents of a file from the active virtual workspace or host repository. Never request secrets or .env files.',
+      'Read the contents of a file from the active virtual workspace buffer. Never request secrets or .env files.',
     parameters: {
       type: Type.OBJECT,
       properties: {
         path: {
           type: Type.STRING,
-          description: 'Relative file path, e.g. "package.json" or "src/App.tsx".',
+          description: 'Relative file path inside the active virtual workspace, e.g. "src/App.tsx".',
         },
       },
       required: ['path'],
@@ -239,11 +175,21 @@ const AGENT_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
 ];
 
 export function registerAgentExecuteRoutes(app: Express, ctx: AgentExecuteContext): void {
-  app.post('/api/agent/execute', async (req: Request, res: Response) => {
+  const agentRateLimit = routeRateLimit(30);
+  app.post('/api/agent/execute', agentRateLimit, async (req: Request, res: Response) => {
     try {
       if (ctx.isIpBlocked(req)) {
         res.status(403).json({ error: 'Request rejected by platform WAF IP blacklist.' });
         return;
+      }
+
+      // বাংলা মন্তব্য: বেনামী রিকোয়েস্টে LLM টুল-লুপ ও কোটা অপচয় রোধে বৈধ ইউজার সেশন আবশ্যক
+      if (ctx.resolveAuthenticatedEmail) {
+        const callerEmail = await ctx.resolveAuthenticatedEmail(req);
+        if (!callerEmail) {
+          res.status(401).json({ error: 'Authentication is required for autonomous agent execution.' });
+          return;
+        }
       }
 
       const rawPrompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
@@ -327,74 +273,62 @@ export function registerAgentExecuteRoutes(app: Express, ctx: AgentExecuteContex
         const stepId = `agent_step_${stepIndex}`;
 
         if (name === 'list_workspace_files') {
-          const dir = typeof args.dir === 'string' ? args.dir.trim() : '';
-          const hostFiles = collectHostWorkspaceFiles(dir, 60);
-          const vPaths = virtualFiles
-            .map((f) => f.path)
-            .filter((p) => !dir || p.startsWith(dir.replace(/\/+$/, '')));
-          const merged = Array.from(new Set([...vPaths, ...hostFiles])).slice(0, 80);
+          const dir = normalizeVirtualPath(typeof args.dir === 'string' ? args.dir : '').replace(/\/+$/, '');
+          const matched = virtualFiles
+            .map((f) => normalizeVirtualPath(f.path))
+            .filter((p) => Boolean(p) && !isProtectedWorkspaceFile(p) && (!dir || p.startsWith(dir)))
+            .slice(0, 80);
           steps.push({
             id: stepId,
-            label: `Listed ${merged.length} workspace file(s)`,
+            label: `Listed ${matched.length} workspace file(s)`,
             tool: 'workspace_list',
             status: 'done',
-            detail: dir || 'workspace root',
+            detail: dir || 'virtual workspace',
             durationMs: Math.max(1, Date.now() - started),
           });
-          return { files: merged };
+          return { files: matched };
         }
 
         if (name === 'read_workspace_file') {
-          const reqPath = typeof args.path === 'string' ? args.path.trim() : '';
-          const vMatch = virtualFiles.find(
-            (f) => f.path.replace(/^\/+/, '') === reqPath.replace(/^\/+/, '')
-          );
-          if (vMatch) {
-            steps.push({
-              id: stepId,
-              label: `Read ${vMatch.path}`,
-              tool: 'workspace_read',
-              status: 'done',
-              detail: `${vMatch.content.length} chars (virtual buffer)`,
-              durationMs: Math.max(1, Date.now() - started),
-            });
-            return { path: vMatch.path, content: vMatch.content.slice(0, 9000) };
-          }
-
-          const resolved = safeResolveWorkspacePath(reqPath);
-          if (!resolved.ok || !resolved.realTarget) {
+          const reqPath = normalizeVirtualPath(typeof args.path === 'string' ? args.path : '');
+          if (!reqPath || isProtectedWorkspaceFile(reqPath)) {
+            const errorMsg = !reqPath
+              ? 'File path is required.'
+              : 'Access to protected environment or credential files is denied.';
             steps.push({
               id: stepId,
               label: `Read blocked: ${reqPath || 'unknown'}`,
               tool: 'workspace_read',
               status: 'error',
-              detail: resolved.error,
+              detail: errorMsg,
               durationMs: Math.max(1, Date.now() - started),
             });
-            return { error: resolved.error || 'File unavailable.' };
+            return { error: errorMsg };
           }
-          const stat = fs.statSync(resolved.realTarget);
-          if (stat.isDirectory()) {
-            const entries = collectHostWorkspaceFiles(reqPath, 40);
+          const vMatch = virtualFiles.find(
+            (f) => normalizeVirtualPath(f.path) === reqPath
+          );
+          if (!vMatch) {
+            const errorMsg = `File "${reqPath}" is not loaded in active workspace buffer.`;
             steps.push({
               id: stepId,
-              label: `Listed directory ${reqPath}`,
-              tool: 'workspace_list',
-              status: 'done',
+              label: `File not in active buffer: ${reqPath}`,
+              tool: 'workspace_read',
+              status: 'error',
+              detail: errorMsg,
               durationMs: Math.max(1, Date.now() - started),
             });
-            return { directory: reqPath, files: entries };
+            return { error: errorMsg };
           }
-          const content = fs.readFileSync(resolved.realTarget, 'utf-8');
           steps.push({
             id: stepId,
-            label: `Read ${reqPath}`,
+            label: `Read ${vMatch.path}`,
             tool: 'workspace_read',
             status: 'done',
-            detail: `${content.length} chars`,
+            detail: `${vMatch.content.length} chars (virtual buffer)`,
             durationMs: Math.max(1, Date.now() - started),
           });
-          return { path: reqPath, content: content.slice(0, 9000) };
+          return { path: vMatch.path, content: vMatch.content.slice(0, 9000) };
         }
 
         if (name === 'web_browse') {
@@ -567,7 +501,7 @@ export function registerAgentExecuteRoutes(app: Express, ctx: AgentExecuteContex
       for (let iter = 0; iter < maxIterations; iter += 1) {
         const response = await ai.models.generateContent({
           model: 'gemini-4-hydrogen',
-          contents: contents as any,
+          contents: contents as unknown as Parameters<typeof ai.models.generateContent>[0]['contents'],
           config: {
             thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             systemInstruction: `You are SupremeAI's Autonomous Task Executor. You can call tools to inspect workspace files, browse live URLs, open the Virtual Browser, update workspace projects, or stage recurring scheduled tasks.

@@ -1,5 +1,6 @@
 import { apiClient } from './apiClient';
 import { env } from '../config/env';
+import { PLAN_CATALOG, TOPUP_PACKAGES } from '../config/plans';
 import { BillingInvoice } from '../types';
 import { INITIAL_INVOICES } from '../data/customerWorkspaceData';
 
@@ -77,10 +78,9 @@ export const billingService = {
   },
 
   async fetchPlans(): Promise<{
-    plans: typeof import('../config/plans').PLAN_CATALOG;
-    topupPackages: typeof import('../config/plans').TOPUP_PACKAGES;
+    plans: typeof PLAN_CATALOG;
+    topupPackages: typeof TOPUP_PACKAGES;
   }> {
-    const { PLAN_CATALOG, TOPUP_PACKAGES } = await import('../config/plans');
     if (env.isMockEnabled) {
       return { plans: PLAN_CATALOG, topupPackages: TOPUP_PACKAGES };
     }

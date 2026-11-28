@@ -44,7 +44,9 @@ async function fetchUserSchedules(
   if (!res.ok) {
     return { ok: false, status: res.status, schedules: [] };
   }
-  const data = (await res.json().catch(() => null)) as any;
+  const data = (await res.json().catch(() => null)) as {
+    preferences?: { browser_schedules?: StoredSchedule[] };
+  } | null;
   const remote = data?.preferences?.browser_schedules;
   return {
     ok: true,

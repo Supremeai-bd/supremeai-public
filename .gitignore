@@ -55,3 +55,11 @@ graphify-out/
 
 # বাংলা মন্তব্য: wrangler pages dev-এর লোকাল miniflare state
 .wrangler/
+
+# বাংলা মন্তব্য: রানটাইম পারসিস্টেন্স ভল্ট ও পাইথন বাইটকোড ক্যাশ ট্র্যাকিং থেকে বাদ
+.supremeai-*-*.json
+.studio-data/
+__pycache__/
+*.py[cod]
+*$py.class
+

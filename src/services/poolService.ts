@@ -127,7 +127,7 @@ export const poolService = {
         api_key: apiKey.trim(),
       });
     } catch (err: unknown) {
-      throw new Error(errorDetail(err, 'Failed to add key'));
+      throw new Error(errorDetail(err, 'Failed to add key'), { cause: err });
     }
   },
 
@@ -155,7 +155,7 @@ export const poolService = {
     try {
       await apiClient.delete(`/api/pool/keys/${encodeURIComponent(id)}`);
     } catch (err: unknown) {
-      throw new Error(errorDetail(err, 'Failed to remove key'));
+      throw new Error(errorDetail(err, 'Failed to remove key'), { cause: err });
     }
   },
 };

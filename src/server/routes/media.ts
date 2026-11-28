@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from 'express';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+import { routeRateLimit } from '../routeRateLimit';
 import { registerAgentExecuteRoutes } from './agentExecute';
 
 /**
@@ -22,6 +23,7 @@ import { registerAgentExecuteRoutes } from './agentExecute';
 export interface MediaContext {
   isIpBlocked: (req: Request) => boolean;
   get platformConfig(): { maintenanceMode: boolean; maintenanceMessage?: string };
+  resolveAuthenticatedEmail?: (req: Request) => Promise<string | null>;
   safeFetchWithRedirectCheck?: (
     initialUrl: string | URL,
     init?: RequestInit,
@@ -31,8 +33,11 @@ export interface MediaContext {
 }
 
 export function registerMediaRoutes(app: Express, ctx: MediaContext): void {
+  // বাংলা মন্তব্য: সকল মিডিয়া ও ইন্টেন্ট LLM এন্ডপয়েন্টে প্রতি মিনিটে IP ভিত্তিক রেট-লিমিট যুক্ত করা হয়েছে
+  const mediaRateLimit = routeRateLimit(60);
+
   // Server-side Audio Transcription endpoint powered by gemini-3.5-transcribe
-  app.post('/api/transcribe', async (req: Request, res: Response) => {
+  app.post('/api/transcribe', mediaRateLimit, async (req: Request, res: Response) => {
     try {
       if (ctx.isIpBlocked(req)) {
         res.status(403).json({ error: 'Request rejected by platform WAF IP blacklist.' });
@@ -110,8 +115,18 @@ export function registerMediaRoutes(app: Express, ctx: MediaContext): void {
   });
 
   // Intelligent Face Detection & Trait Extraction for Custom 3D Avatar Matching (gemini-4-hydrogen)
-  app.post('/api/avatar/analyze-face', async (req: Request, res: Response) => {
+  app.post('/api/avatar/analyze-face', mediaRateLimit, async (req: Request, res: Response) => {
     try {
+      if (ctx.isIpBlocked(req)) {
+        res.status(403).json({ error: 'Request rejected by platform WAF IP blacklist.' });
+        return;
+      }
+      if (ctx.platformConfig.maintenanceMode) {
+        res.status(503).json({
+          error: ctx.platformConfig.maintenanceMessage || 'Platform is currently in maintenance mode.',
+        });
+        return;
+      }
       const rawData = typeof req.body?.imageData === 'string' ? req.body.imageData : '';
       const rawMimeType = typeof req.body?.mimeType === 'string' ? req.body.mimeType : 'image/jpeg';
       if (!rawData) {
@@ -182,7 +197,7 @@ export function registerMediaRoutes(app: Express, ctx: MediaContext): void {
       });
 
       const rawText = (response.text || '{}').trim();
-      let parsed: Record<string, any> = {};
+      let parsed: Record<string, unknown> = {};
       try {
         parsed = JSON.parse(rawText);
       } catch {
@@ -209,7 +224,7 @@ export function registerMediaRoutes(app: Express, ctx: MediaContext): void {
   });
 
   // Concise Automatic Chat Session Title Generator (gemini-4-hydrogen + deterministic fallback)
-  app.post('/api/chat/title', async (req: Request, res: Response) => {
+  app.post('/api/chat/title', mediaRateLimit, async (req: Request, res: Response) => {
     try {
       if (ctx.isIpBlocked(req)) {
         res.status(403).json({ error: 'Request rejected by platform WAF IP blacklist.' });
@@ -319,7 +334,7 @@ export function registerMediaRoutes(app: Express, ctx: MediaContext): void {
   });
 
   // Semantic Intent Orchestrator (English + Bengali + Banglish understanding, auto-routing, clarification & actions)
-  app.post('/api/intent/analyze', async (req: Request, res: Response) => {
+  app.post('/api/intent/analyze', mediaRateLimit, async (req: Request, res: Response) => {
     try {
       if (ctx.isIpBlocked(req)) {
         res.status(403).json({ error: 'Request rejected by platform WAF IP blacklist.' });
@@ -477,6 +492,7 @@ Rules:
 
   registerAgentExecuteRoutes(app, {
     isIpBlocked: ctx.isIpBlocked,
+    resolveAuthenticatedEmail: ctx.resolveAuthenticatedEmail,
     safeFetchWithRedirectCheck: ctx.safeFetchWithRedirectCheck,
   });
 }

@@ -178,13 +178,13 @@ export async function fetchRemoteReleaseManifest(): Promise<ReleaseManifest> {
         headers: { Accept: 'application/json' },
       });
       if (!res.ok) continue;
-      const json = (await res.json().catch(() => null)) as any;
+      const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (
         json &&
         typeof json.windowsExeUrl === 'string' &&
         typeof json.androidApkUrl === 'string'
       ) {
-        return json as ReleaseManifest;
+        return json as unknown as ReleaseManifest;
       }
       const normalized = normalizeRemoteReleaseManifest(json, repoSlug);
       if (normalized) return normalized;

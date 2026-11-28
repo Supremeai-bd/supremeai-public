@@ -31,17 +31,21 @@ All four SupremeAI surfaces (**Web**, **Windows Desktop**, **Android APK**, and 
 ├── packages/
 │   ├── contracts/               # Canonical model catalog, 11 theme tokens, and sync protocol schema
 │   └── vscode-extension/        # Integrated VS Code sidebar & inline code assistant (.vsix)
-├── server.ts                    # Express + Vite Dev / Production Server + Redis session/queue adapter
-├── src/server/                  # Modular API routes, wsBridge.ts, redisStore.ts, MCP health collector
-├── functions/                   # Cloudflare Pages Functions Edge API mirror
+├── server.ts                    # Express + Vite Bootstrap (~1,036 lines; enforced <=1,056 via check-server-budget.mjs)
+├── src/api/                     # Shared Hono unified API mounted on both Express (src/api/node.ts) and Cloudflare Pages
+├── src/server/                  # Modular API routes (routes/*, routes/admin/*, routes/workspace/*), wsBridge.ts, redisStore.ts
+├── functions/                   # Cloudflare Pages Functions Edge API mirror + SSRF/CORS/session guards
 └── .github/workflows/
-    ├── ci.yml                   # 4-platform PR/push gate: Web + Desktop Rust/Clippy + Android APK + VSIX
-    └── release-all.yml          # One push -> Auto-build & release Web + .exe/.msi + .apk + .vsix + SHA-256 manifest
+    ├── unified-pipeline.yml     # Unified 4-platform PR/push/tag pipeline: PR Guard + CodeQL + Web + Desktop + Android + VSIX + Cross-Repo Sync
+    └── apply-dependabot-update.yml # Automated dependency verification & landing workflow
 ```
 
 ## Unified Commands
 
 - **Web / App Dev Server**: `npm run dev` (runs on port `3000`)
+- **Lint + Structure Budget + Typecheck**: `npm run lint`
+- **Edge Typecheck**: `npm run typecheck:edge`
+- **Security + Unit Tests (Node + jsdom projects)**: `npm test` (with V8 coverage gate: `npm run test:coverage`)
 - **Web Production Build (with PWA SW)**: `npm run build:web`
 - **Shared Native App Bundle (Desktop + Android)**: `npm run build:app`
 - **Desktop Dev (Tauri v2)**: `npm run tauri:dev`
@@ -49,13 +53,13 @@ All four SupremeAI surfaces (**Web**, **Windows Desktop**, **Android APK**, and 
 - **Android Init (one-time per machine)**: `npm run tauri:android:init`
 - **Android Dev (Emulator / USB Device)**: `npm run tauri:android:dev`
 - **Android APK Build**: `npm run tauri:android:build`
-- **Sync Version Across All Platforms**: `npm run version:sync`
+- **Sync / Verify Version Across All Platforms**: `npm run version:sync` / `npm run version:check`
 
 ## One Push -> All 4 Platforms Updated
 
-1. Bump/edit `version.json` or update code in `src/`, `src-tauri/`, or `packages/vscode-extension/`.
+1. Bump/edit `package.json` + run `npm run version:sync` or update code in `src/`, `src-tauri/`, or `packages/vscode-extension/`.
 2. Commit & `git push origin main` (or push a version tag like `git tag v2.6.0 && git push origin v2.6.0`).
-3. GitHub Actions (`release-all.yml`) automatically builds and publishes:
+3. GitHub Actions (`unified-pipeline.yml`) automatically verifies, builds, and publishes:
    - **Web Studio** (`supremeai-web-dist.tar.gz` + Cloudflare Pages auto-deploy + PWA auto-update)
    - **Windows Desktop** (`.exe` NSIS + `.msi` installers with SHA-256 verified silent updater)
    - **Android APK** (`SupremeAI-Studio-*.apk` built via Tauri v2 + signed with `apksigner`)

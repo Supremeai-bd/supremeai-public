@@ -66,13 +66,18 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
   updateConfig: async (updates) => {
     set({ isSaving: true });
     try {
-      const payload: any = { ...updates };
-      if (updates.announcementBanner) {
-        payload.announcementBanner = {
-          ...get().config.announcementBanner,
-          ...updates.announcementBanner,
-        };
-      }
+      const { announcementBanner, ...restUpdates } = updates;
+      const payload: Parameters<typeof adminService.updatePlatformConfig>[0] = {
+        ...restUpdates,
+        ...(announcementBanner
+          ? {
+              announcementBanner: {
+                ...get().config.announcementBanner,
+                ...announcementBanner,
+              },
+            }
+          : {}),
+      };
       const next = await adminService.updatePlatformConfig(payload);
       set({ config: next, isSaving: false, dismissedBannerMessage: null });
       toast.success('Platform Policy Saved', 'Changes are live across all workspaces.');

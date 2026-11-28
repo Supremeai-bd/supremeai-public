@@ -3,9 +3,11 @@ import {
   ChatMessage,
   ChatRouteMeta,
   GroundingSource,
+  ModelDetail,
   TokenUsageSummary,
   WorkbenchRunSettings,
 } from '../types';
+import { SUPREMEAI_MODELS } from '../data/models';
 import { env } from '../config/env';
 import { DEFAULT_BACKEND_ORIGIN } from '../config/platformEndpoints';
 import { apiClient } from './apiClient';
@@ -518,16 +520,25 @@ export const chatService = {
 
       if (!response.ok) {
         const rawErrText = await response.text().catch(() => '');
-        let errorData: any = {};
+        let errorData: {
+          error?: { message?: string } | string;
+          detail?: string;
+          message?: string;
+          status?: number | string;
+          retryAfterSeconds?: number | string;
+          provider?: string;
+          model?: string;
+          [k: string]: unknown;
+        } = {};
         try {
           errorData = rawErrText ? JSON.parse(rawErrText) : {};
         } catch {
           errorData = {};
         }
+        const rawErrField = errorData.error;
         const extractedMsg =
           errorData.detail ||
-          errorData.error?.message ||
-          errorData.error ||
+          (typeof rawErrField === 'object' && rawErrField ? rawErrField.message : rawErrField) ||
           errorData.message ||
           (rawErrText && rawErrText.length < 240 ? rawErrText.trim() : '');
         const errorMsg =
@@ -593,7 +604,13 @@ export const chatService = {
             const dataStr = trimmed.slice(6).trim();
             if (dataStr === '[DONE]') break;
             let frameError: string | null = null;
-            let frameErrorObj: Record<string, any> | null = null;
+            let frameErrorObj: {
+              provider?: string;
+              model?: string;
+              status?: number | string;
+              retryAfterSeconds?: number | string;
+              [k: string]: unknown;
+            } | null = null;
             try {
               const parsed = JSON.parse(dataStr);
               if (parsed.error) {
@@ -719,17 +736,16 @@ export const chatService = {
         (err instanceof TypeError && /fetch|network|stream|body/i.test(errMsg));
 
       if (isFetchNetworkFailure) {
-        let sameOriginHealthy = false;
+        let sameOriginHealthy: boolean;
         let isLocalStudioServer = false;
+        const probeCtrl = new AbortController();
+        const probeTimer = setTimeout(() => probeCtrl.abort(), 2500);
         try {
-          const probeCtrl = new AbortController();
-          const probeTimer = setTimeout(() => probeCtrl.abort(), 2500);
           const probeRes = await fetch('/api/health', {
             method: 'GET',
             cache: 'no-store',
             signal: probeCtrl.signal,
           });
-          clearTimeout(probeTimer);
           sameOriginHealthy = probeRes.ok;
           if (probeRes.ok) {
             const probeJson = await probeRes.json().catch(() => null);
@@ -737,6 +753,8 @@ export const chatService = {
           }
         } catch {
           sameOriginHealthy = false;
+        } finally {
+          clearTimeout(probeTimer);
         }
 
         // If same-origin /api proxy is reachable and SSE transport dropped mid-stream, fall back once to Edge/Express JSON /api/chat
@@ -858,33 +876,33 @@ export const chatService = {
     }
   },
 
-  async fetchModels(): Promise<import('../types').ModelDetail[]> {
-    const { SUPREMEAI_MODELS } = await import('../data/models');
+  async fetchModels(): Promise<ModelDetail[]> {
     if (env.isMockEnabled) {
       return SUPREMEAI_MODELS;
     }
     try {
-      const res = await apiClient.get<{ models?: Record<string, any> }>('/api/models');
+      const res = await apiClient.get<{ models?: Record<string, Record<string, unknown>> }>(
+        '/api/models'
+      );
       if (res?.models && typeof res.models === 'object') {
         const list = Object.entries(res.models)
           .filter(([id]) => id !== 'auto')
-          .map(([id, raw]): import('../types').ModelDetail => {
-          const m = raw as Record<string, any>;
+          .map(([id, m]): ModelDetail => {
           return {
             id,
-            name: m.name || id,
-            alias: m.alias || m.category || 'Standard',
-            badge: m.badge || 'Live',
-            tagline: m.tagline || m.description || '',
-            description: m.description || '',
-            idealFor: m.idealFor || 'General reasoning & coding',
+            name: String(m.name || id),
+            alias: String(m.alias || m.category || 'Standard'),
+            badge: String(m.badge || 'Live'),
+            tagline: String(m.tagline || m.description || ''),
+            description: String(m.description || ''),
+            idealFor: String(m.idealFor || 'General reasoning & coding'),
             latencyRating:
               m.latencyRating === 'Deep-Compute' || m.latencyRating === 'Heavy Compute'
                 ? 'Deep-Compute'
                 : m.latencyRating === 'Balanced'
                   ? 'Balanced'
                   : 'Ultra-Fast',
-            contextTokens: m.contextTokens || '1,000,000+',
+            contextTokens: String(m.contextTokens || '1,000,000+'),
             reasoningCapability:
               m.reasoningCapability === 'Extreme'
                 ? 'Extreme'

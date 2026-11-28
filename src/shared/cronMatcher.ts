@@ -21,8 +21,8 @@ function parseCronToken(
     const [rangeRaw, stepRaw] = part.split('/');
     const step = stepRaw ? Math.max(1, parseInt(stepRaw, 10) || 1) : 1;
 
-    let start = min;
-    let end = max;
+    let start: number;
+    let end: number;
 
     if (rangeRaw === '*') {
       start = min;

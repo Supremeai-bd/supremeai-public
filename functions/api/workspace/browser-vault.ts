@@ -45,7 +45,9 @@ async function fetchUserVaultEntries(
   if (!res.ok) {
     return { ok: false, status: res.status, entries: [] };
   }
-  const data = (await res.json().catch(() => null)) as any;
+  const data = (await res.json().catch(() => null)) as {
+    preferences?: { browser_vault_entries?: StoredVaultEntry[] };
+  } | null;
   const remoteEntries = data?.preferences?.browser_vault_entries;
   return {
     ok: true,

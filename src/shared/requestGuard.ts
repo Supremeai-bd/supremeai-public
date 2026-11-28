@@ -49,6 +49,13 @@ export function createSlidingWindowRateLimiter(options: SlidingWindowOptions): S
 
   const evictIfNeeded = (now: number): void => {
     if (hits.size <= maxTrackedKeys) return;
+    const cutoff = now - windowMs;
+    for (const [k, stamps] of hits.entries()) {
+      if (stamps.length === 0 || stamps[stamps.length - 1] <= cutoff) {
+        hits.delete(k);
+      }
+    }
+    if (hits.size <= maxTrackedKeys) return;
     // Drop the oldest half by first-hit timestamp to bound memory.
     const entries = Array.from(hits.entries())
       .map(([key, stamps]) => ({ key, oldest: stamps[0] ?? 0 }))

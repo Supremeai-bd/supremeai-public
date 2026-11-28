@@ -102,7 +102,9 @@ export function registerFederationProxy(app: Express, ctx: { gatewayBase: string
         res.end();
         return;
       }
-      const nodeStream = Readable.fromWeb(upstream.body as any);
+      const nodeStream = Readable.fromWeb(
+        upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]
+      );
       nodeStream.on('error', () => {
         if (!res.writableEnded) res.end();
       });

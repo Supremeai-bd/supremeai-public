@@ -45,7 +45,7 @@ export interface SyncRoutesContext {
     method: string,
     body?: unknown,
     prefer?: string
-  ) => Promise<any>;
+  ) => Promise<unknown>;
 }
 
 export interface SyncHubHandle {
@@ -139,7 +139,9 @@ export function registerSyncRoutes(app: Express, ctx: SyncRoutesContext): SyncHu
           `platform_settings?id=eq.${encodedId}&select=value`,
           'GET'
         );
-        const remoteVal = Array.isArray(rows) ? rows[0]?.value : rows?.value;
+        const remoteVal = Array.isArray(rows)
+          ? (rows[0] as { value?: unknown } | undefined)?.value
+          : (rows as { value?: unknown } | null)?.value;
         if (remoteVal && typeof remoteVal === 'object') {
           const remoteRec = remoteVal as UserSyncStateRecord;
           if (!existing || Number(remoteRec.updatedAt || 0) >= existing.updatedAt) {

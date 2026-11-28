@@ -117,7 +117,7 @@ export function schedulePreferencesPatch(
   }, delayMs);
 }
 
-export async function fetchRemotePreferences(): Promise<Record<string, any> | null> {
+export async function fetchRemotePreferences(): Promise<Record<string, unknown> | null> {
   const token = getAuthToken();
   if (!token || env.isMockEnabled) return null;
 
@@ -137,13 +137,13 @@ export async function fetchRemotePreferences(): Promise<Record<string, any> | nu
     const data = await res.json().catch(() => null);
     if (!data || typeof data !== 'object') return null;
     if (data.preferences && typeof data.preferences === 'object') {
-      return data.preferences as Record<string, any>;
+      return data.preferences as Record<string, unknown>;
     }
     if (
       data.user_preferences?.preferences &&
       typeof data.user_preferences.preferences === 'object'
     ) {
-      return data.user_preferences.preferences as Record<string, any>;
+      return data.user_preferences.preferences as Record<string, unknown>;
     }
     return null;
   } catch {

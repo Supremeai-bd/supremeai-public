@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
-    "lint": "eslint . && npm run lint:structure && tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings=0 && npm run lint:structure && tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -24,6 +24,7 @@
     "tauri:android:build": "npm run build:app && tauri android build --apk",
     "test:security": "tsx --test src/shared/productionHardening.test.ts",
     "version:sync": "node scripts/sync-versions.mjs",
+    "version:check": "node scripts/sync-versions.mjs --check",
     "test": "npm run test:security && vitest run",
     "typecheck:edge": "tsc -p tsconfig.edge.json",
     "lint:structure": "node scripts/check-server-budget.mjs",
@@ -95,7 +96,10 @@
     "vite-plugin-pwa": "^2.0.0",
     "vitest": "^4.1.12"
   },
+  "overrides": {
+    "@grpc/grpc-js": "^1.13.6"
+  },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.0.0 <25.0.0"
   }
 }

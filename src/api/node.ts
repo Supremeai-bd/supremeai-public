@@ -18,6 +18,7 @@ import { createApiApp, listApiPaths, type ApiBindings, type ApiDeps, type ApiEnv
 export interface MountApiOptions {
   api?: Hono<ApiEnv>;
   fetchGatewayJson?: ApiDeps['fetchGatewayJson'];
+  getPlatformConfig?: ApiDeps['getPlatformConfig'];
   /** ডিফল্ট `process.env` — হ্যান্ডলার `readEnv()` দিয়ে পড়ে। */
   env?: ApiBindings;
 }
@@ -26,7 +27,10 @@ export function mountApiOnExpress(app: Express, options: MountApiOptions = {}): 
   // বাংলা মন্তব্য: callback না থাকলেও Node-এর canonical source রাখা; Edge-এর source আলাদা থাকে।
   const api =
     options.api ??
-    createApiApp({ fetchGatewayJson: options.fetchGatewayJson ?? (async () => null) });
+    createApiApp({
+      fetchGatewayJson: options.fetchGatewayJson ?? (async () => null),
+      getPlatformConfig: options.getPlatformConfig,
+    });
   const env = options.env ?? (process.env as ApiBindings);
   const paths = listApiPaths(api);
   if (paths.length === 0) return paths;

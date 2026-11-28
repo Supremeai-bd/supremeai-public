@@ -10,5 +10,5 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
   const path = new URL(request.url).pathname.replace(/\/+$/, '');
   const res = await handlePublicPackagesRoute(path, request, env);
-  return res ?? jsonEdgeResponse({ success: false, error: 'Not found.' }, 404, request);
+  return res ?? jsonEdgeResponse({ success: false, error: 'Not found.' }, 404, request, undefined, env);
 }

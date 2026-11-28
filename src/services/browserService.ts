@@ -36,10 +36,11 @@ export const browserService = {
     } catch (error) {
       if (error instanceof HttpError && error.status !== 0) {
         throw new Error(
-          (error.body as { error?: string } | undefined)?.error || `HTTP ${error.status}`
+          (error.body as { error?: string } | undefined)?.error || `HTTP ${error.status}`,
+          { cause: error }
         );
       }
-      throw new Error('Workspace file reader requires the local Node backend.');
+      throw new Error('Workspace file reader requires the local Node backend.', { cause: error });
     }
   },
 };

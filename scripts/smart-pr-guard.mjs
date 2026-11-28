@@ -65,6 +65,8 @@ function getChangedFiles(baseRef = 'origin/main') {
 function checkSensitiveFiles(files) {
   const violations = [];
   for (const file of files) {
+    // বাংলা মন্তব্য: জনসম্মুখে নিরাপদ এনভায়রনমেন্ট টেমপ্লেট (.env.example) বৈধ ফাইল হিসেবে অনুমোদিত
+    if (file === '.env.example' || file.endsWith('/.env.example')) continue;
     for (const pattern of FORBIDDEN_FILE_PATTERNS) {
       if (pattern.test(file)) {
         violations.push({ file, reason: `Matches forbidden pattern: ${pattern}` });
@@ -168,11 +170,32 @@ function checkTestTampering(baseRef = 'origin/main') {
   return violations;
 }
 
-function checkLockfileSync(files) {
+function checkLockfileSync(files, baseRef = 'origin/main') {
   const hasRootPkg = files.includes('package.json');
   const hasRootLock = files.includes('package-lock.json');
   if (hasRootPkg && !hasRootLock) {
-    return [{ file: 'package.json', reason: 'package.json modified without updating package-lock.json.' }];
+    // বাংলা মন্তব্য: কেবল ডিপেনডেন্সি বা ভার্সন বদলালেই package-lock.json আপডেট বাধ্যতামূলক; scripts/engines পরিবর্তনে নয়
+    try {
+      const baseRaw = execSync(`git show ${baseRef}:package.json`, { encoding: 'utf8' });
+      const headRaw = execSync('git show HEAD:package.json', { encoding: 'utf8' });
+      const basePkg = JSON.parse(baseRaw);
+      const headPkg = JSON.parse(headRaw);
+      const lockKeys = [
+        'version',
+        'dependencies',
+        'devDependencies',
+        'peerDependencies',
+        'optionalDependencies',
+        'overrides',
+      ];
+      const lockRelevantChanged = lockKeys.some(
+        (key) => JSON.stringify(basePkg[key] ?? null) !== JSON.stringify(headPkg[key] ?? null)
+      );
+      if (!lockRelevantChanged) return [];
+    } catch {
+      // Fall back to strict check when base package.json cannot be read
+    }
+    return [{ file: 'package.json', reason: 'package.json dependencies/version modified without updating package-lock.json.' }];
   }
   return [];
 }

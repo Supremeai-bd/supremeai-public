@@ -290,7 +290,9 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({
         <div className="flex items-center gap-2">
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
+            onChange={(e) =>
+              setStatusFilter(e.target.value as 'all' | 'active' | 'past_due' | 'suspended')
+            }
             className="text-xs py-1.5 px-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none"
           >
             <option value="all">{t.allStatusesOption}</option>
@@ -534,7 +536,7 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({
                   </label>
                   <select
                     value={newTier}
-                    onChange={(e) => setNewTier(e.target.value as any)}
+                    onChange={(e) => setNewTier(e.target.value as 'Free' | 'Pro' | 'Enterprise')}
                     className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-slate-400"
                   >
                     <option value="Free">Free (${PLAN_CATALOG.Free.monthlyPriceUsd}/mo)</option>
@@ -551,7 +553,9 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({
                   </label>
                   <select
                     value={newStatus}
-                    onChange={(e) => setNewStatus(e.target.value as any)}
+                    onChange={(e) =>
+                      setNewStatus(e.target.value as 'active' | 'past_due' | 'suspended')
+                    }
                     className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-slate-400"
                   >
                     <option value="active">{t.activeOnlyOption}</option>

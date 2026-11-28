@@ -5,7 +5,6 @@ import {
   getRealGatewayTrafficSummary,
   sampleHostRuntime,
 } from '../../mcpHealthCollector';
-import { PLAN_CATALOG, TOPUP_PACKAGES } from '../../../config/plans';
 import type { PlanTier } from '../../../types';
 import { ADMIN_SESSION_TTL_MS } from '../../../shared/serverSecurity';
 import { adminPasskeySchema, parseBody } from '../../validation';
@@ -121,16 +120,6 @@ export function registerAdminPlatformRoutes(app: Express, ctx: AdminPlatformCont
         error: 'Invalid administrator passkey. Access denied.',
       });
     }
-  });
-
-  // Public safe runtime governance config consumed by both Customer & Admin UI
-  app.get('/api/platform/config', (_req: Request, res: Response) => {
-    res.json({
-      ...ctx.platformConfig,
-      featureFlags: ctx.runtimeFeatureFlags,
-      plans: PLAN_CATALOG,
-      topupPackages: TOPUP_PACKAGES,
-    });
   });
 
   // Admin: update platform config (maintenance, announcement banner, signup toggle, default model)
@@ -310,6 +299,8 @@ export function registerAdminPlatformRoutes(app: Express, ctx: AdminPlatformCont
           ? (minTier as PlanTier)
           : prev.minTier,
     };
+    // বাংলা মন্তব্য: সার্ভার রিস্টার্টের পরও মডেল পলিসি অক্ষত রাখতে প্ল্যাটফর্ম স্টেট পারসিস্ট করা হচ্ছে
+    ctx.persistPlatformState();
 
     ctx.recordAudit(
       ctx.resolveAuditActor(req, (req.body as Record<string, unknown>)?.actor),

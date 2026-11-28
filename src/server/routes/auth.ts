@@ -74,6 +74,8 @@ export interface AuthContext {
   activeAdminSessions: Map<string, number>;
   activeRefreshTokens: Map<string, { userId: string; expiresAt: number }>;
   upstreamTokenAdminCache: Map<string, { email: string; isAdmin: boolean; tier: PlanTier; expiresAt: number }>;
+  // বাংলা মন্তব্য: লগআউট করা stateless লোকাল সেশন টোকেন তাৎক্ষণিকভাবে বাতিল করার ঐচ্ছিক রেজিস্ট্রি
+  revokeSessionToken?: (token: string) => void;
   isIpBlocked: (req: Request) => boolean;
   platformConfig: { allowNewSignups: boolean };
   buildSafeAuthUser: (user: ServerUser, customerRec?: CustomerEntry) => SafeAuthUser;
@@ -731,18 +733,21 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
   app.post('/api/v1/guest/token', handleGuestTokenRequest);
   app.get('/api/auth/me', handleGetMeRequest);
   app.get('/api/v1/auth/me', handleGetMeRequest);
-  app.post('/api/v1/auth/logout', (req: Request, res: Response) => {
+  // বাংলা মন্তব্য: /api/auth/logout ও /api/v1/auth/logout উভয় পাথেই লোকাল ও আপস্ট্রিম সেশন ক্যাশ তাৎক্ষণিক বাতিল করা হচ্ছে
+  app.post(['/api/auth/logout', '/api/v1/auth/logout'], (req: Request, res: Response) => {
     const authHeader = String(req.headers.authorization || '').trim();
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
     const adminHeader = String(req.headers['x-admin-token'] || '').trim();
     const cookies = parseCookieHeader(req.headers.cookie);
     const adminCookie = cookies.supremeai_admin_session || '';
-    if (token) {
-      ctx.activeAuthSessions.delete(token);
-      ctx.activeAdminSessions.delete(token);
+    for (const candidate of [token, adminHeader, adminCookie]) {
+      if (!candidate) continue;
+      ctx.activeAuthSessions.delete(candidate);
+      ctx.activeAdminSessions.delete(candidate);
+      ctx.revokeSessionToken?.(candidate);
+      const tokenHash = crypto.createHash('sha256').update(candidate).digest('hex');
+      ctx.upstreamTokenAdminCache.delete(tokenHash);
     }
-    if (adminHeader) ctx.activeAdminSessions.delete(adminHeader);
-    if (adminCookie) ctx.activeAdminSessions.delete(adminCookie);
     const presentedRefreshTokens = [
       String(req.body?.refresh_token || '').trim(),
       cookies.supremeai_refresh_token || '',
@@ -752,6 +757,7 @@ export function registerAuthRoutes(app: Express, ctx: AuthContext): void {
     }
     res.clearCookie('supremeai_refresh_token', { path: '/api' });
     res.clearCookie('supremeai_refresh_token', { path: '/api/v1/auth' });
+    res.clearCookie('supremeai_admin_session', { path: '/api' });
     res.clearCookie('supremeai_admin_session', { path: '/api/admin' });
     res.json({ success: true });
   });

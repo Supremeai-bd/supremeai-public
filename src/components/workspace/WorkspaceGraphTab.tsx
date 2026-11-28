@@ -121,7 +121,7 @@ export const WorkspaceGraphTab: React.FC = () => {
       setCustomPositions(computeCircularPositions(parsed.nodes));
       setSelectedNodeId(parsed.nodes[0]?.id ?? null);
     }
-  }, [mermaidGraphSource]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mermaidGraphSource]);
 
   const fetchTopologyGraph = useCallback(async () => {
     setIsLoadingTopology(true);

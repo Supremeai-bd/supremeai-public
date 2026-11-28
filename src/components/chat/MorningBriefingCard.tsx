@@ -7,7 +7,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Sun, CheckCircle2, Bookmark, Sparkles, X } from 'lucide-react';
+import { Sun, CheckCircle2, Bookmark, X } from 'lucide-react';
 import { DEFAULT_GATEWAY_URL } from '../../bridge/desktopBridge';
 
 interface RecentTask {

@@ -1,10 +1,10 @@
 import { PagesContext, handleCorsPreflight, jsonEdgeResponse } from '../../_lib/edgeHelpers';
 
 export async function onRequest(context: PagesContext): Promise<Response> {
-  const { request } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
+  const { request, env } = context;
+  if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
   if (request.method !== 'POST') {
-    return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request);
+    return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request, undefined, env);
   }
 
   const body = (await request.json().catch(() => ({}))) as {
@@ -18,13 +18,15 @@ export async function onRequest(context: PagesContext): Promise<Response> {
     return jsonEdgeResponse(
       { error: 'Supported runtime must be "python" or "node".' },
       400,
-      request
+      request,
+      undefined,
+      env
     );
   }
 
   const files = Array.isArray(body.files) ? body.files : [];
   if (files.length === 0) {
-    return jsonEdgeResponse({ error: 'Project files array must not be empty.' }, 400, request);
+    return jsonEdgeResponse({ error: 'Project files array must not be empty.' }, 400, request, undefined, env);
   }
 
   return jsonEdgeResponse(
@@ -39,6 +41,8 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       durationMs: 0,
     },
     200,
-    request
+    request,
+    undefined,
+    env
   );
 }

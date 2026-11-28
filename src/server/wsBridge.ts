@@ -8,9 +8,77 @@ export interface WsBridgeContext {
   isProduction: boolean;
   blockedIps: Array<{ ip: string }>;
   platformConfig: { maintenanceMode: boolean; maintenanceMessage?: string };
+  // বাংলা মন্তব্য: প্রক্সি-সচেতন ক্লায়েন্ট IP নির্ণয়ের ঐচ্ছিক হুক (Render/Cloudflare প্রক্সির পেছনে সঠিক বাকেটিং নিশ্চিত করে)
+  getClientIp?: (req: http.IncomingMessage) => string;
   verifyBearerIdentity: (
     rawToken: string
   ) => Promise<{ email: string; isAdmin: boolean } | null>;
+}
+
+const DEFAULT_WS_ALLOWED_ORIGINS = new Set([
+  'https://supremeai-studio.pages.dev',
+  'https://supremeai.studio',
+  'https://www.supremeai.studio',
+  'https://tauri.localhost',
+  'http://tauri.localhost',
+  'tauri://localhost',
+]);
+
+// বাংলা মন্তব্য: প্রক্সি হেডার ও সকেট অ্যাড্রেস থেকে প্রকৃত ক্লায়েন্ট IP বের করা হচ্ছে
+export function resolveWsClientIp(request: http.IncomingMessage, ctx?: Pick<WsBridgeContext, 'getClientIp'>): string {
+  if (ctx?.getClientIp) {
+    const resolved = ctx.getClientIp(request).trim();
+    if (resolved) return resolved.replace(/^::ffff:/, '');
+  }
+  const xff = request.headers['x-forwarded-for'];
+  const rawXff = Array.isArray(xff) ? xff[0] : xff;
+  if (typeof rawXff === 'string' && rawXff.trim()) {
+    const firstHop = rawXff.split(',')[0]?.trim();
+    if (firstHop) return firstHop.replace(/^::ffff:/, '');
+  }
+  return String(request.socket?.remoteAddress || '127.0.0.1').trim().replace(/^::ffff:/, '');
+}
+
+// বাংলা মন্তব্য: Cross-Site WebSocket Hijacking প্রতিরোধে ব্রাউজারের Origin হেডার যাচাই করা হচ্ছে
+export function isAllowedWsOrigin(
+  originHeader: string | undefined,
+  hostHeader: string | undefined,
+  isProduction: boolean
+): boolean {
+  const origin = String(originHeader || '').trim();
+  if (!origin) return true;
+  if (DEFAULT_WS_ALLOWED_ORIGINS.has(origin) || origin.startsWith('vscode-webview://')) {
+    return true;
+  }
+  const extraAllowed = String(process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (extraAllowed.includes(origin)) return true;
+
+  try {
+    const parsedOrigin = new URL(origin);
+    const cleanHost = String(hostHeader || '')
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+    if (cleanHost && parsedOrigin.host.toLowerCase() === cleanHost) {
+      return true;
+    }
+    const hostname = parsedOrigin.hostname.toLowerCase();
+    if (!isProduction && (hostname === 'localhost' || hostname === '127.0.0.1')) {
+      return true;
+    }
+    if (
+      parsedOrigin.protocol === 'https:' &&
+      (hostname.endsWith('.supremeai-studio.pages.dev') || hostname.endsWith('.supremeai.studio'))
+    ) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 export function attachWebSocketBridges(server: http.Server, ctx: WsBridgeContext): void {
@@ -37,9 +105,30 @@ export function attachWebSocketBridges(server: http.Server, ctx: WsBridgeContext
     try {
       const reqUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
       const wsToken = extractWsToken(request, reqUrl);
+      const clientIp = resolveWsClientIp(request, ctx);
+      const forwardedHost = Array.isArray(request.headers['x-forwarded-host'])
+        ? request.headers['x-forwarded-host'][0]
+        : request.headers['x-forwarded-host'];
+
+      if (
+        !isAllowedWsOrigin(
+          request.headers.origin,
+          forwardedHost || request.headers.host,
+          ctx.isProduction
+        )
+      ) {
+        socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      if (ctx.blockedIps.some((entry) => entry.ip === clientIp)) {
+        socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
 
       if (reqUrl.pathname === '/api/live') {
-        const clientIp = String(request.socket.remoteAddress || '127.0.0.1');
         const now = Date.now();
         const hits = (liveWsRateBuckets.get(clientIp) || []).filter((t) => now - t < 60_000);
         if (hits.length >= 20) {
@@ -57,11 +146,10 @@ export function attachWebSocketBridges(server: http.Server, ctx: WsBridgeContext
           return;
         }
 
-        if (ctx.isProduction) {
-          const isGuest =
-            wsToken.startsWith('tok_guest_') || wsToken.startsWith('sk-supreme-guest');
-          const identity = wsToken && !isGuest ? await ctx.verifyBearerIdentity(wsToken) : null;
-          if (!identity && !isGuest) {
+        // বাংলা মন্তব্য: প্রোডাকশনে ভুয়া tok_guest_* টোকেন বাইপাস বন্ধ করা হয়েছে; কেবল অনুমোদিত সেশন গ্রহণযোগ্য
+        if (ctx.isProduction && process.env.ALLOW_PUBLIC_LIVE_VOICE !== 'true') {
+          const identity = wsToken ? await ctx.verifyBearerIdentity(wsToken) : null;
+          if (!identity) {
             socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
             socket.destroy();
             return;
@@ -141,7 +229,7 @@ export function attachWebSocketBridges(server: http.Server, ctx: WsBridgeContext
   });
 
   liveWss.on('connection', (clientWs: WebSocket, req: http.IncomingMessage) => {
-    const clientIp = String(req.socket.remoteAddress || '127.0.0.1').trim();
+    const clientIp = resolveWsClientIp(req, ctx);
     activeLiveSocketsByIp.set(clientIp, (activeLiveSocketsByIp.get(clientIp) || 0) + 1);
     const decrementIpCounter = () => {
       const nextCount = (activeLiveSocketsByIp.get(clientIp) || 1) - 1;

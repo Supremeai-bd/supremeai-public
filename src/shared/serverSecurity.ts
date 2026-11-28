@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
 import net from 'node:net';
 import path from 'node:path';
+import { isPrivateOrReservedIpLiteral } from './ipClassifier';
 
 export interface SignedSessionPayload {
   sub: string;
@@ -157,50 +158,9 @@ export function isPrivateIpAddress(rawIp: string): boolean {
 
   // Strip IPv6 zone ID if present (e.g. fe80::1%eth0)
   const cleanIp = ip.split('%')[0];
-
-  // IPv4-mapped IPv6 addresses (e.g. ::ffff:127.0.0.1 or ::ffff:7f00:1)
-  if (cleanIp.startsWith('::ffff:')) {
-    const mapped = cleanIp.slice(7);
-    if (net.isIPv4(mapped)) {
-      return isPrivateIpAddress(mapped);
-    }
-    const hexMatch = mapped.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-    if (hexMatch) {
-      const hi = parseInt(hexMatch[1], 16);
-      const lo = parseInt(hexMatch[2], 16);
-      const v4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
-      return isPrivateIpAddress(v4);
-    }
-    return true;
-  }
-
-  if (net.isIPv4(cleanIp)) {
-    const parts = cleanIp.split('.').map(Number);
-    if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
-      return true;
-    }
-    const [a, b] = parts;
-    if (a === 0) return true; // 0.0.0.0/8
-    if (a === 10) return true; // 10.0.0.0/8
-    if (a === 127) return true; // 127.0.0.0/8 loopback
-    if (a === 169 && b === 254) return true; // 169.254.0.0/16 link-local / cloud metadata
-    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-    if (a === 192 && b === 168) return true; // 192.168.0.0/16
-    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
-    if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 benchmark
-    if (a >= 224) return true; // multicast & reserved
-    return false;
-  }
-
-  if (net.isIPv6(cleanIp)) {
-    if (cleanIp === '::' || cleanIp === '::1') return true;
-    if (/^(fc|fd)/i.test(cleanIp)) return true; // ULA fc00::/7
-    if (/^fe[89ab][0-9a-f]:/i.test(cleanIp)) return true; // link-local fe80::/10
-    if (/^ff/i.test(cleanIp)) return true; // multicast
-    return false;
-  }
-
-  return false;
+  const classified = isPrivateOrReservedIpLiteral(cleanIp);
+  if (classified !== null) return classified;
+  return net.isIP(cleanIp) !== 0;
 }
 
 export function isRestrictedProxyTarget(
@@ -232,6 +192,7 @@ export function isRestrictedProxyTarget(
   }
 
   const host = parsedUrl.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const literalClassification = isPrivateOrReservedIpLiteral(host);
   const isPrivateOrLoopback =
     host === 'localhost' ||
     host.endsWith('.localhost') ||
@@ -239,21 +200,7 @@ export function isRestrictedProxyTarget(
     host.endsWith('.internal') ||
     host === 'metadata.google.internal' ||
     host === 'metadata' ||
-    host === '0.0.0.0' ||
-    host === '::1' ||
-    host === '::' ||
-    host === '169.254.169.254' ||
-    host.startsWith('127.') ||
-    host.startsWith('10.') ||
-    host.startsWith('192.168.') ||
-    host.startsWith('169.254.') ||
-    // Audit 2026-11-24 (item 3.1): the blanket startsWith('fc')/'fd') checks
-    // were removed — they wrongly blocked public domains like fcbarcelona.com /
-    // fdroid.org. ULA fc00::/7 literals are caught by net.isIP() + the
-    // isPrivateIpAddress() parser below (which matches real IPv6 text only).
-    host.startsWith('fe80:') ||
-    /^::ffff:127\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
+    literalClassification === true ||
     (net.isIP(host) !== 0 && isPrivateIpAddress(host));
 
   if (isPrivateOrLoopback) {

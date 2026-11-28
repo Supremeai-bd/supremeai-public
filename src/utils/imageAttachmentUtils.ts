@@ -61,7 +61,7 @@ export async function readFileAsDataUrl(file: File): Promise<string> {
   if (typeof FileReader === 'undefined') {
     const buf = await file.arrayBuffer();
     const bytes = new Uint8Array(buf);
-    let base64 = '';
+    let base64: string;
     if (typeof Buffer !== 'undefined') {
       base64 = Buffer.from(bytes).toString('base64');
     } else {

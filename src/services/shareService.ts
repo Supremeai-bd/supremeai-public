@@ -36,7 +36,7 @@ export const shareService = {
     return response;
   },
 
-  async getSharedConversation(shareId: string): Promise<any> {
+  async getSharedConversation(shareId: string): Promise<Record<string, unknown>> {
     return apiClient.get(`/api/share/${encodeURIComponent(shareId)}`, { skipAuth: true });
   },
 };

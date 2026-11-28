@@ -232,7 +232,7 @@ export function parseMermaidFlowchartToGraph(source: string): GraphData {
     }
 
     // Standalone node declaration like: A[Single Node]
-    if (!matchedAnyEdge && /^[A-Za-z0-9_.-]+\s*[\[\(\{]/.test(line)) {
+    if (!matchedAnyEdge && /^[A-Za-z0-9_.-]+\s*[[({]/.test(line)) {
       ensureNode(line);
     }
   }

@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from 'express';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import type { InfisicalVaultKeyEntry, ProviderMeshEntry } from '../../providerRegistry';
 
 /**
  * Admin Providers & Infisical Vault — provider mesh + Infisical secrets
@@ -26,41 +27,11 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
  *     block sat.
  */
 
-interface ProviderMeshItem {
-  id: string;
-  provider: string;
-  displayName: string;
-  maskedKey: string;
-  status: 'healthy' | 'degraded' | 'unhealthy' | 'untested';
-  latencyMs: number;
-  avgLatencyMs: number;
-  p95LatencyMs: number;
-  priority: number;
-  lastChecked: string;
-  rateLimitTpm: string;
-  infisicalPath: string;
-  infisicalEnv: 'prod' | 'staging' | 'dev';
-  vaultVersion: number;
-  region: string;
-  [k: string]: unknown;
-}
-
-interface InfisicalVaultKey {
-  id: string;
-  infisicalPath: string;
-  infisicalEnv: string;
-  provider: string;
-  displayName: string;
-  maskedKey: string;
-  status: string;
-  avgLatencyMs: number;
-  lastSyncedAt: string;
-  [k: string]: unknown;
-}
+type ProviderMeshItem = ProviderMeshEntry;
 
 export interface AdminProvidersContext {
-  providerMesh: ProviderMeshItem[];
-  infisicalExtraVaultKeys: unknown[];
+  providerMesh: ProviderMeshEntry[];
+  infisicalExtraVaultKeys: InfisicalVaultKeyEntry[];
   PROVIDER_KEY_ENV: Record<string, string>;
   PROVIDER_DISPLAY_NAMES: Record<string, string>;
   maskServerSecret: (val: string) => string;
@@ -258,7 +229,7 @@ export function registerAdminProvidersRoutes(app: Express, ctx: AdminProvidersCo
     const envKeyName = ctx.PROVIDER_KEY_ENV[target.provider];
     const activeKey = envKeyName ? process.env[envKeyName]?.trim() || '' : '';
     let probeStatus: 'healthy' | 'degraded' | 'unhealthy' | 'untested' = 'untested';
-    let measuredLatency = 0;
+    let measuredLatency: number;
     let message = 'No API key configured; provider not verified.';
 
     if (!activeKey) {
@@ -452,7 +423,7 @@ export function registerAdminProvidersRoutes(app: Express, ctx: AdminProvidersCo
 
   app.post('/api/admin/infisical/sync', (req: Request, res: Response) => {
     const nowIso = new Date().toISOString();
-    ctx.infisicalExtraVaultKeys = (ctx.infisicalExtraVaultKeys as Array<Record<string, unknown>>).map((k) => ({
+    ctx.infisicalExtraVaultKeys = ctx.infisicalExtraVaultKeys.map((k) => ({
       ...k,
       lastSyncedAt: nowIso,
     }));

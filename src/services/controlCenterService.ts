@@ -48,7 +48,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   } catch {
     token = null;
   }
-  let adminToken: string | null = null;
+  let adminToken: string | null;
   try {
     adminToken =
       typeof sessionStorage !== 'undefined'
@@ -147,7 +147,7 @@ export const controlCenterService = {
     }>(`/api/admin/control-plane/mcp-tools${refresh ? '?refresh=1' : ''}`);
   },
 
-  async executeMcpTool(toolName: string, args: Record<string, any>, gate?: SafetyGateContext) {
+  async executeMcpTool(toolName: string, args: Record<string, unknown>, gate?: SafetyGateContext) {
     return requestJson<{ result: McpToolExecutionResult }>('/api/admin/control-plane/mcp-call', {
       method: 'POST',
       body: JSON.stringify({ toolName, arguments: args, ...gate }),

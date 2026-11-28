@@ -93,7 +93,7 @@ export interface ChatMessage {
   roleName?: string;
   attachment?: ChatAttachment;
   attachments?: ChatAttachment[];
-  researchReport?: any;
+  researchReport?: import('../services/researchService').ResearchReport;
   browserNavigation?: BrowserNavigationMetadata;
   groundingSources?: GroundingSource[];
   tokenUsage?: TokenUsageSummary;

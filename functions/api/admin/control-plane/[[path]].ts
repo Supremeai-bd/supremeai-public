@@ -207,7 +207,9 @@ async function probeServiceMesh(origin: string, env?: Record<string, string | un
 }
 
 export async function onRequest(context: PagesContext): Promise<Response> {
-  if (context.request.method === 'OPTIONS') return handleCorsPreflight(context.request);
+  if (context.request.method === 'OPTIONS') {
+    return handleCorsPreflight(context.request, context.env);
+  }
   // বাংলা মন্তব্য (Admin Step 1): প্রতিটি control-plane write সার্ভার-সাইডে অডিট হয়।
   return withAdminAudit(context, (audit) => handleControlPlaneRequest(context, audit));
 }

@@ -145,7 +145,7 @@ export function normalizeRemoteReleaseManifest(
   repoSlug: string = GITHUB_PUBLIC_REPO_SLUG
 ): ReleaseManifest | null {
   if (!raw || typeof raw !== 'object') return null;
-  const mf = raw as Record<string, any>;
+  const mf = raw as Record<string, unknown>;
   if (!mf.version) return null;
 
   const version = String(mf.version).replace(/^v/i, '').trim() || DEFAULT_RELEASE_MANIFEST.version;
@@ -155,10 +155,19 @@ export function normalizeRemoteReleaseManifest(
 
   const downloads = (
     mf.downloads && typeof mf.downloads === 'object' ? mf.downloads : {}
-  ) as Record<string, any>;
+  ) as {
+    windowsExeUrl?: string;
+    windowsMsiUrl?: string;
+    androidApkUrl?: string;
+    androidArmv7ApkUrl?: string;
+    vscodeVsixUrl?: string;
+    releasePageUrl?: string;
+    webUrl?: string;
+    checksums?: Record<string, string | undefined>;
+  };
   const platforms = (
     mf.platforms && typeof mf.platforms === 'object' ? mf.platforms : {}
-  ) as Record<string, any>;
+  ) as Record<string, { url?: string; sha256?: string } | undefined>;
 
   const windowsExeUrl = String(
     downloads.windowsExeUrl || platforms['windows-x86_64']?.url || rollingUrls.windowsExeUrl

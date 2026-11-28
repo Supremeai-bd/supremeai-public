@@ -32,9 +32,11 @@ afterEach(() => {
 describe('createApiApp — route registry', () => {
   it('lists every concrete migrated path (used by the Express mount)', () => {
     expect(listApiPaths(createApiApp())).toEqual([
+      '/api/auth/captcha-config',
       '/api/health',
       '/api/i18n/:lang',
       '/api/models',
+      '/api/platform/config',
       '/api/releases/latest',
       '/api/share/:id',
       '/api/share/artifact',
@@ -175,5 +177,67 @@ describe('POST /api/telemetry/client-error', () => {
     const res = await createApiApp().request('/api/telemetry/client-error');
     expect(res.status).toBe(405);
     expect(res.headers.get('Allow')).toBe('POST');
+  });
+});
+
+describe('GET /api/auth/captcha-config & GET /api/platform/config', () => {
+  it('enables Turnstile only when both site and secret keys exist and rejects POST with 405', async () => {
+    const app = createApiApp();
+    const disabled = await app.request('/api/auth/captcha-config', {}, { TURNSTILE_SITE_KEY: 'site' });
+    expect(disabled.status).toBe(200);
+    await expect(disabled.json()).resolves.toEqual({
+      provider: 'turnstile',
+      enabled: false,
+      siteKey: '',
+    });
+
+    const enabled = await app.request(
+      '/api/auth/captcha-config',
+      {},
+      { TURNSTILE_SITE_KEY: '0xSITE', TURNSTILE_SECRET_KEY: '0xSEC' }
+    );
+    expect(enabled.status).toBe(200);
+    expect(enabled.headers.get('Cache-Control')).toBe('public, max-age=300');
+    await expect(enabled.json()).resolves.toEqual({
+      provider: 'turnstile',
+      enabled: true,
+      siteKey: '0xSITE',
+    });
+
+    const badMethod = await app.request('/api/auth/captcha-config', { method: 'POST' });
+    expect(badMethod.status).toBe(405);
+  });
+
+  it('serves canonical Edge platform config by default and live Node platform state when injected', async () => {
+    const edgeApp = createApiApp();
+    const edgeRes = await edgeApp.request('/api/platform/config');
+    expect(edgeRes.status).toBe(200);
+    const edgeJson = (await edgeRes.json()) as {
+      maintenanceMode: boolean;
+      plans: Record<string, unknown>;
+      topupPackages: unknown[];
+      modelPolicies: Record<string, { enabled: boolean }>;
+    };
+    expect(edgeJson.maintenanceMode).toBe(false);
+    expect(Boolean(edgeJson.plans && typeof edgeJson.plans === 'object')).toBe(true);
+    expect(Array.isArray(edgeJson.topupPackages)).toBe(true);
+    expect(edgeJson.modelPolicies['supreme-core']?.enabled).toBe(true);
+
+    const nodeApp = createApiApp({
+      getPlatformConfig: () => ({
+        status: 'maintenance',
+        maintenanceMode: true,
+        featureFlags: { maintenance_mode: true },
+      }),
+    });
+    const nodeRes = await nodeApp.request('/api/platform/config');
+    const nodeJson = (await nodeRes.json()) as {
+      maintenanceMode: boolean;
+      featureFlags: Record<string, boolean>;
+      plans: Record<string, unknown>;
+    };
+    expect(nodeJson.maintenanceMode).toBe(true);
+    expect(nodeJson.featureFlags.maintenance_mode).toBe(true);
+    expect(Boolean(nodeJson.plans && typeof nodeJson.plans === 'object')).toBe(true);
   });
 });

@@ -391,7 +391,7 @@ export async function adminFetchDashboard(): Promise<AdminDashboardData> {
   }
   const email = sessionStorage.getItem(WEB_ADMIN_SESSION_KEY) || 'owner@supremeai.dev';
   const started = performance.now();
-  let gatewayStatus = 'unknown';
+  let gatewayStatus: string;
   let gatewayLatency: number | undefined;
   try {
     const res = await fetch(`${getGatewayBase()}/health`, { method: 'GET' });

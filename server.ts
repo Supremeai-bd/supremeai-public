@@ -166,7 +166,10 @@ async function startServer() {
   });
   // বাংলা মন্তব্য: Unified Hono API (src/api, Edge-এর সাথে একই কোড) — express.json()-এর আগে, body অক্ষত রাখতে
   // বাংলা মন্তব্য: callback request-time-এ চলে; তখন নিচের gateway cache সম্পূর্ণ initialized।
-  mountApiOnExpress(app, { fetchGatewayJson: (p, t) => fetchGatewayJson(p, t) });
+  mountApiOnExpress(app, {
+    fetchGatewayJson: (p, t) => fetchGatewayJson(p, t),
+    getPlatformConfig: () => ({ ...platformConfig, featureFlags: runtimeFeatureFlags }),
+  });
   app.use(express.json({ limit: '15mb' }));
 
   // Zero-dependency in-memory sliding-window rate limiter (per client IP) — src/server/httpGuards.ts.
@@ -212,7 +215,7 @@ async function startServer() {
   // Seeds, getClientIp, the durable loader and the schema probe live in
   // src/server/platformState.ts; the mutable state + audit writer stay here.
   let runtimeFeatureFlags: Record<string, boolean> = createRuntimeFeatureFlags();
-  let platformConfig = createPlatformConfig();
+  const platformConfig = createPlatformConfig();
   const auditRecords: ServerAuditRecord[] = createAuditSeed(isProduction);
 
   const resolveAuditActor = (req?: Request, explicitActor?: unknown): string => {
@@ -261,7 +264,7 @@ async function startServer() {
     void supabaseRestRequest('audit_logs', 'POST', [buildDurableAuditRow(entry)]).catch(() => {});
   };
 
-  let blockedIps: BlockedIpEntry[] = createBlockedIpsSeed(isProduction);
+  const blockedIps: BlockedIpEntry[] = createBlockedIpsSeed(isProduction);
 
   const isIpBlocked = (req: Request): boolean => {
     const clientIp = getClientIp(req);
@@ -299,10 +302,27 @@ async function startServer() {
   const TOKEN_SIGNING_SECRET = getSessionSigningSecret();
   const activeAdminSessions = new PersistentSessionMap<number>('supremeai:admin_sess:', 86_400, true);
   void activeAdminSessions.hydrateFromRedis().catch(() => {});
+  // বাংলা মন্তব্য: মেমরি নিঃশেষ রোধে আপস্ট্রিম টোকেন ক্যাশ এবং বাতিলকৃত লোকাল সেশন রেজিস্ট্রি সীমাবদ্ধ রাখা হয়েছে
+  const MAX_SESSION_CACHE_ENTRIES = 2_000;
   const upstreamTokenAdminCache = new Map<
     string,
     { email: string; isAdmin: boolean; tier: PlanTier; expiresAt: number }
   >();
+  const revokedSessionTokenHashes = new Map<string, number>();
+
+  const revokeLocalSessionToken = (rawToken: string) => {
+    if (!rawToken) return;
+    const now = Date.now();
+    if (revokedSessionTokenHashes.size >= MAX_SESSION_CACHE_ENTRIES) {
+      for (const [k, exp] of revokedSessionTokenHashes) if (exp <= now) revokedSessionTokenHashes.delete(k);
+      if (revokedSessionTokenHashes.size >= MAX_SESSION_CACHE_ENTRIES) {
+        const oldest = revokedSessionTokenHashes.keys().next().value;
+        if (oldest) revokedSessionTokenHashes.delete(oldest);
+      }
+    }
+    const hash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    revokedSessionTokenHashes.set(hash, now + 7 * 86_400_000);
+  };
 
   const signLocalSessionToken = (
     payload: { sub: string; email: string; iat: number; exp?: number; role?: string },
@@ -311,8 +331,14 @@ async function startServer() {
 
   const verifyLocalSessionToken = (
     token: string
-  ): { sub: string; email: string; iat: number; exp: number; role?: string } | null =>
-    verifySessionToken(token, TOKEN_SIGNING_SECRET);
+  ): { sub: string; email: string; iat: number; exp: number; role?: string } | null => {
+    if (!token) return null;
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    const revokedExp = revokedSessionTokenHashes.get(hash);
+    if (revokedExp && revokedExp > Date.now()) return null;
+    if (revokedExp) revokedSessionTokenHashes.delete(hash);
+    return verifySessionToken(token, TOKEN_SIGNING_SECRET);
+  };
 
   // Seeded local user credentials removed; real accounts register or authenticate via upstream gateway.
   // Local sign-ups live in memory only (no tmp-file cache of password hashes).
@@ -475,7 +501,7 @@ async function startServer() {
       httpOnly: true,
       sameSite: 'lax',
       secure: isHttpsRequest(req),
-      path: '/api/admin',
+      path: '/api',
       maxAge: ADMIN_SESSION_TTL_MS,
     });
   };
@@ -487,6 +513,7 @@ async function startServer() {
     activeAdminSessions,
     activeRefreshTokens,
     upstreamTokenAdminCache,
+    revokeSessionToken: (t) => revokeLocalSessionToken(t),
     isIpBlocked: (req) => isIpBlocked(req),
     platformConfig,
     buildSafeAuthUser: (u, c) => buildSafeAuthUser(u, c),
@@ -564,7 +591,13 @@ async function startServer() {
           signal: AbortSignal.timeout(4500),
         });
         if (upstreamRes.ok) {
-          const data: any = await upstreamRes.json().catch(() => null);
+          const data = (await upstreamRes.json().catch(() => null)) as {
+            user?: Record<string, unknown>;
+            email?: string;
+            adminEmails?: string[];
+            admin_emails?: string[];
+            [k: string]: unknown;
+          } | null;
           const raw =
             data && typeof data === 'object'
               ? data.user && typeof data.user === 'object'
@@ -574,14 +607,16 @@ async function startServer() {
           const cleanEmail = String(raw?.email || '')
             .trim()
             .toLowerCase();
-          if (cleanEmail) {
+          if (cleanEmail && raw) {
             const matchedUser = usersDb.find((u) => u.email.toLowerCase() === cleanEmail);
             const customerRec = customerDirectory.find((c) => c.email.toLowerCase() === cleanEmail);
             const upstreamAdminEmails: string[] = [
               ...(Array.isArray(data?.adminEmails) ? data.adminEmails : []),
               ...(Array.isArray(data?.admin_emails) ? data.admin_emails : []),
             ];
-            const upstreamRbac = raw.rbacRole || raw.rbac_role || raw.role;
+            const upstreamRbacRaw = raw.rbacRole || raw.rbac_role || raw.role;
+            const upstreamRbac = typeof upstreamRbacRaw === 'string' ? upstreamRbacRaw : undefined;
+            const adminUserIdRaw = raw.adminUserId || raw.admin_user_id;
             const rbac = resolveRbacUserProfile(
               cleanEmail,
               matchedUser || {
@@ -590,7 +625,7 @@ async function startServer() {
                   raw.isAdminEligible ?? raw.is_admin_eligible ?? raw.is_admin
                 ),
                 isDeveloperEligible: Boolean(raw.isDeveloperEligible ?? raw.is_developer_eligible),
-                adminUserId: raw.adminUserId || raw.admin_user_id,
+                adminUserId: typeof adminUserIdRaw === 'string' ? adminUserIdRaw : undefined,
               },
               customerRec,
               upstreamAdminEmails,
@@ -603,6 +638,16 @@ async function startServer() {
                 raw.plan ||
                 (rbac.isAdminEligible ? 'Enterprise' : 'Pro')) as PlanTier,
             };
+            if (upstreamTokenAdminCache.size >= MAX_SESSION_CACHE_ENTRIES) {
+              const now = Date.now();
+              for (const [k, entry] of upstreamTokenAdminCache) {
+                if (entry.expiresAt <= now) upstreamTokenAdminCache.delete(k);
+              }
+              if (upstreamTokenAdminCache.size >= MAX_SESSION_CACHE_ENTRIES) {
+                const oldestKey = upstreamTokenAdminCache.keys().next().value;
+                if (oldestKey) upstreamTokenAdminCache.delete(oldestKey);
+              }
+            }
             upstreamTokenAdminCache.set(tokenHash, {
               ...resolved,
               expiresAt: Date.now() + 60_000,
@@ -670,23 +715,15 @@ async function startServer() {
     next();
   };
 
-  app.use('/api/admin', routeRateLimit(600, { scope: 'area' }), requireAdminMiddleware);
+  // বাংলা মন্তব্য: /api/admin এবং /api/v1/admin উভয় অ্যাডমিন সারফেসেই RBAC অথেন্টিকেশন ও রেট-লিমিট বাধ্যতামূলক
+  app.use(['/api/admin', '/api/v1/admin'], routeRateLimit(600, { scope: 'area' }), requireAdminMiddleware);
   app.use('/api/schema-parity', routeRateLimit(60, { scope: 'area' }), requireAdminMiddleware);
 
   registerAdminPlatformRoutes(app, {
-    get platformConfig() {
-      return platformConfig;
-    },
-    set platformConfig(_v) {
-      // platformConfig reassignment never happens; property mutations
-      // via reference are used. Setter is a placeholder for completeness.
-    },
-    get runtimeFeatureFlags() {
-      return runtimeFeatureFlags;
-    },
-    set runtimeFeatureFlags(v) {
-      runtimeFeatureFlags = v;
-    },
+    get platformConfig() { return platformConfig; },
+    set platformConfig(_v) { /* property mutations via reference */ },
+    get runtimeFeatureFlags() { return runtimeFeatureFlags; },
+    set runtimeFeatureFlags(v) { runtimeFeatureFlags = v; },
     customerDirectory,
     blockedIps,
     auditRecords,
@@ -699,93 +736,43 @@ async function startServer() {
     recordAudit: (actor, action, resource, details, req) => recordAudit(actor, action, resource, details, req),
   });
 
-    registerAdminCustomerRoutes(app, {
-    get customerDirectory() {
-      return customerDirectory;
-    },
-    set customerDirectory(v) {
-      customerDirectory = v;
-    },
-    get usersDb() {
-      return usersDb;
-    },
-    set usersDb(v) {
-      usersDb = v;
-    },
+  registerAdminCustomerRoutes(app, {
+    get customerDirectory() { return customerDirectory; },
+    set customerDirectory(v) { customerDirectory = v; },
+    get usersDb() { return usersDb; },
+    set usersDb(v) { usersDb = v; },
     resolveAuditActor: (req, actor) => resolveAuditActor(req, actor as unknown),
     recordAudit: (actor, action, resource, details, req) => recordAudit(actor, action, resource, details, req),
   });
 
-    const devSwarmWorkers = [
+  const devSwarmWorkers = [
     {
-      id: 'worker-solver-01',
-      name: 'Autonomous Solver Agent',
-      type: 'solver',
-      status: 'active',
+      id: 'worker-solver-01', name: 'Autonomous Solver Agent', type: 'solver', status: 'active',
       currentTask: 'Resolving Issue #42: Backpressure handling in WebSocket stream broker',
-      currentIssueOrPr: 'Supremeai-bd/supremeai #42',
-      processedCount: 184,
-      successRate: 97.8,
-      cpuPercent: 18.4,
-      memoryMb: 412,
-      uptime: '14h 22m',
-      logs: [
-        'Identified unbounded buffer allocation in event emitter.',
-        'Generated patch applying bounded circular ring-buffer.',
-        'Unit test suite verified: 34 tests passing with 0 regressions.',
-      ],
+      currentIssueOrPr: 'Supremeai-bd/supremeai #42', processedCount: 184, successRate: 97.8,
+      cpuPercent: 18.4, memoryMb: 412, uptime: '14h 22m',
+      logs: ['Identified unbounded buffer allocation in event emitter.', 'Generated patch applying bounded circular ring-buffer.', 'Unit test suite verified: 34 tests passing with 0 regressions.'],
     },
     {
-      id: 'worker-verifier-02',
-      name: 'AST Code Verifier & Validator',
-      type: 'verifier',
-      status: 'active',
+      id: 'worker-verifier-02', name: 'AST Code Verifier & Validator', type: 'verifier', status: 'active',
       currentTask: 'Running TypeScript AST graph verification on PR #94',
-      currentIssueOrPr: 'Supremeai-bd/supremeai-studio #94',
-      processedCount: 312,
-      successRate: 99.4,
-      cpuPercent: 9.2,
-      memoryMb: 280,
-      uptime: '28h 10m',
-      logs: [
-        'AST tree generated for 84 source modules.',
-        'Checked symbol cross-references: 0 circular dependencies.',
-        'Strict null check verification PASSED.',
-      ],
+      currentIssueOrPr: 'Supremeai-bd/supremeai-studio #94', processedCount: 312, successRate: 99.4,
+      cpuPercent: 9.2, memoryMb: 280, uptime: '28h 10m',
+      logs: ['AST tree generated for 84 source modules.', 'Checked symbol cross-references: 0 circular dependencies.', 'Strict null check verification PASSED.'],
     },
     {
-      id: 'worker-scout-03',
-      name: 'Ecosystem Scout & Dependency Tracker',
-      type: 'ecosystem-scout',
-      status: 'idle',
+      id: 'worker-scout-03', name: 'Ecosystem Scout & Dependency Tracker', type: 'ecosystem-scout', status: 'idle',
       currentTask: 'Awaiting scheduled 15-minute package index crawl',
-      currentIssueOrPr: 'Continuous background crawler',
-      processedCount: 94,
-      successRate: 100.0,
-      cpuPercent: 1.1,
-      memoryMb: 145,
-      uptime: '42h 50m',
-      logs: [
-        'Checked @google/genai SDK v3.2.0 compatibility.',
-        'Found 0 upstream security advisories in current node_modules lockfile.',
-      ],
+      currentIssueOrPr: 'Continuous background crawler', processedCount: 94, successRate: 100.0,
+      cpuPercent: 1.1, memoryMb: 145, uptime: '42h 50m',
+      logs: ['Checked @google/genai SDK v3.2.0 compatibility.', 'Found 0 upstream security advisories in current node_modules lockfile.'],
     },
     {
-      id: 'worker-security-04',
-      name: 'Adversarial Prompt & Rules Breaker',
-      type: 'rules-breaker',
-      status: 'active',
+      id: 'worker-security-04', name: 'Adversarial Prompt & Rules Breaker', type: 'rules-breaker', status: 'active',
       currentTask: 'Fuzzing prompt boundaries with 500 adversarial jailbreak vectors',
-      currentIssueOrPr: 'Adversarial Test Suite #19',
-      processedCount: 780,
-      successRate: 99.8,
-      cpuPercent: 24.6,
-      memoryMb: 520,
-      uptime: '19h 45m',
-      logs: [
-        'Injected recursive delimiter extraction payload: Blocked by boundary shield.',
-        'Tested system instruction override vector: Sanitized by LLM gateway filter.',
-      ],
+      currentIssueOrPr: 'Adversarial Test Suite #19', processedCount: 780, successRate: 99.8,
+      cpuPercent: 24.6, memoryMb: 520, uptime: '19h 45m',
+      logs: ['Injected recursive delimiter extraction payload: Blocked by boundary shield.', 'Tested system instruction override vector: Sanitized by LLM gateway filter.'],
     },
   ];
 
@@ -811,6 +798,7 @@ async function startServer() {
   registerLlmLatencyRoutes(app, {
     get providerMesh() { return providerMesh; },
     PROVIDER_DISPLAY_NAMES,
+    getRealGatewayTrafficSummary: () => getRealGatewayTrafficSummary(),
   });
 
   registerApiKeysRoutes(app, {
@@ -821,18 +809,10 @@ async function startServer() {
 
   // --- Provider Mesh & Infisical Vault Secrets Endpoints (Admin Dashboard) ---  // --- Provider Mesh & Infisical Vault Secrets Endpoints (Admin Dashboard) ---
   registerAdminProvidersRoutes(app, {
-    get providerMesh(): any {
-      return providerMesh;
-    },
-    set providerMesh(v: any) {
-      providerMesh = v;
-    },
-    get infisicalExtraVaultKeys(): any {
-      return infisicalExtraVaultKeys;
-    },
-    set infisicalExtraVaultKeys(v: any) {
-      infisicalExtraVaultKeys = v;
-    },
+    get providerMesh() { return providerMesh; },
+    set providerMesh(v) { providerMesh = v; },
+    get infisicalExtraVaultKeys() { return infisicalExtraVaultKeys; },
+    set infisicalExtraVaultKeys(v) { infisicalExtraVaultKeys = v; },
     PROVIDER_KEY_ENV,
     PROVIDER_DISPLAY_NAMES,
     maskServerSecret: (val) => maskServerSecret(val),
@@ -898,11 +878,12 @@ async function startServer() {
     recordAudit: (actor, action, resource, details, req) => recordAudit(actor, action, resource, details, req),
   });
 
-    registerStreamRoutes(app, {
+  registerStreamRoutes(app, {
     isIpBlocked: (req) => isIpBlocked(req),
     platformConfig,
     get customerDirectory() { return customerDirectory; },
-    runtimeFeatureFlags,
+    // বাংলা মন্তব্য: অ্যাডমিন টগলে runtimeFeatureFlags রিঅ্যাসাইন হলেও যেন লাইভ মান পাওয়া যায় তাই getter ব্যবহৃত হচ্ছে
+    get runtimeFeatureFlags() { return runtimeFeatureFlags; },
     SUPPORTED_MODELS,
     TIER_RANK,
     verifyBearerIdentity: (t) => verifyBearerIdentity(t),
@@ -936,7 +917,7 @@ async function startServer() {
       res.status(401).json({ error: 'Valid session or API key is required.' });
       return;
     }
-    (req as any).authIdentity = identity;
+    (req as unknown as Record<string, unknown>).authIdentity = identity;
     next();
   };
 
@@ -974,6 +955,7 @@ async function startServer() {
   registerMediaRoutes(app, {
     isIpBlocked: (req) => isIpBlocked(req),
     get platformConfig() { return platformConfig; },
+    resolveAuthenticatedEmail: (req) => resolveAuthenticatedEmail(req),
     safeFetchWithRedirectCheck: (...args) => safeFetchWithRedirectCheck(...args),
   });
   registerTtsRoutes(app, {
@@ -1010,6 +992,7 @@ async function startServer() {
     isProduction,
     blockedIps,
     platformConfig,
+    getClientIp: (req) => getClientIp(req as unknown as Request),
     verifyBearerIdentity,
   });
 

@@ -4,7 +4,7 @@
  * channel-specific fetch জানবে না।
  */
 
-import type { ChannelType, InboxAdapter, InboxAdapterRegistry } from '../../../packages/contracts/inbox-adapter';
+import type { ChannelType, InboxAdapter } from '../../../packages/contracts/inbox-adapter';
 import { GmailAdapter, gmailAdapter } from './gmailAdapter';
 
 const registry: Partial<Record<ChannelType, InboxAdapter>> = {

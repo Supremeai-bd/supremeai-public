@@ -72,8 +72,12 @@ export const webhookService = {
         {}
       );
       return res || { success: true, status_code: 200 };
-    } catch (err: any) {
-      return { success: false, status_code: 0, error: err?.message || 'Connection failed' };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        status_code: 0,
+        error: err instanceof Error ? err.message : 'Connection failed',
+      };
     }
   },
 };

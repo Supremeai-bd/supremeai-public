@@ -22,7 +22,7 @@ async function upstreamJson(
   request: Request,
   upstreamOrigin: string,
   pathAndSearch: string
-): Promise<any | null> {
+): Promise<Record<string, unknown> | null> {
   try {
     const res = await forwardRawUpstream(request.clone(), upstreamOrigin, pathAndSearch, 8000);
     if (!res.ok) return null;

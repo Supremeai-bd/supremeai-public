@@ -44,9 +44,9 @@ function isChatMessage(value: unknown): value is ChatMessage {
 
 export async function onRequest(context: PagesContext): Promise<Response> {
   const { request, env } = context;
-  if (request.method === 'OPTIONS') return handleCorsPreflight(request);
+  if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
   if (request.method !== 'POST') {
-    return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request);
+    return jsonEdgeResponse({ error: 'Method not allowed' }, 405, request, undefined, env);
   }
 
   const body: unknown = await request.json().catch(() => null);
@@ -70,7 +70,9 @@ export async function onRequest(context: PagesContext): Promise<Response> {
           'Invalid chat request: expected a non-empty array of valid messages and valid chat options.',
       },
       400,
-      request
+      request,
+      undefined,
+      env
     );
   }
   const rawMessages = body.messages as ChatMessage[];
@@ -114,16 +116,20 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       return jsonEdgeResponse(
         { error: 'Upstream gateway returned an empty completion response.' },
         502,
-        request
+        request,
+        undefined,
+        env
       );
     }
 
-    return jsonEdgeResponse({ text, model, source: 'edge-chat' }, 200, request);
+    return jsonEdgeResponse({ text, model, source: 'edge-chat' }, 200, request, undefined, env);
   } catch (err: unknown) {
     return jsonEdgeResponse(
       { error: err instanceof Error ? err.message : 'Synchronous chat fallback failed.' },
       502,
-      request
+      request,
+      undefined,
+      env
     );
   }
 }

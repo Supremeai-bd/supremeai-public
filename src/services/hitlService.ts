@@ -8,7 +8,7 @@ export interface HitlPendingRecord {
   command?: string;
   module?: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
   created_at: string;
   status: 'pending' | 'approved' | 'rejected';
 }
@@ -22,7 +22,7 @@ const STATUSES = ['pending', 'approved', 'rejected'] as const;
  * federation snapshot stores whatever arrived, so both shapes must work.
  */
 export function normalizeHitlPayload(payload: unknown): HitlPendingRecord[] {
-  const records = unwrapCollection<Record<string, any>>(payload, [
+  const records = unwrapCollection<Record<string, unknown>>(payload, [
     'pending',
     'tickets',
     'items',
@@ -33,7 +33,7 @@ export function normalizeHitlPayload(payload: unknown): HitlPendingRecord[] {
     .map((raw, index) => {
       const context =
         raw.context && typeof raw.context === 'object'
-          ? (raw.context as Record<string, any>)
+          ? (raw.context as Record<string, unknown>)
           : undefined;
 
       const severityRaw = String(raw.severity ?? context?.severity ?? 'high').toLowerCase();
