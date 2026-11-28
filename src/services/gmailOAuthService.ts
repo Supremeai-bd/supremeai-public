@@ -1,5 +1,5 @@
 import type { FirebaseApp } from 'firebase/app';
-import type { User } from 'firebase/auth';
+import type { Auth, User } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export const GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'] as const;
@@ -43,8 +43,29 @@ let cachedSessionEmail: string | null = null;
 let cachedCurrentUser: User | null = null;
 let authCheckSeq = 0;
 
+/** Minimal Google Identity Services (GIS) token-client surface used by this service. */
+interface GisTokenResponse {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+}
+
+interface GisOauth2 {
+  initTokenClient(config: {
+    client_id: string;
+    scope: string;
+    callback: (resp: GisTokenResponse) => void | Promise<void>;
+    error_callback?: (err: { message?: string; type?: string } | undefined) => void;
+  }): { requestAccessToken(options?: { prompt?: string }): void };
+}
+
+function getGisOauth2(): GisOauth2 | undefined {
+  return (window as Window & { google?: { accounts?: { oauth2?: GisOauth2 } } }).google?.accounts
+    ?.oauth2;
+}
+
 interface FirebaseAuthBundle {
-  auth: any;
+  auth: Auth;
   provider: InstanceType<typeof import('firebase/auth').GoogleAuthProvider>;
   GoogleAuthProvider: typeof import('firebase/auth').GoogleAuthProvider;
   onAuthStateChanged: typeof import('firebase/auth').onAuthStateChanged;
@@ -179,7 +200,7 @@ const GIS_LOAD_TIMEOUT_MS = 15_000;
  * এখন ব্যর্থ ট্যাগ সরিয়ে নতুন করে লোড হয়, আর ১৫ সেকেন্ডের টাইমআউট আছে।
  */
 export function loadGoogleIdentityScript(timeoutMs: number = GIS_LOAD_TIMEOUT_MS): Promise<void> {
-  if ((window as any).google?.accounts?.oauth2) return Promise.resolve();
+  if (getGisOauth2()) return Promise.resolve();
   document.querySelectorAll(`script[src="${GIS_SRC}"]`).forEach((el) => el.remove());
   return new Promise<void>((resolve, reject) => {
     const script = document.createElement('script');
@@ -217,7 +238,7 @@ async function connectWithGoogleIdentityServices(clientId: string): Promise<{
 
   await loadGoogleIdentityScript();
 
-  const googleOauth = (window as any).google?.accounts?.oauth2;
+  const googleOauth = getGisOauth2();
   if (!googleOauth?.initTokenClient) {
     throw new Error('Google Identity Services SDK failed to initialize.');
   }
@@ -227,7 +248,7 @@ async function connectWithGoogleIdentityServices(clientId: string): Promise<{
       client_id: clientId,
       scope:
         'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
-      callback: async (resp: any) => {
+      callback: async (resp: GisTokenResponse) => {
         if (resp.error) {
           reject(
             new Error(
@@ -250,10 +271,12 @@ async function connectWithGoogleIdentityServices(clientId: string): Promise<{
               headers: { Authorization: `Bearer ${token}` },
             });
             if (uRes.ok) {
-              const uData = (await uRes.json()) as any;
-              email = uData.email || '';
-              name = uData.name || (email ? email.split('@')[0] : name);
-              uid = uData.sub || uid;
+              const uData = (await uRes.json()) as Partial<Record<'email' | 'name' | 'sub', unknown>>;
+              email = typeof uData.email === 'string' ? uData.email : '';
+              name =
+                (typeof uData.name === 'string' && uData.name) ||
+                (email ? email.split('@')[0] : name);
+              uid = (typeof uData.sub === 'string' && uData.sub) || uid;
             }
           } catch {
             // Non-fatal profile enrichment fallback
@@ -282,7 +305,7 @@ async function connectWithGoogleIdentityServices(clientId: string): Promise<{
           );
         }
       },
-      error_callback: (err: any) => {
+      error_callback: (err) => {
         reject(new Error(err?.message || 'Google OAuth prompt failed to open.'));
       },
     });
