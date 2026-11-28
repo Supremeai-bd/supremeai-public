@@ -418,12 +418,3 @@ export function resolveThinkingParams(level: WorkbenchThinkingLevel): ResolvedTh
   }
 }
 
-export function shouldAutoTriggerJsonOutput(promptText: string): boolean {
-  const trimmed = promptText.trim();
-  return JSON_OUTPUT_ASCII.test(trimmed) || JSON_OUTPUT_BN.test(trimmed);
-}
-
-export function hasLiveWebIntent(promptText: string): boolean {
-  const trimmed = promptText.trim();
-  return LIVE_WEB_ASCII.test(trimmed) || LIVE_WEB_BN.test(trimmed);
-}

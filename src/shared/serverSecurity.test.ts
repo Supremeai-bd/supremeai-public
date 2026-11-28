@@ -80,9 +80,13 @@ describe('serverSecurity hardening helpers', () => {
     ).toBe(false);
   });
 
-  it('parses Cookie header safely', () => {
-    const parsed = parseCookieHeader('foo=bar; supremeai_admin_session=tok_abc.123');
+  it('parses Cookie header safely without prototype pollution', () => {
+    const parsed = parseCookieHeader(
+      '__proto__=polluted; constructor=bad; prototype=evil; foo=bar; supremeai_admin_session=tok_abc.123'
+    );
     expect(parsed.foo).toBe('bar');
     expect(parsed.supremeai_admin_session).toBe('tok_abc.123');
+    expect(Object.getPrototypeOf(parsed)).toBeNull();
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 });

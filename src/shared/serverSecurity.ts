@@ -105,21 +105,24 @@ export function verifySessionToken(
 }
 
 export function parseCookieHeader(cookieHeader?: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  if (!cookieHeader) return result;
+  const entries = new Map<string, string>();
+  if (!cookieHeader) return Object.create(null) as Record<string, string>;
   for (const part of cookieHeader.split(';')) {
     const eqIdx = part.indexOf('=');
     if (eqIdx <= 0) continue;
     const key = part.slice(0, eqIdx).trim();
     const val = part.slice(eqIdx + 1).trim();
-    if (!key) continue;
+    if (!key || key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
     try {
-      result[key] = decodeURIComponent(val);
+      entries.set(key, decodeURIComponent(val));
     } catch {
-      result[key] = val;
+      entries.set(key, val);
     }
   }
-  return result;
+  return Object.assign(
+    Object.create(null) as Record<string, string>,
+    Object.fromEntries(entries)
+  );
 }
 
 export function isProtectedWorkspaceFile(targetRel: string): boolean {

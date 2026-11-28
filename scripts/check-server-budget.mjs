@@ -141,7 +141,11 @@ const TARGET = 'server.ts';
 // 1056 → 1039 after migrating GET /api/platform/config & GET /api/auth/captcha-config
 //         into unified Hono (src/api/routes/{platformConfig,captchaConfig}.ts) and
 //         removing duplicate ProviderMeshEntry/InfisicalVaultKeyEntry declarations.
-const BUDGET = 1039;
+// 1039 → 651 after extracting session/RBAC identity manager (createServerIdentityManager)
+//         into src/server/userDirectory.ts, moving default swarm worker seeds into
+//         src/server/routes/admin/swarmQueue.ts, removing redundant pass-through
+//         closure wrappers, and mounting Edge ↔ Node parity routes (edgeParityRoutes.ts).
+const BUDGET = 651;
 
 const file = path.join(ROOT, TARGET);
 const text = fs.readFileSync(file, 'utf8');

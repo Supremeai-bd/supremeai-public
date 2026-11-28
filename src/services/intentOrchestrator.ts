@@ -456,13 +456,6 @@ export function detectDirectDashboardActionWithPayload(
   return { action: 'none' };
 }
 
-export function detectDirectDashboardAction(
-  promptText: string,
-  isAdmin: boolean
-): DashboardActionType {
-  return detectDirectDashboardActionWithPayload(promptText, isAdmin).action;
-}
-
 function buildHeuristicClarification(
   promptText: string,
   lang: 'en' | 'bn' | 'banglish',

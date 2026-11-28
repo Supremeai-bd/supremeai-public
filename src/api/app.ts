@@ -24,6 +24,8 @@
 
 import { Hono, type Context } from 'hono';
 import { createCaptchaConfigRoutes } from './routes/captchaConfig';
+import { createInternalAlertsRoutes } from './routes/internalAlerts';
+import { createPackagesRoutes } from './routes/packages';
 import { createReleasesRoutes } from './routes/releases';
 import { createTelemetryRoutes } from './routes/telemetry';
 import { createHealthRoutes } from './routes/health';
@@ -62,6 +64,8 @@ export function createApiApp(deps: ApiDeps = {}): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
 
   app.route('/', createCaptchaConfigRoutes());
+  app.route('/', createInternalAlertsRoutes(deps));
+  app.route('/', createPackagesRoutes(deps));
   app.route('/', createReleasesRoutes(deps));
   app.route('/', createTelemetryRoutes());
   app.route('/', createHealthRoutes());

@@ -29,7 +29,6 @@ import { ChatThread } from './components/ChatThread';
 import { ChatEmptyState } from './components/chat/ChatEmptyState';
 import { ChatInput } from './components/ChatInput';
 import { GuestOnboardingCard } from './components/chat/GuestOnboardingCard';
-import { MorningBriefingCard } from './components/chat/MorningBriefingCard';
 import { useLiveVoiceSession } from './hooks/useLiveVoiceSession';
 import {
   jarvisService,
@@ -66,6 +65,12 @@ import {
 
 const LiveVoicePanel = React.lazy(() =>
   import('./components/chat/LiveVoicePanel').then((m) => ({ default: m.LiveVoicePanel }))
+);
+const ChatBreadcrumb = React.lazy(() =>
+  import('./components/chat/ChatBreadcrumb').then((m) => ({ default: m.ChatBreadcrumb }))
+);
+const MorningBriefingCard = React.lazy(() =>
+  import('./components/chat/MorningBriefingCard').then((m) => ({ default: m.MorningBriefingCard }))
 );
 const WorkspaceDock = React.lazy(() =>
   import('./components/workspace/WorkspaceDock').then((m) => ({ default: m.WorkspaceDock }))
@@ -863,6 +868,9 @@ export default function App() {
       case 'open_usage':
         handleSelectTab('user-billing');
         return true;
+      case 'open_knowledge':
+        handleSelectTab('ai-memory');
+        return true;
       case 'open_settings':
         handleSelectTab('user-settings');
         return true;
@@ -1260,10 +1268,25 @@ export default function App() {
               <main className="@container/chat flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden relative bg-transparent">
                 {/* Streamlined Top Chat Controls */}
                 <div
-                  className={`relative z-20 px-3 sm:px-4 pt-3 flex items-center justify-end gap-2 flex-wrap pointer-events-none shrink-0 ${
+                  className={`relative z-20 px-3 sm:px-4 pt-3 flex items-center justify-between gap-2 flex-wrap pointer-events-none shrink-0 ${
                     !sidebarOpen ? 'pl-14' : ''
                   }`}
                 >
+                  {(currentSession?.parentSessionId || currentSession?.projectId) && (
+                    <div className="pointer-events-auto min-w-0">
+                      <Suspense fallback={null}>
+                        <ChatBreadcrumb
+                          sessions={sessions}
+                          currentSession={currentSession}
+                          projects={userProjects}
+                          generatingTitleIds={generatingTitleIds}
+                          onSelectSession={selectSession}
+                          onOpenHistory={() => setSidebarOpen(true)}
+                          onNewSession={createNewSession}
+                        />
+                      </Suspense>
+                    </div>
+                  )}
                   <div className="pointer-events-auto flex items-center gap-1.5 flex-wrap justify-end shrink-0 ml-auto">
                     <PWAInstallButton />
                     {isGuest && (
@@ -1512,10 +1535,12 @@ export default function App() {
                       {/* বাংলা মন্তব্য: প্রো-অ্যাক্টিভ মর্নিং ব্রিফিং কার্ড — লগড-ইন ইউজারের মেমোরি ও টাস্ক সামারি */}
                       {!isGuest && (
                         <div className="w-full px-2 mt-3">
-                          <MorningBriefingCard
-                            visible
-                            userName={authUser?.name}
-                          />
+                          <Suspense fallback={null}>
+                            <MorningBriefingCard
+                              visible
+                              userName={authUser?.name}
+                            />
+                          </Suspense>
                         </div>
                       )}
                       {/* বাংলা মন্তব্য: গেস্ট গ্লাস অনবোর্ডিং কার্ড (Blueprint §4) —

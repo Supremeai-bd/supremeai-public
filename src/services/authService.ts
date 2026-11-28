@@ -4,7 +4,7 @@ import { env } from '../config/env';
 import { DEFAULT_BACKEND_ORIGIN } from '../config/platformEndpoints';
 import { logger } from '../utils/logger';
 import { captchaHeaders } from '../utils/turnstile';
-import { isAuthorizedAdminEmail, readConfiguredAdminEmails } from '../utils/adminIdentity';
+import { isAuthorizedAdminEmail } from '../utils/adminIdentity';
 
 export interface LoginResponse {
   success: boolean;
@@ -33,7 +33,6 @@ let inFlightGuestPromise: Promise<string | null> | null = null;
 
 // বাংলা মন্তব্য: হার্ডকোডেড অ্যাডমিন ইমেইল সরানো হয়েছে — SSOT এখন utils/adminIdentity
 // (সার্ভারের role/isAdminEligible + ঐচ্ছিক VITE_ADMIN_EMAILS)।
-export const AUTHORIZED_PROJECT_ADMIN_EMAILS: readonly string[] = readConfiguredAdminEmails();
 export { isAuthorizedAdminEmail };
 
 const ADMIN_RBAC_ROLES = new Set(['admin', 'super_admin', 'superadmin', 'root_admin', 'owner']);

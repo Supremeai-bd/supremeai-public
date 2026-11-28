@@ -35,7 +35,9 @@ describe('createApiApp — route registry', () => {
       '/api/auth/captcha-config',
       '/api/health',
       '/api/i18n/:lang',
+      '/api/internal/alerts',
       '/api/models',
+      '/api/packages',
       '/api/platform/config',
       '/api/releases/latest',
       '/api/share/:id',
@@ -239,5 +241,54 @@ describe('GET /api/auth/captcha-config & GET /api/platform/config', () => {
     expect(nodeJson.maintenanceMode).toBe(true);
     expect(nodeJson.featureFlags.maintenance_mode).toBe(true);
     expect(Boolean(nodeJson.plans && typeof nodeJson.plans === 'object')).toBe(true);
+  });
+
+  it('serves GET /api/packages via unified Hono (503 when unlinked, 200 when Supabase responds)', async () => {
+    const unlinked = await createApiApp().request('/api/packages');
+    expect(unlinked.status).toBe(503);
+
+    const fetchMock = routedFetch({
+      '/rest/v1/credit_packages': [
+        {
+          id: 'pkg_starter',
+          name: 'Starter',
+          credits: 500,
+          price_bdt: 199,
+          price_usd: 2,
+          active: true,
+          featured: false,
+          sort_order: 1,
+        },
+      ],
+    });
+    const linked = createApiApp({ fetch: fetchMock as unknown as typeof fetch });
+    const res = await linked.request(
+      '/api/packages',
+      {},
+      { SUPABASE_URL: 'https://db.example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'srv-key' }
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { success: boolean; packages: Array<{ id: string }> };
+    expect(body.success).toBe(true);
+    expect(body.packages[0]?.id).toBe('pkg_starter');
+  });
+
+  it('enforces Bearer ALERT_INGEST_TOKEN on POST /api/internal/alerts with timing-safe verification', async () => {
+    const app = createApiApp();
+    const missingAuth = await app.request('/api/internal/alerts', { method: 'POST' });
+    expect(missingAuth.status).toBe(401);
+
+    const unconfigured = await app.request('/api/internal/alerts', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer probe-token' },
+    });
+    expect(unconfigured.status).toBe(503);
+
+    const forbidden = await app.request(
+      '/api/internal/alerts',
+      { method: 'POST', headers: { Authorization: 'Bearer wrong-token' } },
+      { ALERT_INGEST_TOKEN: 'expected-secret' }
+    );
+    expect(forbidden.status).toBe(403);
   });
 });

@@ -1,6 +1,12 @@
 import type { Express, Request, Response } from 'express';
 import { GoogleGenAI, ThinkingLevel, Type, type FunctionDeclaration } from '@google/genai';
 import { isProtectedWorkspaceFile, isRestrictedProxyTarget } from '../../shared/serverSecurity';
+import {
+  AGENT_COMPLETION_HONESTY_RULE,
+  AGENT_TOOL_LIMITS,
+  AGENT_UNTRUSTED_CONTENT_RULE,
+  wrapUntrustedWebContent,
+} from '../../shared/agentToolContracts';
 import { extractHtmlTitle, extractReadablePageSnippet } from '../../shared/scheduleExecution';
 import { routeRateLimit } from '../routeRateLimit';
 import type { AgentExecuteResponse, AgentToolAction } from '../../shared/agentTypes';
@@ -328,7 +334,10 @@ export function registerAgentExecuteRoutes(app: Express, ctx: AgentExecuteContex
             detail: `${vMatch.content.length} chars (virtual buffer)`,
             durationMs: Math.max(1, Date.now() - started),
           });
-          return { path: vMatch.path, content: vMatch.content.slice(0, 9000) };
+          return {
+            path: vMatch.path,
+            content: vMatch.content.slice(0, AGENT_TOOL_LIMITS.MAX_TOOL_FILE_READ_CHARS),
+          };
         }
 
         if (name === 'web_browse') {
@@ -344,7 +353,10 @@ export function registerAgentExecuteRoutes(app: Express, ctx: AgentExecuteContex
               : await fetch(parsedUrl.toString(), { method: 'GET', redirect: 'error' });
             const rawBody = await response.text();
             const title = extractHtmlTitle(rawBody, parsedUrl.hostname);
-            const snippet = extractReadablePageSnippet(rawBody, 4500);
+            const snippet = extractReadablePageSnippet(
+              rawBody,
+              AGENT_TOOL_LIMITS.MAX_WEB_SNIPPET_CHARS
+            );
             groundingSources.push({ title, uri: parsedUrl.toString() });
             steps.push({
               id: stepId,
@@ -358,7 +370,7 @@ export function registerAgentExecuteRoutes(app: Express, ctx: AgentExecuteContex
               url: parsedUrl.toString(),
               statusCode: response.status,
               title,
-              textPreview: snippet,
+              textPreview: wrapUntrustedWebContent(snippet, parsedUrl.toString()),
             };
           } catch (err: unknown) {
             const errMsg = err instanceof Error ? err.message : 'Failed to browse URL';
@@ -497,8 +509,7 @@ export function registerAgentExecuteRoutes(app: Express, ctx: AgentExecuteContex
         return { error: `Unknown tool: ${name}` };
       };
 
-      const maxIterations = 5;
-      for (let iter = 0; iter < maxIterations; iter += 1) {
+      for (let iter = 0; iter < AGENT_TOOL_LIMITS.MAX_ITERATIONS; iter += 1) {
         const response = await ai.models.generateContent({
           model: 'gemini-4-hydrogen',
           contents: contents as unknown as Parameters<typeof ai.models.generateContent>[0]['contents'],
@@ -509,7 +520,9 @@ Rules:
 1. Respond in the user's language (English, Bengali, or Banglish).
 2. Always read relevant files or browse referenced URLs before claiming facts about them.
 3. For recurring web monitoring requests with a URL, call create_scheduled_task so the user gets a one-click approval card.
-4. Keep your final summary crisp, accurate, and grounded strictly in actual tool outputs.`,
+4. Keep your final summary crisp, accurate, and grounded strictly in actual tool outputs.
+5. ${AGENT_UNTRUSTED_CONTENT_RULE}
+6. ${AGENT_COMPLETION_HONESTY_RULE}`,
             tools: [{ functionDeclarations: AGENT_FUNCTION_DECLARATIONS }],
           },
         });

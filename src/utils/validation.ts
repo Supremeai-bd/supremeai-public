@@ -84,38 +84,7 @@ export function validateWebhookForm(values: WebhookFormValues): ValidationResult
   };
 }
 
-// 3. Validate Team Member Invite Input
-export interface TeamInviteFormValues {
-  name: string;
-  email: string;
-  role: string;
-}
-
-export function validateTeamInviteForm(values: TeamInviteFormValues): ValidationResult {
-  const errors: Record<string, string> = {};
-
-  if (!values.name || !values.name.trim()) {
-    errors.name = 'Full name is required.';
-  }
-
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!values.email || !values.email.trim()) {
-    errors.email = 'Email address is required.';
-  } else if (!emailRegex.test(values.email.trim())) {
-    errors.email = 'Enter a valid corporate email address.';
-  }
-
-  if (!values.role) {
-    errors.role = 'Role assignment is required.';
-  }
-
-  return {
-    isValid: Object.keys(errors).length === 0,
-    errors,
-  };
-}
-
-// 4. Validate Knowledge Base File Input
+// 3. Validate Knowledge Base File Input
 export interface FileValidationResult {
   isValid: boolean;
   error?: string;

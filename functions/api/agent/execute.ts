@@ -8,6 +8,13 @@ import {
   safeEdgeFetch,
   verifyUpstreamSession,
 } from '../../_lib/edgeHelpers';
+import {
+  AGENT_COMPLETION_HONESTY_RULE,
+  AGENT_TOOL_LIMITS,
+  AGENT_UNTRUSTED_CONTENT_RULE,
+  wrapUntrustedWebContent,
+} from '../../../src/shared/agentToolContracts';
+import { isProtectedWorkspaceFile } from '../../../src/shared/serverSecurity';
 import { extractHtmlTitle, extractReadablePageSnippet } from '../../../src/shared/scheduleExecution';
 import type { AgentExecuteResponse, AgentToolAction } from '../../../src/shared/agentTypes';
 import type { AgentExecutionStep, GroundingSource } from '../../../src/types';
@@ -259,6 +266,20 @@ export async function onRequest(context: PagesContext): Promise<Response> {
 
     if (name === 'read_workspace_file') {
       const reqPath = typeof args.path === 'string' ? args.path.trim().replace(/^\/+/, '') : '';
+      if (!reqPath || isProtectedWorkspaceFile(reqPath)) {
+        const errorMsg = !reqPath
+          ? 'File path is required.'
+          : 'Access to protected environment or credential files is denied.';
+        steps.push({
+          id: stepId,
+          label: `Read blocked: ${reqPath || 'unknown'}`,
+          tool: 'workspace_read',
+          status: 'error',
+          detail: errorMsg,
+          durationMs: Math.max(1, Date.now() - started),
+        });
+        return { error: errorMsg };
+      }
       const match = virtualFiles.find((f) => f.path.replace(/^\/+/, '') === reqPath);
       if (!match) {
         steps.push({
@@ -278,7 +299,10 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         detail: `${match.content.length} chars`,
         durationMs: Math.max(1, Date.now() - started),
       });
-      return { path: match.path, content: match.content.slice(0, 9000) };
+      return {
+        path: match.path,
+        content: match.content.slice(0, AGENT_TOOL_LIMITS.MAX_TOOL_FILE_READ_CHARS),
+      };
     }
 
     if (name === 'web_browse') {
@@ -294,7 +318,10 @@ export async function onRequest(context: PagesContext): Promise<Response> {
         const probe = await safeEdgeFetch(parsed.toString(), { method: 'GET' }, 7000);
         const rawBody = await probe.text().catch(() => '');
         const title = extractHtmlTitle(rawBody, parsed.hostname);
-        const snippet = extractReadablePageSnippet(rawBody, 4500);
+        const snippet = extractReadablePageSnippet(
+          rawBody,
+          AGENT_TOOL_LIMITS.MAX_WEB_SNIPPET_CHARS
+        );
         groundingSources.push({ title, uri: parsed.toString() });
         steps.push({
           id: stepId,
@@ -308,7 +335,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
           url: parsed.toString(),
           statusCode: probe.status,
           title,
-          textPreview: snippet,
+          textPreview: wrapUntrustedWebContent(snippet, parsed.toString()),
         };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Browse failed';
@@ -445,7 +472,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   };
 
   try {
-    for (let iter = 0; iter < 5; iter += 1) {
+    for (let iter = 0; iter < AGENT_TOOL_LIMITS.MAX_ITERATIONS; iter += 1) {
       const geminiRes = await fetchWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-4-hydrogen:generateContent?key=${encodeURIComponent(
           geminiKey
@@ -460,7 +487,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
             systemInstruction: {
               parts: [
                 {
-                  text: `You are SupremeAI's Autonomous Task Executor. Use tools to inspect workspace files, browse URLs, open Virtual Browser, update workspace projects, or stage recurring scheduled tasks. Respond cleanly in the user's language.`,
+                  text: `You are SupremeAI's Autonomous Task Executor. Use tools to inspect workspace files, browse URLs, open Virtual Browser, update workspace projects, or stage recurring scheduled tasks. Respond cleanly in the user's language.\n${AGENT_UNTRUSTED_CONTENT_RULE}\n${AGENT_COMPLETION_HONESTY_RULE}`,
                 },
               ],
             },

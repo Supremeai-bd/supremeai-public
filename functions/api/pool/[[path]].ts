@@ -34,7 +34,10 @@ import {
 const UPSTREAM_FIRST = new Set(['/api/pool/providers', '/api/pool/contribute', '/api/pool/quota']);
 const FALLBACK_STATUSES = new Set([404, 405, 501, 502, 503, 504]);
 
-export async function onRequest(context: PagesContext): Promise<Response> {
+export async function onRequest(
+  context: PagesContext,
+  verifySession?: (req: Request, upstreamOrigin: string) => Promise<UpstreamSessionVerification>
+): Promise<Response> {
   const { request, env = {} } = context;
   if (request.method === 'OPTIONS') return handleCorsPreflight(request, env);
 
@@ -70,7 +73,8 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   }
 
   // বাকি সবকিছুর জন্য লগইন করা ইউজার লাগবে
-  const session: UpstreamSessionVerification = await verifyUpstreamSession(
+  const verify = verifySession ?? verifyUpstreamSession;
+  const session: UpstreamSessionVerification = await verify(
     request,
     upstreamOrigin
   ).catch(() => ({ valid: false, isGuest: false }));

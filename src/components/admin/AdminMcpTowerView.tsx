@@ -1078,11 +1078,13 @@ export const AdminMcpTowerView: React.FC<AdminMcpTowerViewProps> = ({
             {/* Modal Footer */}
             <div className="px-6 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex items-center justify-between text-xs text-slate-500 shrink-0">
               <div>
-                Daemon PID:{' '}
-                <span className="font-mono text-slate-700 dark:text-slate-300">#49120</span> ·
-                Container:{' '}
+                Service:{' '}
                 <span className="font-mono text-slate-700 dark:text-slate-300">
-                  mcp-tower-worker-01
+                  {activeSelectedService.id}
+                </span>{' '}
+                · Port:{' '}
+                <span className="font-mono text-slate-700 dark:text-slate-300">
+                  :{activeSelectedService.port}
                 </span>
               </div>
               <button
