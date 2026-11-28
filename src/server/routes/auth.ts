@@ -6,6 +6,12 @@ import type { PlanTier } from '../../types';
 import { hashPassword, parseCookieHeader, verifyPassword } from '../../shared/serverSecurity';
 import { loginSchema, refreshSchema, signupSchema, parseBody } from '../validation';
 import type { RbacRole, ServerCustomerRecord, ServerUser } from '../userDirectory';
+import {
+  asUpstreamJson,
+  upstreamString,
+  upstreamStringList,
+  type UpstreamJson,
+} from '../upstreamJson';
 
 /**
  * Core Auth — `POST /api/auth/*` + `POST /api/v1/auth/*` + `GET /api/auth/me` + `POST /api/v1/auth/logout`
@@ -59,21 +65,6 @@ interface RbacUserHints {
   isAdminEligible?: boolean;
   isDeveloperEligible?: boolean;
   adminUserId?: string;
-}
-
-/** Untyped JSON from the upstream gateway; every field is narrowed where it is read. */
-type UpstreamJson = Record<string, unknown>;
-
-function asUpstreamJson(value: unknown): UpstreamJson | null {
-  return value && typeof value === 'object' ? (value as UpstreamJson) : null;
-}
-
-function upstreamString(value: unknown): string | undefined {
-  return typeof value === 'string' && value ? value : undefined;
-}
-
-function upstreamStringList(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
 export interface AuthContext {
